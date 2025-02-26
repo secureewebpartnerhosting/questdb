@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,13 +34,9 @@ import io.questdb.std.Numbers;
 class IntBindVariable extends IntFunction implements ScalarFunction, Mutable {
     int value;
 
-    IntBindVariable() {
-        super();
-    }
-
     @Override
     public void clear() {
-        this.value = Numbers.INT_NaN;
+        this.value = Numbers.INT_NULL;
     }
 
     @Override
@@ -49,12 +45,17 @@ class IntBindVariable extends IntFunction implements ScalarFunction, Mutable {
     }
 
     @Override
-    public boolean isReadThreadSafe() {
+    public boolean isNonDeterministic() {
         return true;
     }
 
     @Override
     public boolean isRuntimeConstant() {
+        return true;
+    }
+
+    @Override
+    public boolean isThreadSafe() {
         return true;
     }
 

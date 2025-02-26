@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@
  ******************************************************************************/
 
 package io.questdb.std;
+
+import org.jetbrains.annotations.TestOnly;
 
 public class BitmapIndexUtilsNative {
 
@@ -74,6 +76,7 @@ public class BitmapIndexUtilsNative {
         }
     }
 
+    @TestOnly
     public static void latestScanBackward(
             long keysMemory,
             long keysMemorySize,
@@ -83,7 +86,7 @@ public class BitmapIndexUtilsNative {
             long unIndexedNullCount,
             long maxValue,
             long minValue,
-            int partitionIndex,
+            int frameIndex,
             int blockValueCountMod
     ) {
         assert keysMemory > 0;
@@ -91,11 +94,21 @@ public class BitmapIndexUtilsNative {
         assert valuesMemory > 0;
         assert valuesMemorySize > 0;
         assert argsMemory > 0;
-        assert partitionIndex >= 0;
+        assert frameIndex >= 0;
         assert blockValueCountMod + 1 == Numbers.ceilPow2(blockValueCountMod + 1);
 
-        latestScanBackward0(keysMemory, keysMemorySize, valuesMemory, valuesMemorySize, argsMemory, unIndexedNullCount,
-                maxValue, minValue, partitionIndex, blockValueCountMod);
+        latestScanBackward0(
+                keysMemory,
+                keysMemorySize,
+                valuesMemory,
+                valuesMemorySize,
+                argsMemory,
+                unIndexedNullCount,
+                maxValue,
+                minValue,
+                frameIndex,
+                blockValueCountMod
+        );
     }
 
     private static native int findFirstLastInFrame0(

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ import static io.questdb.cutlass.pgwire.PGOids.PG_NAMESPACE_OID;
 
 public class CastStrToRegClassFunctionFactory implements FunctionFactory {
     private static final CharSequenceObjHashMap<Function> funcMap = new CharSequenceObjHashMap<>();
-    private static final CharSequenceIntHashMap valueMap = new CharSequenceIntHashMap(4, 0.6, Numbers.INT_NaN);
+    private static final CharSequenceIntHashMap valueMap = new CharSequenceIntHashMap(4, 0.6, Numbers.INT_NULL);
 
     @Override
     public String getSignature() {
@@ -85,7 +85,7 @@ public class CastStrToRegClassFunctionFactory implements FunctionFactory {
             if (val != null) {
                 return valueMap.get(val);
             }
-            return Numbers.INT_NaN;
+            return Numbers.INT_NULL;
         }
 
         @Override

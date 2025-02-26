@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,6 +39,8 @@ import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.time.temporal.ChronoUnit;
 
 import static io.questdb.cairo.PartitionBy.getPartitionDirFormatMethod;
 import static io.questdb.std.datetime.TimeZoneRuleFactory.RESOLUTION_MICROS;
@@ -76,28 +78,28 @@ public class TimestampsTest {
     @Test
     public void testAddYears() throws Exception {
         long micros = TimestampFormatUtils.parseTimestamp("1988-05-12T23:45:51.045Z");
-        TimestampFormatUtils.appendDateTime(sink, Timestamps.addYear(micros, 10));
+        TimestampFormatUtils.appendDateTime(sink, Timestamps.addYears(micros, 10));
         TestUtils.assertEquals("1998-05-12T23:45:51.045Z", sink);
     }
 
     @Test
     public void testAddYears3() throws Exception {
         long micros = TimestampFormatUtils.parseTimestamp("2014-01-01T00:00:00.000Z");
-        TimestampFormatUtils.appendDateTime(sink, Timestamps.addYear(micros, 1));
+        TimestampFormatUtils.appendDateTime(sink, Timestamps.addYears(micros, 1));
         TestUtils.assertEquals("2015-01-01T00:00:00.000Z", sink);
     }
 
     @Test
     public void testAddYearsNonLeapToLeap() throws Exception {
         long micros = TimestampFormatUtils.parseTimestamp("2015-01-01T00:00:00.000Z");
-        TimestampFormatUtils.appendDateTime(sink, Timestamps.addYear(micros, 1));
+        TimestampFormatUtils.appendDateTime(sink, Timestamps.addYears(micros, 1));
         TestUtils.assertEquals("2016-01-01T00:00:00.000Z", sink);
     }
 
     @Test
     public void testAddYearsPrevEpoch() throws Exception {
         long micros = TimestampFormatUtils.parseTimestamp("1888-05-12T23:45:51.045Z");
-        TimestampFormatUtils.appendDateTime(sink, Timestamps.addYear(micros, 10));
+        TimestampFormatUtils.appendDateTime(sink, Timestamps.addYears(micros, 10));
         TestUtils.assertEquals("1898-05-12T23:45:51.045Z", sink);
     }
 
@@ -664,7 +666,7 @@ public class TimestampsTest {
 
     @Test(expected = NumericException.class)
     public void testParseWrongHour() throws Exception {
-        TimestampFormatUtils.parseTimestamp("2013-09-30T24:00:00.000Z");
+        TimestampFormatUtils.parseTimestamp("2013-09-30T25:00:00.000Z");
     }
 
     @Test(expected = NumericException.class)
@@ -709,6 +711,28 @@ public class TimestampsTest {
         long micros = TimestampFormatUtils.parseTimestamp("2017-04-06T00:00:00.000Z");
         TimestampFormatUtils.appendDateTime(sink, Timestamps.previousOrSameDayOfWeek(micros, 4));
         TestUtils.assertEquals("2017-04-06T00:00:00.000Z", sink);
+    }
+
+    @Test
+    public void testToMicros() {
+        Assert.assertEquals(1, Timestamps.toMicros(1000, ChronoUnit.NANOS));
+        Assert.assertEquals(1, Timestamps.toMicros(1, ChronoUnit.MICROS));
+        Assert.assertEquals(1000, Timestamps.toMicros(1, ChronoUnit.MILLIS));
+        Assert.assertEquals(1_000_000, Timestamps.toMicros(1, ChronoUnit.SECONDS));
+
+        Assert.assertEquals(60 * 1000 * 1000, Timestamps.toMicros(1, ChronoUnit.MINUTES));
+        Assert.assertEquals(Long.MAX_VALUE, Timestamps.toMicros(Long.MAX_VALUE, ChronoUnit.MICROS));
+
+        Assert.assertEquals(Timestamps.toMicros(1, ChronoUnit.HOURS), Timestamps.toMicros(60, ChronoUnit.MINUTES));
+        Assert.assertEquals(0, Timestamps.toMicros(0, ChronoUnit.NANOS));
+        Assert.assertEquals(0, Timestamps.toMicros(0, ChronoUnit.MICROS));
+        Assert.assertEquals(0, Timestamps.toMicros(0, ChronoUnit.MILLIS));
+        Assert.assertEquals(0, Timestamps.toMicros(0, ChronoUnit.SECONDS));
+        Assert.assertEquals(0, Timestamps.toMicros(0, ChronoUnit.MINUTES));
+
+        // micros values remain unchanged
+        Assert.assertEquals(123456789L, Timestamps.toMicros(123456789L, ChronoUnit.MICROS));
+        Assert.assertEquals(123456789L, Timestamps.toMicros(123456789000L, ChronoUnit.NANOS));
     }
 
     @Test(expected = NumericException.class)

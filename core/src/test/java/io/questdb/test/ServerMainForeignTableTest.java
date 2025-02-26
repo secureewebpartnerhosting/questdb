@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,35 +27,48 @@ package io.questdb.test;
 import io.questdb.PropServerConfiguration;
 import io.questdb.PropertyKey;
 import io.questdb.ServerMain;
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.CursorPrinter;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
 import io.questdb.cairo.sql.RecordCursor;
 import io.questdb.cairo.sql.RecordCursorFactory;
 import io.questdb.cairo.sql.RecordMetadata;
 import io.questdb.griffin.CompiledQuery;
+import io.questdb.griffin.QueryBuilder;
 import io.questdb.griffin.SqlCompiler;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.log.LogFactory;
 import io.questdb.mp.SOCountDownLatch;
 import io.questdb.std.Files;
-import io.questdb.std.Misc;
 import io.questdb.std.Os;
 import io.questdb.std.str.Path;
 import io.questdb.std.str.StringSink;
 import io.questdb.test.cairo.TableModel;
 import io.questdb.test.tools.TestUtils;
-import org.junit.*;
+import org.junit.AfterClass;
+import org.junit.Assert;
+import org.junit.Assume;
+import org.junit.BeforeClass;
+import org.junit.Test;
 
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Types;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.questdb.test.tools.TestUtils.*;
 
 public class ServerMainForeignTableTest extends AbstractBootstrapTest {
-
     private static final String TABLE_START_CONTENT = "min\tmax\tcount\n" +
             "2023-01-01T00:00:00.950399Z\t2023-01-01T23:59:59.822691Z\t90909\n" +
             "2023-01-02T00:00:00.773090Z\t2023-01-02T23:59:59.645382Z\t90909\n" +
@@ -85,7 +98,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
 
     @AfterClass
     public static void tearDownStatic() {
-        Assert.assertTrue(Files.rmdir(auxPath.of(otherVolume).$(), true));
+        Assert.assertTrue(Files.rmdir(auxPath.of(otherVolume), true));
         AbstractBootstrapTest.tearDownStatic();
     }
 
@@ -99,7 +112,8 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                 ILP_PORT + pgPortDelta,
                 root,
                 PropertyKey.CAIRO_WAL_SUPPORTED.getPropertyPath() + "=true",
-                PropertyKey.CAIRO_VOLUMES.getPropertyPath() + '=' + otherVolumeAlias + "->" + otherVolume));
+                PropertyKey.CAIRO_VOLUMES.getPropertyPath() + '=' + otherVolumeAlias + "->" + otherVolume)
+        );
     }
 
     @Test
@@ -119,15 +133,15 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                 TableToken tableToken = createPopulateTable(engine, compiler, context, tableName, false, true, false);
                 assertTableExists(tableToken, false, true);
                 createPopulateTable(engine, compiler, context, tableName, false, true, true);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
 
                 // create non wal table in standard dir, and drop it
                 tableToken = createPopulateTable(engine, compiler, context, tableName, false, false, false);
                 assertTableExists(tableToken, false, false);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
 
                 try {
-                    dropTable(compiler, context, tableToken);
+                    dropTable(context, tableToken);
                     Assert.fail();
                 } catch (SqlException err) {
                     TestUtils.assertContains(err.getFlyweightMessage(), "table does not exist [table=" + tableName + ']');
@@ -158,7 +172,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                     TestUtils.assertContains(e.getFlyweightMessage(), "table already exists");
                 }
                 assertTableExists(tableToken, false, false);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
 
                 // create normal table in other volume, then drop it
                 tableToken = createPopulateTable(engine, compiler, context, tableName, false, true, false);
@@ -169,7 +183,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                     TestUtils.assertContains(e.getFlyweightMessage(), "table already exists");
                 }
                 assertTableExists(tableToken, false, true);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
             }
         });
     }
@@ -199,28 +213,28 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
 
             // copy the table to a foreign location, remove it, then symlink it
             try (
-                    Path filePath = new Path().of(root).concat(PropServerConfiguration.DB_DIRECTORY).concat(TableUtils.TAB_INDEX_FILE_NAME).$();
-                    Path fakeTablePath = new Path().of(root).concat(PropServerConfiguration.DB_DIRECTORY).concat("coconut").$();
-                    Path foreignPath = new Path().of(root).concat("banana").concat(tableName).slash$()
+                    Path filePath = new Path().of(root).concat(PropServerConfiguration.DB_DIRECTORY).concat(TableUtils.TAB_INDEX_FILE_NAME);
+                    Path fakeTablePath = new Path().of(root).concat(PropServerConfiguration.DB_DIRECTORY).concat("coconut");
+                    Path foreignPath = new Path().of(root).concat("banana").concat(tableName).slash()
             ) {
-                if (!Files.exists(foreignPath)) {
+                if (!Files.exists(foreignPath.$())) {
                     Assert.assertEquals(0, Files.mkdirs(foreignPath, 509));
                 }
-                Assert.assertTrue(Files.exists(foreignPath));
+                Assert.assertTrue(Files.exists(foreignPath.$()));
                 dbPath.trimTo(dbPathLen).concat(tableName).$();
                 TestUtils.copyDirectory(dbPath, foreignPath, 509);
 
                 String tablePathStr = dbPath.toString();
                 String foreignPathStr = foreignPath.toString();
-                Assert.assertTrue(Files.rmdir(auxPath.of(tablePathStr).$(), true));
-                Assert.assertFalse(Files.exists(dbPath));
+                Assert.assertTrue(Files.rmdir(auxPath.of(tablePathStr), true));
+                Assert.assertFalse(Files.exists(dbPath.$()));
                 createSoftLink(foreignPathStr, tablePathStr);
-                Assert.assertTrue(Files.exists(dbPath));
+                Assert.assertTrue(Files.exists(dbPath.$()));
 
-                if (!Files.exists(fakeTablePath)) {
+                if (!Files.exists(fakeTablePath.$())) {
                     createSoftLink(filePath.toString(), fakeTablePath.toString());
                 }
-                Assert.assertTrue(Files.exists(fakeTablePath));
+                Assert.assertTrue(Files.exists(fakeTablePath.$()));
             }
 
             // check content of table after sym-linking it
@@ -239,7 +253,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                 CairoEngine engine = qdb.getEngine();
                 TableToken tableToken = engine.verifyTableName(tableName);
                 assertTableExists(tableToken, false, true);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
             }
         });
     }
@@ -294,7 +308,6 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                             startBarrier.await();
                             haltLatch.await();
                             dropTable(
-                                    compiler0,
                                     context0,
                                     engine.verifyTableName(tableName)
                             );
@@ -321,11 +334,11 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                 TableToken tableToken = createPopulateTable(engine, compiler, context, tableName, true, true, false);
                 assertTableExists(tableToken, true, true);
                 tableToken = createPopulateTable(engine, compiler, context, tableName, true, true, true);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
 
                 tableToken = createPopulateTable(engine, compiler, context, tableName, true, true, true);
                 assertTableExists(tableToken, true, true);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
             }
         });
     }
@@ -344,24 +357,15 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                 CairoEngine engine = qdb.getEngine();
                 TableToken tableToken = createPopulateTable(engine, compiler, context, tableName, true, true, false);
                 assertTableExists(tableToken, true, true);
-                long t = System.currentTimeMillis();
-                while (true) {
-                    try {
-                        assertSql(
-                                compiler,
-                                context,
-                                "SELECT min(ts), max(ts), count() FROM " + tableName + " SAMPLE BY 1d ALIGN TO CALENDAR",
-                                new StringSink(),
-                                TABLE_START_CONTENT
-                        );
-                        break;
-                    } catch (AssertionError e) {
-                        if (System.currentTimeMillis() - t > 5000) {
-                            throw e;
-                        }
-                    }
-                }
-                dropTable(compiler, context, tableToken);
+                qdb.awaitTxn(tableName, 1);
+                assertSql(
+                        compiler,
+                        context,
+                        "SELECT min(ts), max(ts), count() FROM " + tableName + " SAMPLE BY 1d ALIGN TO CALENDAR",
+                        new StringSink(),
+                        TABLE_START_CONTENT
+                );
+                dropTable(context, tableToken);
             }
         });
     }
@@ -386,7 +390,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                     TestUtils.assertContains(e.getFlyweightMessage(), "table already exists");
                 }
                 assertTableExists(tableToken, true, false);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
 
                 tableToken = createPopulateTable(engine, compiler, context, tableName, true, true, false);
                 try {
@@ -396,7 +400,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                     TestUtils.assertContains(e.getFlyweightMessage(), "table already exists");
                 }
                 assertTableExists(tableToken, true, true);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
             }
         });
     }
@@ -421,7 +425,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                     TestUtils.assertContains(e.getFlyweightMessage(), "table already exists");
                 }
                 assertTableExists(tableToken, true, true);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
 
                 tableToken = createPopulateTable(engine, compiler, context, tableName, true, false, false);
                 try {
@@ -431,7 +435,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                     TestUtils.assertContains(e.getFlyweightMessage(), "table already exists");
                 }
                 assertTableExists(tableToken, true, false);
-                dropTable(compiler, context, tableToken);
+                dropTable(context, tableToken);
             }
         });
     }
@@ -487,7 +491,6 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                             startBarrier.await();
                             haltLatch.await();
                             dropTable(
-                                    compiler0,
                                     context0,
                                     engine.verifyTableName(tableName)
                             );
@@ -507,7 +510,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
         ) {
             ResultSetMetaData meta = result.getMetaData();
             int colCount = meta.getColumnCount();
-            Assert.assertEquals(9, colCount);
+            Assert.assertEquals(12, colCount);
             while (result.next()) {
                 for (int i = 1; i <= colCount; i++) {
                     switch (meta.getColumnType(i)) {
@@ -591,7 +594,7 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
                     throw new RuntimeException(unexpected);
                 }
             } finally {
-                TableUtils.clearThreadLocals();
+                Path.clearThreadLocals();
                 haltLatch.countDown();
             }
         }, threadName);
@@ -606,33 +609,33 @@ public class ServerMainForeignTableTest extends AbstractBootstrapTest {
             boolean inVolume,
             boolean addIfNotExists
     ) throws Exception {
-        StringSink sink = Misc.getThreadLocalSink();
-        sink.put("CREATE TABLE ");
+        QueryBuilder queryBuilder = compiler.query();
+        queryBuilder.$("CREATE TABLE ");
         if (addIfNotExists) {
-            sink.put("IF NOT EXISTS ");
+            queryBuilder.$("IF NOT EXISTS ");
         }
-        sink.put(tableName).put('(').put('\n');
-        sink.put(" investmentMill LONG,").put('\n');
-        sink.put(" ticketThous INT,").put('\n');
-        sink.put(" broker SYMBOL INDEX CAPACITY 32,").put('\n');
-        sink.put(" ts TIMESTAMP").put('\n');
-        sink.put(") TIMESTAMP(ts) PARTITION BY DAY");
+        queryBuilder.$(tableName).$('(').$('\n');
+        queryBuilder.$(" investmentMill LONG,").$('\n');
+        queryBuilder.$(" ticketThous INT,").$('\n');
+        queryBuilder.$(" broker SYMBOL INDEX CAPACITY 32,").$('\n');
+        queryBuilder.$(" ts TIMESTAMP").$('\n');
+        queryBuilder.$(") TIMESTAMP(ts) PARTITION BY DAY");
         if (isWal) {
-            sink.put(" WAL");
+            queryBuilder.$(" WAL");
         }
         if (inVolume) {
-            sink.put(" IN VOLUME '" + otherVolumeAlias + '\'');
+            queryBuilder.$(" IN VOLUME '" + otherVolumeAlias + '\'');
         }
-        sink.put('\n');
-        compiler.compile(sink.toString(), context);
+        queryBuilder.$('\n');
 
+        TableToken tt = queryBuilder.createTable(context);
         TableModel tableModel = new TableModel(engine.getConfiguration(), tableName, PartitionBy.DAY)
                 .col("investmentMill", ColumnType.LONG)
                 .col("ticketThous", ColumnType.INT)
                 .col("broker", ColumnType.SYMBOL).symbolCapacity(32)
                 .timestamp("ts");
-        // todo: replace with metadata
-        if (isWal) {
+
+        if (tt.isWal()) {
             tableModel.wal();
         }
         CharSequence insert = insertFromSelectPopulateTableStmt(tableModel, 1000000, firstPartitionName, partitionCount);

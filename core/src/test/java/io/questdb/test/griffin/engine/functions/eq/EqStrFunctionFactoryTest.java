@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ public class EqStrFunctionFactoryTest extends AbstractCairoTest {
                 "OS\tOS\t0.7693457725433892\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,0) a," +
                     " rnd_str(2,2,0) b," +
@@ -97,7 +97,7 @@ public class EqStrFunctionFactoryTest extends AbstractCairoTest {
                 "\t\t0.3295206953565475\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(4,4,8) a," +
                     " rnd_str(4,4,8) b," +
@@ -129,7 +129,7 @@ public class EqStrFunctionFactoryTest extends AbstractCairoTest {
                 "UW\tMK\t0.9642333434663315\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,0) a," +
                     " rnd_str(2,2,0) b," +
@@ -161,7 +161,7 @@ public class EqStrFunctionFactoryTest extends AbstractCairoTest {
                 "UW\tMK\t0.9642333434663315\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,0) a," +
                     " rnd_str(2,2,0) b," +
@@ -192,7 +192,7 @@ public class EqStrFunctionFactoryTest extends AbstractCairoTest {
                 "\tPD\t0.8501026132754606\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,400) a," +
                     " rnd_str(2,2,0) b," +

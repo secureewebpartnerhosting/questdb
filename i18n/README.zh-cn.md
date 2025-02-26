@@ -24,11 +24,11 @@
   </a>
 </p>
 
-[English](https://github.com/questdb/questdb) | 简体中文 | [繁體中文](README.zh-hk.md) | [العربية](README.ar-dz.md) | [Italiano](README.it-it.md) | [Українська](README.ua-ua.md) | [Español](README.es-es.md) | [Português](README.pt.md) | [日本語](./README.ja-ja.md) | [Türkçe](./README.tr-tr.md) | [हिंदी](./README.hn-in.md)
+[English](https://github.com/questdb/questdb) | 简体中文 | [繁體中文](README.zh-hk.md) | [العربية](README.ar-dz.md) | [Italiano](README.it-it.md) | [Українська](README.ua-ua.md) | [Español](README.es-es.md) | [Português](README.pt.md) | [日本語](README.ja-ja.md) | [Türkçe](README.tr-tr.md) | [हिंदी](README.hn-in.md) | [Tiếng Việt](README.vi-vn.md)
 
 # QuestDB
 
-QuestDB 是一个开源的時序数据库，支持高吞吐数据获取和快速 SQL 查询，操作简单。
+QuestDB 是一个开源的时序数据库，支持高吞吐数据获取和快速 SQL 查询，操作简单。
 它支持使用InfluxDB连接协议、PostgreSQL协议和REST API进行批量无模式导入和导出。
 
 QuestDB非常适用于金融市场数据、应用程序指标、传感器数据、实时分析、仪表板和系统基础设施监控。

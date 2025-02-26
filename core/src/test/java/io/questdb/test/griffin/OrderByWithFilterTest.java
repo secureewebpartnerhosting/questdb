@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@
 package io.questdb.test.griffin;
 
 import io.questdb.cairo.SqlJitMode;
-import io.questdb.griffin.SqlException;
 import io.questdb.test.AbstractCairoTest;
 import org.junit.Test;
 
@@ -106,7 +105,7 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
         assertOrderByInOverClause(expected, direction);
     }
 
-    @Test//triggers DeferredSingleSymbolFilterDataFrameRecordCursorFactory
+    @Test // triggers DeferredSingleSymbolFilterPageFrameRecordCursorFactory
     public void testOrderByDescSelectByIndexedSymbolColumn() throws Exception {
         runQueries(
                 "CREATE TABLE trips(l long,s symbol index capacity 10, ts TIMESTAMP) timestamp(ts) partition by month;",
@@ -132,25 +131,6 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     @Test
     public void testOrderByDescWithCharFilter() throws Exception {
         testOrderByWithFilter("char", ORDER_DESC);
-    }
-
-    @Test
-    public void testOrderByDescWithDataFrameRecordCursorFactory() throws Exception {
-        runQueries(
-                "CREATE TABLE trips(l long,s symbol index capacity 5, ts TIMESTAMP) timestamp(ts) partition by month;",
-                "insert into trips " +
-                        "  select x, 'A' || ( x%3 )," +
-                        "  timestamp_sequence(to_timestamp('2022-01-03T00:00:00', 'yyyy-MM-ddTHH:mm:ss'), 100000000000) " +
-                        "  from long_sequence(10);"
-        );
-        //A0, A1, A2, A0, A1, A2, A0, A1, A2, A0
-        assertQuery("l\ts\tts\n" +
-                        "8\tA2\t2022-01-11T02:26:40.000000Z\n" +
-                        "5\tA2\t2022-01-07T15:06:40.000000Z\n" +
-                        "2\tA2\t2022-01-04T03:46:40.000000Z\n",
-                "select l, s, ts from trips where s = 'A2' and test_match() order by ts desc",
-                null, "ts###DESC", true, false
-        );
     }
 
     @Test
@@ -197,6 +177,28 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                         "2\tABC\t2022-01-04T03:46:40.000000Z\n" +
                         "1\tABC\t2022-01-03T00:00:00.000000Z\n",
                 "select l, s, ts from trips where s in (select 'DEF' union all select 'ABC' ) and length(s) = 3 order by ts desc",
+                null, "ts###DESC", true, false
+        );
+    }
+
+    @Test
+    public void testOrderByDescWithFilterOnSubQueryRecordCursorFactoryVarchar() throws Exception {
+        runQueries(
+                "CREATE TABLE trips(l long,s symbol index capacity 10, ts TIMESTAMP) timestamp(ts) partition by month;",
+                "insert into trips " +
+                        "  select x, case when x<=3 then 'ABC' when x>6 and x <= 9 then 'DEF' else 'GHI' end," +
+                        "  timestamp_sequence(to_timestamp('2022-01-03T00:00:00', 'yyyy-MM-ddTHH:mm:ss'), 100000000000) " +
+                        "  from long_sequence(10);"
+        );
+
+        assertQuery("l\ts\tts\n" +
+                        "9\tDEF\t2022-01-12T06:13:20.000000Z\n" +
+                        "8\tDEF\t2022-01-11T02:26:40.000000Z\n" +
+                        "7\tDEF\t2022-01-09T22:40:00.000000Z\n" +
+                        "3\tABC\t2022-01-05T07:33:20.000000Z\n" +
+                        "2\tABC\t2022-01-04T03:46:40.000000Z\n" +
+                        "1\tABC\t2022-01-03T00:00:00.000000Z\n",
+                "select l, s, ts from trips where s in (select 'DEF'::varchar union all select 'ABC'::varchar ) and length(s) = 3 order by ts desc",
                 null, "ts###DESC", true, false
         );
     }
@@ -257,6 +259,25 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testOrderByDescWithPageFrameRecordCursorFactory() throws Exception {
+        runQueries(
+                "CREATE TABLE trips(l long,s symbol index capacity 5, ts TIMESTAMP) timestamp(ts) partition by month;",
+                "insert into trips " +
+                        "  select x, 'A' || ( x%3 )," +
+                        "  timestamp_sequence(to_timestamp('2022-01-03T00:00:00', 'yyyy-MM-ddTHH:mm:ss'), 100000000000) " +
+                        "  from long_sequence(10);"
+        );
+        //A0, A1, A2, A0, A1, A2, A0, A1, A2, A0
+        assertQuery("l\ts\tts\n" +
+                        "8\tA2\t2022-01-11T02:26:40.000000Z\n" +
+                        "5\tA2\t2022-01-07T15:06:40.000000Z\n" +
+                        "2\tA2\t2022-01-04T03:46:40.000000Z\n",
+                "select l, s, ts from trips where s = 'A2' and test_match() order by ts desc",
+                null, "ts###DESC", true, false
+        );
+    }
+
+    @Test
     public void testOrderByDescWithShortFilter() throws Exception {
         testOrderByWithFilter("short", ORDER_DESC);
     }
@@ -279,14 +300,14 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     @Test
     public void testOrderByNonPrefixedColumnNotOnSelectList1() throws Exception {
         assertMemoryLeak(() -> {
-            compile("CREATE TABLE tab ( \n" +
+            execute("CREATE TABLE tab ( \n" +
                     "            ts TIMESTAMP,\n" +
                     "            address SYMBOL,\n" +
                     "            workspace SYMBOL,\n" +
                     "            method_id SYMBOL\n" +
                     "    ) timestamp(ts)");
 
-            compile("insert into tab " +
+            execute("insert into tab " +
                     "select dateadd('m', x::int, 0), " +
                     " 'A' || (10-x), " +
                     " case when x < 6 then 'a' else 'b' end, " +
@@ -298,7 +319,7 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                     "    where workspace = 'a' and method_id = 'd'\n" +
                     "    order by address";
 
-            assertPlan(query, "SelectedRecord\n" +
+            assertPlanNoLeakCheck(query, "SelectedRecord\n" +
                     "    Sort light\n" +
                     "      keys: [address]\n" +
                     "        VirtualRecord\n" +
@@ -306,7 +327,7 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                     "            SelectedRecord\n" +
                     "                Async JIT Filter workers: 1\n" +
                     "                  filter: (workspace='a' and method_id='d')\n" +
-                    "                    DataFrame\n" +
+                    "                    PageFrame\n" +
                     "                        Row forward scan\n" +
                     "                        Frame forward scan on: tab\n");
 
@@ -320,14 +341,14 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     @Test
     public void testOrderByNonPrefixedColumnNotOnSelectList2() throws Exception {
         assertMemoryLeak(() -> {
-            compile("CREATE TABLE tab (\n" +
+            execute("CREATE TABLE tab (\n" +
                     "            ts TIMESTAMP,\n" +
                     "            address SYMBOL,\n" +
                     "            workspace SYMBOL,\n" +
                     "            method_id SYMBOL\n" +
                     "    ) timestamp(ts)");
 
-            compile("insert into tab " +
+            execute("insert into tab " +
                     "select dateadd('m', x::int, 0), " +
                     " 'A' || x, " +
                     " case when x < 6 then 'a' else 'b' end, " +
@@ -339,14 +360,14 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                     "    where workspace = 'a' and method_id = 'd'\n" +
                     "    order by ts, month, method_id";
 
-            assertPlan(query, "SelectedRecord\n" +
+            assertPlanNoLeakCheck(query, "SelectedRecord\n" +
                     "    Sort light\n" +
                     "      keys: [ts, month, method_id]\n" +
                     "        VirtualRecord\n" +
                     "          functions: [timestamp_floor('minute',ts),concat([address,workspace]),ts,method_id]\n" +
                     "            Async JIT Filter workers: 1\n" +
                     "              filter: (workspace='a' and method_id='d')\n" +
-                    "                DataFrame\n" +
+                    "                PageFrame\n" +
                     "                    Row forward scan\n" +
                     "                    Frame forward scan on: tab\n");
 
@@ -360,14 +381,14 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     @Test//test with join
     public void testOrderByNonPrefixedColumnNotOnSelectList4() throws Exception {
         assertMemoryLeak(() -> {
-            compile("CREATE TABLE tab (\n" +
+            execute("CREATE TABLE tab (\n" +
                     "            ts TIMESTAMP,\n" +
                     "            address SYMBOL,\n" +
                     "            workspace SYMBOL,\n" +
                     "            method_id SYMBOL\n" +
                     "    ) timestamp(ts)");
 
-            compile("insert into tab " +
+            execute("insert into tab " +
                     "select dateadd('m', x::int, 1), " +
                     " 'A' || x, " +
                     " case when x < 6 then 'a' else 'b' end, " +
@@ -380,7 +401,7 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                     "    where t1.workspace = 'a' and t1.method_id = 'd'\n" +
                     "    order by t2.ts desc";
 
-            assertPlan(query, "SelectedRecord\n" +
+            assertPlanNoLeakCheck(query, "SelectedRecord\n" +
                     "    Sort\n" +
                     "      keys: [ts desc]\n" +
                     "        VirtualRecord\n" +
@@ -390,13 +411,13 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                     "                  condition: t2.method_id=t1.method_id and t2.workspace=t1.workspace\n" +
                     "                    Async JIT Filter workers: 1\n" +
                     "                      filter: (workspace='a' and method_id='d')\n" +
-                    "                        DataFrame\n" +
+                    "                        PageFrame\n" +
                     "                            Row forward scan\n" +
                     "                            Frame forward scan on: tab\n" +
                     "                    Hash\n" +
                     "                        Async JIT Filter workers: 1\n" +
                     "                          filter: (method_id='d' and workspace='a')\n" +
-                    "                            DataFrame\n" +
+                    "                            PageFrame\n" +
                     "                                Row forward scan\n" +
                     "                                Frame forward scan on: tab\n");
 
@@ -422,14 +443,14 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     @Test
     public void testOrderByPrefixedColumnNotOnSelectList1() throws Exception {
         assertMemoryLeak(() -> {
-            compile("CREATE TABLE trips (\n" +
+            execute("CREATE TABLE trips (\n" +
                     "  vendor_id SYMBOL,\n" +
                     "  pickup_datetime TIMESTAMP,\n" +
                     "  tax DOUBLE,\n" +
                     "  mta_tax DOUBLE\n" +
                     ") timestamp (pickup_datetime) PARTITION BY MONTH;");
 
-            compile("insert into trips " +
+            execute("insert into trips " +
                     "select 'A' || x, dateadd('s', x::int, '2019-06-30T00:00:00.000000Z'), x::timestamp, x, x%2 from long_sequence(10)");
 
             String query = "select a.vendor_id from " +
@@ -438,13 +459,13 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                     "and vendor_id in ('A1', 'A2') " +
                     "order by a.mta_tax;";
 
-            assertPlan(query, "SelectedRecord\n" +
+            assertPlanNoLeakCheck(query, "SelectedRecord\n" +
                     "    Sort light\n" +
                     "      keys: [mta_tax]\n" +
                     "        SelectedRecord\n" +
-                    "            Async Filter workers: 1\n" +
+                    "            Async JIT Filter workers: 1\n" +
                     "              filter: vendor_id in [A1,A2]\n" +
-                    "                DataFrame\n" +
+                    "                PageFrame\n" +
                     "                    Row forward scan\n" +
                     "                    Interval forward scan on: trips\n" +
                     "                      intervals: [(\"2019-06-30T00:00:00.000000Z\",\"MAX\")]\n");
@@ -458,21 +479,21 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     @Test
     public void testOrderByPrefixedColumnNotOnSelectList2() throws Exception {
         assertMemoryLeak(() -> {
-            compile("CREATE TABLE t1 (\n" +
+            execute("CREATE TABLE t1 (\n" +
                     "  vendor_id SYMBOL,\n" +
                     "  pickup_datetime TIMESTAMP,\n" +
                     "  tax DOUBLE,\n" +
                     "  mta_tax DOUBLE\n" +
                     ") timestamp (pickup_datetime) PARTITION BY MONTH");
-            compile("CREATE TABLE t2 (\n" +
+            execute("CREATE TABLE t2 (\n" +
                     "  vendor_id SYMBOL,\n" +
                     "  mta_tax DOUBLE\n" +
                     ")");
 
-            compile("insert into t1 " +
+            execute("insert into t1 " +
                     "select 'A' || x, dateadd('s', x::int, '2019-06-30T00:00:00.000000Z'), x::timestamp, x, 0 from long_sequence(10)");
 
-            compile("insert into t2 " +
+            execute("insert into t2 " +
                     "select 'A' || x, -x from long_sequence(10)");
 
             String query = "select a.vendor_id " +
@@ -482,20 +503,20 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                     "and b.vendor_id in ('A1', 'A2') " +
                     "order by b.mta_tax;";
 
-            assertPlan(query, "SelectedRecord\n" +
+            assertPlanNoLeakCheck(query, "SelectedRecord\n" +
                     "    Sort\n" +
                     "      keys: [mta_tax]\n" +
                     "        SelectedRecord\n" +
                     "            Hash Join Light\n" +
                     "              condition: b.vendor_id=a.vendor_id\n" +
-                    "                DataFrame\n" +
+                    "                PageFrame\n" +
                     "                    Row forward scan\n" +
                     "                    Interval forward scan on: t1\n" +
                     "                      intervals: [(\"2019-06-30T00:00:00.000000Z\",\"MAX\")]\n" +
                     "                Hash\n" +
-                    "                    Async Filter workers: 1\n" +
+                    "                    Async JIT Filter workers: 1\n" +
                     "                      filter: vendor_id in [A1,A2]\n" +
-                    "                        DataFrame\n" +
+                    "                        PageFrame\n" +
                     "                            Row forward scan\n" +
                     "                            Frame forward scan on: t2\n");
 
@@ -514,14 +535,14 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     @Test
     public void testOrderByTimestampAndOtherField() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("CREATE TABLE tab (" +
+            execute("CREATE TABLE tab (" +
                     "  ts TIMESTAMP," +
                     "  key STRING," +
                     "  value int " +
                     ") timestamp (ts) PARTITION BY DAY");
-            insert("insert into tab values (0, 'c', 1), (0, 'b', 2), (0, 'a', 3), (1, 'd', 4), (2, 'e', 5)");
+            execute("insert into tab values (0, 'c', 1), (0, 'b', 2), (0, 'a', 3), (1, 'd', 4), (2, 'e', 5)");
 
-            assertPlan("SELECT key " +
+            assertPlanNoLeakCheck("SELECT key " +
                             "FROM tab " +
                             "WHERE key IS NOT NULL " +
                             "ORDER BY ts, key " +
@@ -531,7 +552,7 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                             "      keys: [ts, key]\n" +
                             "        Async JIT Filter workers: 1\n" +
                             "          filter: key is not null\n" +
-                            "            DataFrame\n" +
+                            "            PageFrame\n" +
                             "                Row forward scan\n" +
                             "                Frame forward scan on: tab\n");
         });
@@ -607,7 +628,7 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                         "10\t2022-01-03T13:00:00.000000Z\t100\t1000\n" +
                         "9\t2022-01-03T10:13:20.000000Z\t90\t900\n" +
                         "8\t2022-01-03T07:26:40.000000Z\t80\t800\n" +
-                        "10\t2022-01-02T01:00:00.000000Z\tNaN\t\n",
+                        "10\t2022-01-02T01:00:00.000000Z\tnull\t\n",
                 "select l as l, ts, col1, col2 from trips where l > 7 order by ts desc limit 4",
                 null, "ts###DESC", true, false
         );
@@ -616,14 +637,14 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                         "1010\t2022-01-03T13:00:00.000000Z\t100\t1000\n" +
                         "1009\t2022-01-03T10:13:20.000000Z\t90\t900\n" +
                         "1008\t2022-01-03T07:26:40.000000Z\t80\t800\n" +
-                        "1010\t2022-01-02T01:00:00.000000Z\tNaN\t\n",
+                        "1010\t2022-01-02T01:00:00.000000Z\tnull\t\n",
                 "select l + 1000 as l, ts, col1, col2 from trips where l > 7 order by ts desc limit 4",
                 null, "ts###DESC", true, false
         );
 
         assertQuery("l\tts\tcol1\tcol2\n" +
-                        "9\t2022-01-01T22:13:20.000000Z\tNaN\t\n" +
-                        "10\t2022-01-02T01:00:00.000000Z\tNaN\t\n" +
+                        "9\t2022-01-01T22:13:20.000000Z\tnull\t\n" +
+                        "10\t2022-01-02T01:00:00.000000Z\tnull\t\n" +
                         "9\t2022-01-03T10:13:20.000000Z\t90\t900\n" +
                         "10\t2022-01-03T13:00:00.000000Z\t100\t1000\n",
                 "select l, ts, col1, col2 from trips where l > 8 order by ts",
@@ -632,10 +653,10 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
 
         assertQuery("l\tts\tcol1\tcol2\n" +
                         "4\t2022-01-02T20:20:00.000000Z\t40\t400\n" +
-                        "10\t2022-01-02T01:00:00.000000Z\tNaN\t\n" +
-                        "9\t2022-01-01T22:13:20.000000Z\tNaN\t\n" +
-                        "8\t2022-01-01T19:26:40.000000Z\tNaN\t\n" +
-                        "7\t2022-01-01T16:40:00.000000Z\tNaN\t\n",
+                        "10\t2022-01-02T01:00:00.000000Z\tnull\t\n" +
+                        "9\t2022-01-01T22:13:20.000000Z\tnull\t\n" +
+                        "8\t2022-01-01T19:26:40.000000Z\tnull\t\n" +
+                        "7\t2022-01-01T16:40:00.000000Z\tnull\t\n",
                 "select l, ts, col1, col2 from trips where ts between '2022-01-01T14' and '2022-01-02T23' and l > 3 order by ts desc limit 5",
                 null, "ts###DESC", true, false
         );
@@ -789,7 +810,56 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
         }
     }
 
-    private void assertLimitQueries(String result, String query, String expectedTimestamp) throws SqlException {
+    @Test
+    public void testOrderByWithFilterAndIPv4ConversionToLong() throws Exception {
+        assertMemoryLeak(() -> {
+            execute("CREATE TABLE 'network_nodes_test' ( \n" +
+                    "\ttimestamp TIMESTAMP,\n" +
+                    "\tnode_name SYMBOL CAPACITY 65536 CACHE INDEX CAPACITY 65536,\n" +
+                    "\thost_ip IPv4,\n" +
+                    "\tstatus SYMBOL CAPACITY 8 CACHE\n" +
+                    ") timestamp(timestamp) PARTITION by DAY BYPASS WAL\n" +
+                    "WITH maxUncommittedRows=500000, o3MaxLag=600000000us;");
+
+            execute("insert into network_nodes_test\n" +
+                    "  select\n" +
+                    "    rnd_timestamp(to_timestamp('20241231', 'yyyyMMdd'),to_timestamp('20250101', 'yyyyMMdd'),0),\n" +
+                    "    rnd_symbol('node01','node02','node03'),\n" +
+                    "    rnd_ipv4('10.13.0.0/16',0),\n" +
+                    "    rnd_symbol('active','removed')\n" +
+                    "  from long_sequence(30);\n");
+
+            // this would fail with an UnsupportedOperationException due to getLongIPv4 not being implemented
+            // for SelectedRecord
+            assertSql("timestamp\tnode_name\thost_ip\tstatus\n" +
+                            "2024-12-31T19:10:58.038243Z\tnode01\t10.13.2.123\tactive\n" +
+                            "2024-12-31T13:35:33.630915Z\tnode03\t10.13.31.14\tactive\n" +
+                            "2024-12-31T12:09:29.743508Z\tnode03\t10.13.31.173\tactive\n" +
+                            "2024-12-31T05:28:56.199865Z\tnode03\t10.13.35.79\tactive\n" +
+                            "2024-12-31T14:04:07.197985Z\tnode03\t10.13.37.167\tactive\n" +
+                            "2024-12-31T08:12:46.122052Z\tnode01\t10.13.57.52\tactive\n" +
+                            "2024-12-31T22:29:40.370707Z\tnode02\t10.13.72.212\tactive\n" +
+                            "2024-12-31T19:23:32.364885Z\tnode02\t10.13.112.55\tactive\n" +
+                            "2024-12-31T02:22:01.436568Z\tnode02\t10.13.128.249\tactive\n" +
+                            "2024-12-31T04:42:29.244760Z\tnode02\t10.13.136.54\tactive\n" +
+                            "2024-12-31T23:26:59.485737Z\tnode01\t10.13.144.59\tactive\n" +
+                            "2024-12-31T07:23:12.483203Z\tnode03\t10.13.151.135\tactive\n" +
+                            "2024-12-31T10:17:14.723035Z\tnode01\t10.13.157.242\tactive\n" +
+                            "2024-12-31T21:31:53.805150Z\tnode01\t10.13.166.106\tactive\n" +
+                            "2024-12-31T09:30:33.694129Z\tnode02\t10.13.168.230\tactive\n" +
+                            "2024-12-31T22:56:53.598432Z\tnode03\t10.13.213.95\tactive\n" +
+                            "2024-12-31T07:27:38.262625Z\tnode02\t10.13.217.59\tactive\n" +
+                            "2024-12-31T04:22:52.424548Z\tnode02\t10.13.237.229\tactive\n" +
+                            "2024-12-31T06:40:02.794603Z\tnode02\t10.13.249.36\tactive\n" +
+                            "2024-12-31T14:59:11.599601Z\tnode01\t10.13.249.187\tactive\n" +
+                            "2024-12-31T18:42:59.090116Z\tnode03\t10.13.253.254\tactive\n",
+                    "select * from (network_nodes_test LATEST on timestamp PARTITION by host_ip)\n" +
+                            "where status = 'active'\n" +
+                            "order by host_ip;");
+        });
+    }
+
+    private void assertLimitQueries(String result, String query, String expectedTimestamp) throws Exception {
         int firstLineStart = result.indexOf('\n') + 1;
         String header = result.substring(0, firstLineStart);
 
@@ -811,9 +881,13 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
 
                 String expected = header + result.substring(loIdx, hiIdx);
 
-                assertQuery(expected,
+                assertQuery(
+                        expected,
                         query + " " + lo + ", " + hi,
-                        expectedTimestamp, true, true);
+                        expectedTimestamp,
+                        true,
+                        true
+                );
             }
         }
     }
@@ -837,7 +911,7 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
     private void runQueries(String... queries) throws Exception {
         assertMemoryLeak(() -> {
             for (String query : queries) {
-                compile(query);
+                execute(query);
             }
         });
     }
@@ -896,7 +970,7 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
                         .replace("#TYPE#", type)
         );
         //add new column and create more partitions to trigger jit col tops case
-        assertMemoryLeak(() -> compile("alter table test add column y double;"));
+        assertMemoryLeak(() -> execute("alter table test add column y double;"));
         runQueries(("insert into test select #FUNC#, timestamp_sequence('2022-01-01'::timestamp + 100*100000000000, 100000000000), rnd_double() " +
                 "from long_sequence(100) ")
                 .replace("#FUNC#", function)
@@ -924,17 +998,17 @@ public class OrderByWithFilterTest extends AbstractCairoTest {
 
         if ("string".equals(type) || "symbol".equals(type)) {
             assertQuery(expectedResult,
-                    ("select x from test where x in ('1', '2', '3') and y = NaN order by ts " + (order == ORDER_ASC ? "asc" : "desc")).replace("#TYPE#", type),
+                    ("select x from test where x in ('1', '2', '3') and y = null order by ts " + (order == ORDER_ASC ? "asc" : "desc")).replace("#TYPE#", type),
                     null, null, true, false
             );
         } else if ("char".equals(type)) {
             assertQuery(expectedResult,
-                    ("select x from test where x in (cast(1 as char), cast(2 as char), cast(3 as char)) and y = NaN order by ts " + (order == ORDER_ASC ? "asc" : "desc")).replace("#TYPE#", type),
+                    ("select x from test where x in (cast(1 as char), cast(2 as char), cast(3 as char)) and y = null order by ts " + (order == ORDER_ASC ? "asc" : "desc")).replace("#TYPE#", type),
                     null, null, true, false
             );
         } else {
             assertQuery(expectedResult,
-                    ("select x from test where x <= 3 and y = NaN order by ts " + (order == ORDER_ASC ? "asc" : "desc")).replace("#TYPE#", type),
+                    ("select x from test where x <= 3 and y = null order by ts " + (order == ORDER_ASC ? "asc" : "desc")).replace("#TYPE#", type),
                     null, null, true, false
             );
         }

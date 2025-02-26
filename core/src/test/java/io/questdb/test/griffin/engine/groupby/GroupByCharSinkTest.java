@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 
 package io.questdb.test.griffin.engine.groupby;
 
+import io.questdb.griffin.engine.groupby.FastGroupByAllocator;
 import io.questdb.griffin.engine.groupby.GroupByAllocator;
-import io.questdb.griffin.engine.groupby.GroupByAllocatorArena;
 import io.questdb.griffin.engine.groupby.GroupByCharSink;
 import io.questdb.std.Chars;
 import io.questdb.std.Numbers;
@@ -39,7 +39,7 @@ public class GroupByCharSinkTest extends AbstractCairoTest {
     @Test
     public void testClear() throws Exception {
         assertMemoryLeak(() -> {
-            try (GroupByAllocator allocator = new GroupByAllocatorArena(64, Numbers.SIZE_1GB)) {
+            try (GroupByAllocator allocator = new FastGroupByAllocator(64, Numbers.SIZE_1GB)) {
                 GroupByCharSink sink = new GroupByCharSink();
                 sink.setAllocator(allocator);
                 sink.put("foobar");
@@ -58,7 +58,7 @@ public class GroupByCharSinkTest extends AbstractCairoTest {
     public void testPutChar() throws Exception {
         final int N = 1000;
         assertMemoryLeak(() -> {
-            try (GroupByAllocator allocator = new GroupByAllocatorArena(64, Numbers.SIZE_1GB)) {
+            try (GroupByAllocator allocator = new FastGroupByAllocator(64, Numbers.SIZE_1GB)) {
                 GroupByCharSink sink = new GroupByCharSink();
                 sink.setAllocator(allocator);
                 for (int i = 0; i < N; i++) {
@@ -76,7 +76,7 @@ public class GroupByCharSinkTest extends AbstractCairoTest {
     public void testPutCharSequence() throws Exception {
         final int N = 1000;
         assertMemoryLeak(() -> {
-            try (GroupByAllocator allocator = new GroupByAllocatorArena(64, Numbers.SIZE_1GB)) {
+            try (GroupByAllocator allocator = new FastGroupByAllocator(64, Numbers.SIZE_1GB)) {
                 GroupByCharSink sink = new GroupByCharSink();
                 sink.setAllocator(allocator);
                 Assert.assertEquals(0, sink.length());

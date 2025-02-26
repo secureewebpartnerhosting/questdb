@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,10 +39,6 @@ public class ReadOnlySecurityContext implements SecurityContext {
     }
 
     @Override
-    public void authorizeAdminAction() {
-    }
-
-    @Override
     public void authorizeAlterTableAddColumn(TableToken tableToken) {
         throw CairoException.authorization().put("Write permission denied").setCacheable(true);
     }
@@ -54,6 +50,11 @@ public class ReadOnlySecurityContext implements SecurityContext {
 
     @Override
     public void authorizeAlterTableAlterColumnCache(TableToken tableToken, @NotNull ObjList<CharSequence> columnNames) {
+        throw CairoException.authorization().put("Write permission denied").setCacheable(true);
+    }
+
+    @Override
+    public void authorizeAlterTableAlterColumnType(TableToken tableToken, @NotNull ObjList<CharSequence> columnNames) {
         throw CairoException.authorization().put("Write permission denied").setCacheable(true);
     }
 
@@ -103,11 +104,6 @@ public class ReadOnlySecurityContext implements SecurityContext {
     }
 
     @Override
-    public void authorizeCancelQuery() {
-        throw CairoException.authorization().put("Write permission denied").setCacheable(true);
-    }
-
-    @Override
     public void authorizeCopyCancel(SecurityContext cancellingSecurityContext) {
         throw CairoException.authorization().put("Write permission denied").setCacheable(true);
     }
@@ -131,6 +127,21 @@ public class ReadOnlySecurityContext implements SecurityContext {
     }
 
     @Override
+    public void authorizeMatViewCreate() {
+        throw CairoException.authorization().put("Write permission denied").setCacheable(true);
+    }
+
+    @Override
+    public void authorizeMatViewDrop(TableToken tableToken) {
+        throw CairoException.authorization().put("Write permission denied").setCacheable(true);
+    }
+
+    @Override
+    public void authorizeMatViewRefresh(TableToken tableToken) {
+        throw CairoException.authorization().put("Write permission denied").setCacheable(true);
+    }
+
+    @Override
     public void authorizePGWire() {
     }
 
@@ -145,6 +156,14 @@ public class ReadOnlySecurityContext implements SecurityContext {
 
     @Override
     public void authorizeSelectOnAnyColumn(TableToken tableToken) {
+    }
+
+    @Override
+    public void authorizeSqlEngineAdmin() {
+    }
+
+    @Override
+    public void authorizeSystemAdmin() {
     }
 
     @Override
@@ -194,5 +213,15 @@ public class ReadOnlySecurityContext implements SecurityContext {
     @Override
     public CharSequence getPrincipal() {
         return Constants.USER_NAME;
+    }
+
+    @Override
+    public boolean isQueryCancellationAllowed() {
+        return false;
+    }
+
+    @Override
+    public boolean isSystemAdmin() {
+        return true;
     }
 }

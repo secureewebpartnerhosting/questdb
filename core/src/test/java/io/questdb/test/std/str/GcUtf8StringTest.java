@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -120,7 +120,7 @@ public class GcUtf8StringTest {
 
         final String src2 = "hello";
         final GcUtf8String s3 = new GcUtf8String(src2);
-        Assert.assertNotEquals(s3, src2);
+        Assert.assertNotEquals(src2, s3);
 
         // Test Utf8String vs Utf8String equality
         final GcUtf8String s4 = new GcUtf8String(src2);

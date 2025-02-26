@@ -1,16 +1,42 @@
-/*
- * Written by Gil Tene of Azul Systems, and released to the public domain,
- * as explained at http://creativecommons.org/publicdomain/zero/1.0/
+/*******************************************************************************
+ *     ___                  _   ____  ____
+ *    / _ \ _   _  ___  ___| |_|  _ \| __ )
+ *   | | | | | | |/ _ \/ __| __| | | |  _ \
+ *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
+ *    \__\_\\__,_|\___||___/\__|____/|____/
  *
- * @author Gil Tene
- */
+ *  Copyright (c) 2014-2019 Appsicle
+ *  Copyright (c) 2019-2024 QuestDB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+
+// Written by Gil Tene of Azul Systems, and released to the public domain,
+// as explained at http://creativecommons.org/publicdomain/zero/1.0/
+//
+// @author Gil Tene
 
 package io.questdb.std.histogram.org.HdrHistogram;
 
 import io.questdb.cairo.CairoException;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.PrintStream;
+import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
@@ -638,7 +664,7 @@ public abstract class AbstractHistogram extends AbstractHistogramBase implements
             totalValue += medianEquivalentValue(iterationValue.getValueIteratedTo())
                     * (double) iterationValue.getCountAtValueIteratedTo();
         }
-        return (totalValue * 1.0) / getTotalCount();
+        return (totalValue) / getTotalCount();
     }
 
     /**
@@ -2413,7 +2439,7 @@ public abstract class AbstractHistogram extends AbstractHistogramBase implements
  */
 
 abstract class AbstractHistogramBase extends EncodableHistogram {
-    static AtomicLong constructionIdentityCount = new AtomicLong(0);
+    static final AtomicLong constructionIdentityCount = new AtomicLong(0);
     volatile boolean autoResize = false;
     int bucketCount;
     int countsArrayLength;

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,10 +24,9 @@
 
 package io.questdb.std;
 
-import io.questdb.cairo.BinarySearch;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.CharSink;
 import io.questdb.std.str.Sinkable;
+import io.questdb.std.str.Utf16Sink;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 
@@ -126,12 +125,18 @@ public class LongList implements Mutable, LongVec, Sinkable {
         data[index] = element;
     }
 
+    public void addAll(LongList that) {
+        int p = pos;
+        int s = that.size();
+        setPos(p + s);
+        System.arraycopy(that.data, 0, this.data, p, s);
+    }
+
     public void arrayCopy(int srcPos, int dstPos, int length) {
         System.arraycopy(data, srcPos, data, dstPos, length);
     }
 
     public int binarySearch(long value, int scanDir) {
-
         // this is the same algorithm as implemented in C (util.h)
         // template<class T, class V>
         // inline int64_t binary_search(T *data, V value, int64_t low, int64_t high, int32_t scan_dir)
@@ -149,12 +154,12 @@ public class LongList implements Mutable, LongVec, Sinkable {
                 high = mid - 1;
             } else {
                 // In case of multiple equal values, find the first
-                return scanDir == BinarySearch.SCAN_UP ?
+                return scanDir == Vect.BIN_SEARCH_SCAN_UP ?
                         scrollUp(mid, midVal) :
                         scrollDown(mid, high, midVal);
             }
         }
-        return scanDir == BinarySearch.SCAN_UP ?
+        return scanDir == Vect.BIN_SEARCH_SCAN_UP ?
                 scanUp(value, low, high + 1) :
                 scanDown(value, low, high + 1);
     }
@@ -190,22 +195,18 @@ public class LongList implements Mutable, LongVec, Sinkable {
                 high = mid - 1;
             } else {
                 // In case of multiple equal values, find the first
-                return scanDir == BinarySearch.SCAN_UP ?
+                return scanDir == Vect.BIN_SEARCH_SCAN_UP ?
                         scrollUpBlock(shl, mid, midVal) :
                         scrollDownBlock(shl, mid, high, midVal);
             }
         }
-        return scanDir == BinarySearch.SCAN_UP ?
+        return scanDir == Vect.BIN_SEARCH_SCAN_UP ?
                 scanUpBlock(shl, value, low, high + 1) :
                 scanDownBlock(shl, value, low, high + 1);
     }
 
     public int capacity() {
         return data.length;
-    }
-
-    public void clear() {
-        pos = 0;
     }
 
     public void checkCapacity(int capacity) {
@@ -220,6 +221,10 @@ public class LongList implements Mutable, LongVec, Sinkable {
             System.arraycopy(data, 0, buf, 0, l);
             this.data = buf;
         }
+    }
+
+    public void clear() {
+        pos = 0;
     }
 
     /**

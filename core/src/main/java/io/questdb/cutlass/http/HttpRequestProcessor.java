@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,13 +24,19 @@
 
 package io.questdb.cutlass.http;
 
+import io.questdb.Metrics;
 import io.questdb.cairo.SecurityContext;
+import io.questdb.metrics.AtomicLongGauge;
 import io.questdb.network.PeerDisconnectedException;
 import io.questdb.network.PeerIsSlowToReadException;
 import io.questdb.network.QueryPausedException;
 import io.questdb.network.ServerDisconnectException;
 
 public interface HttpRequestProcessor {
+    default AtomicLongGauge connectionCountGauge(Metrics metrics) {
+        return metrics.jsonQueryMetrics().connectionCountGauge();
+    }
+
     // after this callback is invoked the server will disconnect the client
     // if processor desires to write a goodbye letter to the client
     // it must also send TCP FIN by invoking socket.shutdownWrite()
@@ -40,8 +46,16 @@ public interface HttpRequestProcessor {
     ) throws PeerDisconnectedException, PeerIsSlowToReadException, ServerDisconnectException {
     }
 
+    default int getConnectionLimit(HttpContextConfiguration configuration) {
+        return configuration.getJsonQueryConnectionLimit();
+    }
+
     default byte getRequiredAuthType() {
         return SecurityContext.AUTH_TYPE_CREDENTIALS;
+    }
+
+    default boolean isErrorProcessor() {
+        return false;
     }
 
     default void onConnectionClosed(HttpConnectionContext context) {
@@ -77,9 +91,5 @@ public interface HttpRequestProcessor {
     default void resumeSend(
             HttpConnectionContext context
     ) throws PeerDisconnectedException, PeerIsSlowToReadException, ServerDisconnectException, QueryPausedException {
-    }
-
-    default boolean isErrorProcessor() {
-        return false;
     }
 }

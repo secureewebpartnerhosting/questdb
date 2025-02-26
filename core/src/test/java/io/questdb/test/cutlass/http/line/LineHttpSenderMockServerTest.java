@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,13 +25,17 @@
 package io.questdb.test.cutlass.http.line;
 
 import io.questdb.BuildInformationHolder;
-import io.questdb.Metrics;
 import io.questdb.client.Sender;
-import io.questdb.cutlass.http.*;
+import io.questdb.cutlass.http.DefaultHttpServerConfiguration;
+import io.questdb.cutlass.http.HttpConstants;
+import io.questdb.cutlass.http.HttpRequestProcessor;
+import io.questdb.cutlass.http.HttpRequestProcessorFactory;
+import io.questdb.cutlass.http.HttpServer;
 import io.questdb.cutlass.http.client.HttpClientException;
 import io.questdb.cutlass.line.LineSenderException;
 import io.questdb.mp.WorkerPool;
 import io.questdb.network.PlainSocketFactory;
+import io.questdb.std.ObjList;
 import io.questdb.std.Os;
 import io.questdb.test.AbstractTest;
 import io.questdb.test.cutlass.http.HttpServerConfigurationBuilder;
@@ -51,7 +55,6 @@ public class LineHttpSenderMockServerTest extends AbstractTest {
     public static final Function<Integer, Sender.LineSenderBuilder> DEFAULT_FACTORY = port -> Sender.builder(Sender.Transport.HTTP).address("localhost:" + port);
 
     private static final CharSequence QUESTDB_VERSION = new BuildInformationHolder().getSwVersion();
-    private static final Metrics metrics = Metrics.enabled();
 
     @Test
     public void testAutoFlushInterval() throws Exception {
@@ -160,6 +163,56 @@ public class LineHttpSenderMockServerTest extends AbstractTest {
                         .atNow();
             }
         }, port -> Sender.builder("http::addr=localhost:" + port + ";auto_flush=off;"));
+    }
+
+    @Test
+    public void testDisableIntervalBasedAutoFlush() throws Exception {
+        MockHttpProcessor mockHttpProcessor = new MockHttpProcessor()
+                .replyWithStatus(204);
+        testWithMock(mockHttpProcessor, sender -> {
+                    for (int i = 0; i < 200; i++) {
+                        sender.table("test")
+                                .symbol("sym", "bol")
+                                .doubleColumn("x", 1.0)
+                                .atNow();
+                        Os.sleep(10);
+                    }
+                },
+                port -> Sender.builder("http::addr=localhost:" + port + ";auto_flush_interval=off;"));
+    }
+
+    @Test
+    public void testDisableIntervalBasedAutoFlush_rowBasedFlushesStillWorks() throws Exception {
+        int rows = 10;
+        MockHttpProcessor mockHttpProcessor = new MockHttpProcessor();
+        for (int i = 0; i < rows; i++) {
+            mockHttpProcessor.withExpectedContent("test,sym=bol x=1.0\n").replyWithStatus(204);
+        }
+
+        testWithMock(mockHttpProcessor, sender -> {
+                    for (int i = 0; i < 10; i++) {
+                        sender.table("test")
+                                .symbol("sym", "bol")
+                                .doubleColumn("x", 1.0)
+                                .atNow();
+                    }
+                },
+                port -> Sender.builder("http::addr=localhost:" + port + ";auto_flush_interval=off;auto_flush_rows=1;"));
+    }
+
+    @Test
+    public void testDisableRowBasedAutoFlush() throws Exception {
+        MockHttpProcessor mockHttpProcessor = new MockHttpProcessor()
+                .replyWithStatus(204);
+        testWithMock(mockHttpProcessor, sender -> {
+                    for (int i = 0; i < 80000; i++) {
+                        sender.table("test")
+                                .symbol("sym", "bol")
+                                .doubleColumn("x", 1.0)
+                                .atNow();
+                    }
+                },
+                port -> Sender.builder("http::addr=localhost:" + port + ";auto_flush_rows=off;auto_flush_interval=100000;"));
     }
 
     @Test
@@ -473,11 +526,11 @@ public class LineHttpSenderMockServerTest extends AbstractTest {
             final DefaultHttpServerConfiguration httpConfiguration = createHttpServerConfiguration();
 
             try (WorkerPool workerPool = new TestWorkerPool(1);
-                 HttpServer httpServer = new HttpServer(httpConfiguration, metrics, workerPool, PlainSocketFactory.INSTANCE)) {
+                 HttpServer httpServer = new HttpServer(httpConfiguration, workerPool, PlainSocketFactory.INSTANCE)) {
                 httpServer.bind(new HttpRequestProcessorFactory() {
                     @Override
-                    public String getUrl() {
-                        return "/write";
+                    public ObjList<String> getUrls() {
+                        return new ObjList<>("/write");
                     }
 
                     @Override
@@ -487,7 +540,7 @@ public class LineHttpSenderMockServerTest extends AbstractTest {
                 });
                 workerPool.start(LOG);
                 try {
-                    int port = httpConfiguration.getDispatcherConfiguration().getBindPort();
+                    int port = httpConfiguration.getBindPort();
                     try (Sender sender = senderBuilderFactory.apply(port).build()) {
                         senderConsumer.accept(sender);
                         if (verifyBeforeClose) {

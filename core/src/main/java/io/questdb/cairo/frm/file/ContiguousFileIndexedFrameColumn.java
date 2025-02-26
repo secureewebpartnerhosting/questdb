@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ public class ContiguousFileIndexedFrameColumn extends ContiguousFileFixFrameColu
     @Override
     public void append(long appendOffsetRowCount, FrameColumn sourceColumn, long sourceLo, long sourceHi, int commitMode) {
         super.append(appendOffsetRowCount, sourceColumn, sourceLo, sourceHi, commitMode);
-        int fd = super.getPrimaryFd();
+        long fd = super.getPrimaryFd();
         int shl = ColumnType.pow2SizeOf(getColumnType());
 
         final long size = sourceHi - sourceLo;

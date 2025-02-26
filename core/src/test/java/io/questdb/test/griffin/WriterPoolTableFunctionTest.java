@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -148,10 +148,10 @@ public class WriterPoolTableFunctionTest extends AbstractCairoTest {
     @Test
     public void testWriterList() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table a(u int)");
-            ddl("create table b(u int)");
-            ddl("create table c(u int)");
-            ddl("create table d(u int)");
+            execute("create table a as (select 1 as u)");
+            execute("create table b as (select 1 as u)");
+            execute("create table c as (select 1 as u)");
+            execute("create table d as (select 1 as u)");
 
             assertSql(
                     "table_name\townership_reason\n" +

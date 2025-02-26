@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,16 +24,119 @@
 
 package io.questdb.test.std;
 
-import io.questdb.cairo.BinarySearch;
 import io.questdb.std.IntList;
 import io.questdb.std.LongList;
 import io.questdb.std.LongSort;
 import io.questdb.std.Rnd;
+import io.questdb.std.Vect;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class LongListTest {
+
+    @Test
+    public void testAddAll_CapacityExpansion() {
+        LongList dst = new LongList(2);
+        dst.add(1L);
+        dst.add(2L);
+
+        // Add 3 more elements through addAll, forcing capacity expansion
+        LongList src = new LongList();
+        src.add(3L);
+        src.add(4L);
+        src.add(5L);
+
+        dst.addAll(src);
+
+        Assert.assertEquals(5, dst.size());
+        Assert.assertEquals(1L, dst.getQuick(0));
+        Assert.assertEquals(2L, dst.getQuick(1));
+        Assert.assertEquals(3L, dst.getQuick(2));
+        Assert.assertEquals(4L, dst.getQuick(3));
+        Assert.assertEquals(5L, dst.getQuick(4));
+    }
+
+    @Test
+    public void testAddAll_EmptyToEmpty() {
+        LongList dst = new LongList();
+        LongList src = new LongList();
+        dst.addAll(src);
+
+        Assert.assertEquals(0, dst.size());
+    }
+
+    @Test
+    public void testAddAll_EmptyToNonEmpty() {
+        LongList dst = new LongList();
+        dst.add(1L);
+        dst.add(2L);
+
+        LongList src = new LongList();
+        dst.addAll(src);
+
+        Assert.assertEquals(2, dst.size());
+        Assert.assertEquals(1L, dst.getQuick(0));
+        Assert.assertEquals(2L, dst.getQuick(1));
+    }
+
+    @Test
+    public void testAddAll_NonEmptyToEmpty() {
+        LongList dst = new LongList();
+        LongList src = new LongList();
+        src.add(1L);
+        src.add(2L);
+        src.add(3L);
+
+        dst.addAll(src);
+
+        Assert.assertEquals(3, dst.size());
+        Assert.assertEquals(1L, dst.getQuick(0));
+        Assert.assertEquals(2L, dst.getQuick(1));
+        Assert.assertEquals(3L, dst.getQuick(2));
+    }
+
+    @Test
+    public void testAddAll_NonEmptyToNonEmpty() {
+        LongList dst = new LongList();
+        dst.add(1L);
+        dst.add(2L);
+
+        LongList src = new LongList();
+        src.add(3L);
+        src.add(4L);
+
+        dst.addAll(src);
+
+        Assert.assertEquals(4, dst.size());
+        Assert.assertEquals(1L, dst.getQuick(0));
+        Assert.assertEquals(2L, dst.getQuick(1));
+        Assert.assertEquals(3L, dst.getQuick(2));
+        Assert.assertEquals(4L, dst.getQuick(3));
+    }
+
+    @Test
+    public void testAddAll_PreservesSourceList() {
+        LongList dst = new LongList();
+        LongList src = new LongList();
+        src.add(1L);
+        src.add(2L);
+
+        dst.addAll(src);
+        src.add(3L); // Modify source after addAll
+
+        // Verify destination list wasn't affected by source modification
+        Assert.assertEquals(2, dst.size());
+        Assert.assertEquals(1L, dst.getQuick(0));
+        Assert.assertEquals(2L, dst.getQuick(1));
+
+        // Verify source list is intact
+        Assert.assertEquals(3, src.size());
+        Assert.assertEquals(1L, src.getQuick(0));
+        Assert.assertEquals(2L, src.getQuick(1));
+        Assert.assertEquals(3L, src.getQuick(2));
+    }
+
     @Test
     public void testBinarySearchBlockFuzz() {
         final int N = 997; // prime
@@ -105,7 +208,7 @@ public class LongListTest {
         Assert.assertNotEquals(list1, list5);
 
         // null
-        Assert.assertNotEquals(list1, null);
+        Assert.assertNotEquals(null, list1);
 
         // different noEntryValue
         final LongList list6 = new LongList(4, Long.MIN_VALUE);
@@ -126,6 +229,18 @@ public class LongListTest {
         list8.add(2L);
         list8.add(3L);
         Assert.assertEquals(list1, list8);
+    }
+
+    @Test
+    public void testIndexOf() {
+        LongList list = new LongList();
+        for (int i = 100; i > -1; i--) {
+            list.add(i);
+        }
+
+        for (int i = 100; i > -1; i--) {
+            Assert.assertEquals(100 - i, list.indexOf(i));
+        }
     }
 
     @Test
@@ -178,6 +293,30 @@ public class LongListTest {
     }
 
     @Test
+    public void testMergeSortStructuredSmallList() {
+        LongList list = new LongList();
+        for (int l = 0; l < LongSort.INSERTION_SORT_THRESHOLD - 1; l++) {
+            list.add(l);
+        }
+
+        list.sort();
+
+        assertOrderedAsc(list);
+    }
+
+    @Test
+    public void testMergeSortStructuredSmallListAllEqual() {
+        LongList list = new LongList();
+        for (int l = 0; l < LongSort.INSERTION_SORT_THRESHOLD - 1; l++) {
+            list.add(42);
+        }
+
+        list.sort();
+
+        assertOrderedAsc(list);
+    }
+
+    @Test
     public void testRestoreInitialCapacity() {
         final int N = 1000;
         LongList list = new LongList();
@@ -193,6 +332,26 @@ public class LongListTest {
         list.restoreInitialCapacity();
         Assert.assertEquals(0, list.size());
         Assert.assertEquals(initialCapacity, list.capacity());
+    }
+
+    @Test
+    public void testSmoke() {
+        LongList list = new LongList();
+        for (int i = 0; i < 100; i++) {
+            list.add(i);
+        }
+        Assert.assertEquals(100, list.size());
+        Assert.assertTrue(list.capacity() >= 100);
+
+        for (int i = 0; i < 100; i++) {
+            Assert.assertEquals(i, list.getQuick(i));
+            Assert.assertEquals(i, list.indexOf(i));
+        }
+
+        for (int i = 0; i < 100; i++) {
+            list.remove(i);
+        }
+        Assert.assertEquals(0, list.size());
     }
 
     private void assertOrderedAsc(LongList list) {
@@ -234,7 +393,7 @@ public class LongListTest {
         final int M = list.size();
 
         for (int i = 0; i < N; i++) {
-            int pos = list.binarySearchBlock(2, i, BinarySearch.SCAN_UP);
+            int pos = list.binarySearchBlock(2, i, Vect.BIN_SEARCH_SCAN_UP);
             int skip = skipList.getQuick(i);
 
             // the value was skipped
@@ -259,7 +418,7 @@ public class LongListTest {
         }
 
         for (int i = 0; i < N; i++) {
-            int pos = list.binarySearchBlock(2, i, BinarySearch.SCAN_DOWN);
+            int pos = list.binarySearchBlock(2, i, Vect.BIN_SEARCH_SCAN_DOWN);
             int skip = skipList.getQuick(i);
 
             // the value was skipped
@@ -287,7 +446,7 @@ public class LongListTest {
 
         // search max value (greater than anything in the list)
 
-        int pos = list.binarySearch(N, BinarySearch.SCAN_UP);
+        int pos = list.binarySearch(N, Vect.BIN_SEARCH_SCAN_UP);
         Assert.assertTrue(pos < 0);
 
         pos = -pos - 1;
@@ -295,7 +454,7 @@ public class LongListTest {
 
         // search min value (less than anything in the list)
 
-        pos = list.binarySearch(-1, BinarySearch.SCAN_UP);
+        pos = list.binarySearch(-1, Vect.BIN_SEARCH_SCAN_UP);
         Assert.assertTrue(pos < 0);
 
         pos = -pos - 1;
@@ -329,7 +488,7 @@ public class LongListTest {
         final int M = list.size();
 
         for (int i = 0; i < N; i++) {
-            int pos = list.binarySearch(i, BinarySearch.SCAN_UP);
+            int pos = list.binarySearch(i, Vect.BIN_SEARCH_SCAN_UP);
             int skip = skipList.getQuick(i);
 
             // the value was skipped
@@ -354,7 +513,7 @@ public class LongListTest {
         }
 
         for (int i = 0; i < N; i++) {
-            int pos = list.binarySearch(i, BinarySearch.SCAN_DOWN);
+            int pos = list.binarySearch(i, Vect.BIN_SEARCH_SCAN_DOWN);
             int skip = skipList.getQuick(i);
 
             // the value was skipped
@@ -381,7 +540,7 @@ public class LongListTest {
 
         // search max value (greater than anything in the list)
 
-        int pos = list.binarySearch(N, BinarySearch.SCAN_UP);
+        int pos = list.binarySearch(N, Vect.BIN_SEARCH_SCAN_UP);
         Assert.assertTrue(pos < 0);
 
         pos = -pos - 1;
@@ -389,7 +548,7 @@ public class LongListTest {
 
         // search min value (less than anything in the list)
 
-        pos = list.binarySearch(-1, BinarySearch.SCAN_UP);
+        pos = list.binarySearch(-1, Vect.BIN_SEARCH_SCAN_UP);
         Assert.assertTrue(pos < 0);
 
         pos = -pos - 1;

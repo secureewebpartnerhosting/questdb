@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@
 package io.questdb.test.cutlass.line.tcp;
 
 import io.questdb.PropertyKey;
+import io.questdb.cairo.EntryUnavailableException;
 import io.questdb.cairo.TableReader;
 import io.questdb.cairo.TableReaderMetadata;
-import io.questdb.cairo.TableUtils;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.log.Log;
@@ -37,6 +37,7 @@ import io.questdb.mp.SOCountDownLatch;
 import io.questdb.std.ObjList;
 import io.questdb.std.Os;
 import io.questdb.std.Rnd;
+import io.questdb.std.str.Path;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.Overrides;
 import io.questdb.test.cutlass.line.tcp.load.LineData;
@@ -80,6 +81,7 @@ public class LineTcpReceiverUpdateFuzzTest extends AbstractLineTcpReceiverFuzzTe
         node1.setProperty(CAIRO_WRITER_ALTER_BUSY_WAIT_TIMEOUT, 5000);
         Overrides overrides = node1.getConfigurationOverrides();
         overrides.setProperty(PropertyKey.CAIRO_SPIN_LOCK_TIMEOUT, 5000);
+        spinLockTimeout = 5000;
     }
 
     @Test
@@ -92,7 +94,6 @@ public class LineTcpReceiverUpdateFuzzTest extends AbstractLineTcpReceiverFuzzTe
                 -1,
                 -1,
                 -1,
-                false,
                 false,
                 false,
                 false
@@ -112,7 +113,6 @@ public class LineTcpReceiverUpdateFuzzTest extends AbstractLineTcpReceiverFuzzTe
                 -1,
                 false,
                 false,
-                false,
                 false
         );
         runTest();
@@ -128,7 +128,6 @@ public class LineTcpReceiverUpdateFuzzTest extends AbstractLineTcpReceiverFuzzTe
                 2,
                 2,
                 -1,
-                false,
                 false,
                 false,
                 false
@@ -201,10 +200,11 @@ public class LineTcpReceiverUpdateFuzzTest extends AbstractLineTcpReceiverFuzzTe
                     updateSqlQueue.add(updateSql);
                 }
             } catch (Exception e) {
+                LOG.error().$(e).$();
                 Assert.fail("Update failed [e=" + e + ", updateSql=" + updateSql + "]");
                 failureCounter.incrementAndGet();
             } finally {
-                TableUtils.clearThreadLocals();
+                Path.clearThreadLocals();
                 updatesDone.countDown();
             }
         }).start();
@@ -238,7 +238,15 @@ public class LineTcpReceiverUpdateFuzzTest extends AbstractLineTcpReceiverFuzzTe
 
         // repeat all updates after all lines are guaranteed to be landed in the tables
         for (String updateSql : updateSqlQueue) {
-            update(updateSql);
+            while (true) {
+                try {
+                    update(updateSql);
+                    break;
+                } catch (EntryUnavailableException ex) {
+                    // ILP may be a bit slow to release the table writer
+                    Os.sleep(1);
+                }
+            }
         }
         mayDrainWalQueue();
     }

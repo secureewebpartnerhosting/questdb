@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,13 @@ import io.questdb.cairo.CairoException;
 import io.questdb.cairo.ColumnType;
 import io.questdb.cairo.ColumnTypes;
 import io.questdb.cairo.sql.RecordCursor;
-import io.questdb.std.*;
+import io.questdb.std.Hash;
+import io.questdb.std.IntList;
+import io.questdb.std.Long256;
+import io.questdb.std.Long256Impl;
+import io.questdb.std.Numbers;
+import io.questdb.std.Transient;
+import io.questdb.std.Unsafe;
 import io.questdb.std.str.CharSink;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -244,12 +250,7 @@ final class Unordered4MapRecord implements MapRecord {
 
     @Override
     public void getLong256(int columnIndex, CharSink<?> sink) {
-        long address = addressOfColumn(columnIndex);
-        final long a = Unsafe.getUnsafe().getLong(address);
-        final long b = Unsafe.getUnsafe().getLong(address + Long.BYTES);
-        final long c = Unsafe.getUnsafe().getLong(address + Long.BYTES * 2);
-        final long d = Unsafe.getUnsafe().getLong(address + Long.BYTES * 3);
-        Numbers.appendLong256(a, b, c, d, sink);
+        Numbers.appendLong256FromUnsafe(addressOfColumn(columnIndex), sink);
     }
 
     @Override
@@ -290,8 +291,8 @@ final class Unordered4MapRecord implements MapRecord {
     }
 
     @Override
-    public int keyHashCode() {
-        return Hash.hashInt(Unsafe.getUnsafe().getInt(startAddress));
+    public long keyHashCode() {
+        return Hash.hashInt64(Unsafe.getUnsafe().getInt(startAddress));
     }
 
     public void of(long address) {
@@ -314,14 +315,8 @@ final class Unordered4MapRecord implements MapRecord {
 
     @NotNull
     private Long256 getLong256Generic(Long256Impl[] keyLong256, int columnIndex) {
-        long address = addressOfColumn(columnIndex);
         Long256Impl long256 = keyLong256[columnIndex];
-        long256.setAll(
-                Unsafe.getUnsafe().getLong(address),
-                Unsafe.getUnsafe().getLong(address + Long.BYTES),
-                Unsafe.getUnsafe().getLong(address + Long.BYTES * 2),
-                Unsafe.getUnsafe().getLong(address + Long.BYTES * 3)
-        );
+        long256.fromAddress(addressOfColumn(columnIndex));
         return long256;
     }
 }

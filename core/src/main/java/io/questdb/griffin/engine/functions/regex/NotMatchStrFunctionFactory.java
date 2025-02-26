@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.BooleanFunction;
 import io.questdb.griffin.engine.functions.UnaryFunction;
+import io.questdb.griffin.engine.functions.constants.BooleanConstant;
 import io.questdb.std.Chars;
 import io.questdb.std.IntList;
 import io.questdb.std.ObjList;
@@ -59,22 +60,22 @@ public class NotMatchStrFunctionFactory implements FunctionFactory {
         CharSequence regex = args.getQuick(1).getStrA(null);
 
         if (regex == null) {
-            throw SqlException.$(argPositions.getQuick(1), "NULL regex");
+            return BooleanConstant.FALSE;
         }
 
         try {
             Matcher matcher = Pattern.compile(Chars.toString(regex)).matcher("");
-            return new MatchFunction(value, matcher);
+            return new NoMatchStrFunction(value, matcher);
         } catch (PatternSyntaxException e) {
             throw SqlException.$(argPositions.getQuick(1) + e.getIndex() + 1, e.getMessage());
         }
     }
 
-    private static class MatchFunction extends BooleanFunction implements UnaryFunction {
+    private static class NoMatchStrFunction extends BooleanFunction implements UnaryFunction {
         private final Function arg;
         private final Matcher matcher;
 
-        public MatchFunction(Function arg, Matcher matcher) {
+        public NoMatchStrFunction(Function arg, Matcher matcher) {
             this.arg = arg;
             this.matcher = matcher;
         }
@@ -91,7 +92,7 @@ public class NotMatchStrFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return false;
         }
 

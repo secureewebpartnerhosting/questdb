@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ public class FirstNotNullUuidGroupByFunction extends FirstUuidGroupByFunction {
         long srcRowId = srcValue.getLong(valueIndex);
         long destRowId = destValue.getLong(valueIndex);
         // srcRowId is non-null at this point since we know that the value is non-null
-        if (srcRowId < destRowId || destRowId == Numbers.LONG_NaN) {
+        if (srcRowId < destRowId || destRowId == Numbers.LONG_NULL) {
             destValue.putLong(valueIndex, srcRowId);
             destValue.putLong128(valueIndex + 1, srcValLo, srcValHi);
         }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,9 +29,7 @@ import io.questdb.cairo.sql.ScalarFunction;
 import io.questdb.griffin.PlanSink;
 import io.questdb.griffin.engine.functions.VarcharFunction;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 import static io.questdb.griffin.engine.functions.columns.ColumnUtils.STATIC_COLUMN_COUNT;
 
@@ -51,11 +49,6 @@ public class VarcharColumn extends VarcharFunction implements ScalarFunction {
     }
 
     @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        rec.getVarchar(columnIndex, utf8Sink);
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(Record rec) {
         return rec.getVarcharA(columnIndex);
     }
@@ -63,6 +56,11 @@ public class VarcharColumn extends VarcharFunction implements ScalarFunction {
     @Override
     public Utf8Sequence getVarcharB(Record rec) {
         return rec.getVarcharB(columnIndex);
+    }
+
+    @Override
+    public int getVarcharSize(Record rec) {
+        return rec.getVarcharSize(columnIndex);
     }
 
     @Override

@@ -44,9 +44,8 @@ public class FirstNotNullVarcharGroupByFunction extends FirstVarcharGroupByFunct
             if (val != null) {
                 mapValue.putLong(valueIndex, rowId);
                 long ptr = mapValue.getLong(valueIndex + 1);
-                sink.of(ptr).clear();
-                sink.put(val);
-                mapValue.putLong(valueIndex + 1, sink.ptr());
+                sink.of(ptr).clearAndSet(val);
+                mapValue.putLong(valueIndex + 1, sink.colouredPtr());
                 mapValue.putBool(valueIndex + 2, false);
             }
         }
@@ -65,7 +64,7 @@ public class FirstNotNullVarcharGroupByFunction extends FirstVarcharGroupByFunct
         long srcRowId = srcValue.getLong(valueIndex);
         long destRowId = destValue.getLong(valueIndex);
         // srcRowId is non-null at this point since we know that the value is non-null
-        if (srcRowId < destRowId || destRowId == Numbers.LONG_NaN) {
+        if (srcRowId < destRowId || destRowId == Numbers.LONG_NULL) {
             destValue.putLong(valueIndex, srcRowId);
             destValue.putLong(valueIndex + 1, srcValue.getLong(valueIndex + 1));
             destValue.putBool(valueIndex + 2, false);

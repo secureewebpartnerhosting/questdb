@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.constants.StrConstant;
 import io.questdb.std.*;
 import io.questdb.std.str.StringSink;
-import io.questdb.std.str.Utf16Sink;
 import org.jetbrains.annotations.Nullable;
 
 public class CastIPv4ToStrFunctionFactory implements FunctionFactory {
@@ -65,14 +64,6 @@ public class CastIPv4ToStrFunctionFactory implements FunctionFactory {
         public CharSequence getStrA(Record rec) {
             final int value = arg.getIPv4(rec);
             return toSink(value, sinkA);
-        }
-
-        @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            final int value = arg.getIPv4(rec);
-            if (value != Numbers.IPv4_NULL) {
-                Numbers.intToIPv4Sink(utf16Sink, value);
-            }
         }
 
         @Override

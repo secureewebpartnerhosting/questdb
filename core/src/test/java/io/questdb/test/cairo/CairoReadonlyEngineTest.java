@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,12 @@
 
 package io.questdb.test.cairo;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableToken;
 import io.questdb.cairo.security.AllowAllSecurityContext;
 import io.questdb.cairo.vm.Vm;
 import io.questdb.cairo.vm.api.MemoryMARW;
@@ -44,7 +49,7 @@ public class CairoReadonlyEngineTest extends AbstractCairoTest {
     @Before
     public void setUp() {
         super.setUp();
-        currentMicros = 0;
+        setCurrentMicros(0);
         roConfig = new DefaultTestCairoConfiguration(root) {
             @Override
             public boolean getAllowTableRegistrySharedWrite() {
@@ -108,7 +113,7 @@ public class CairoReadonlyEngineTest extends AbstractCairoTest {
 
                 roEngine.reloadTableNames();
                 try {
-                    roEngine.drop(
+                    roEngine.dropTableOrMatView(
                             Path.getThreadLocal(root),
                             token
                     );
@@ -128,7 +133,7 @@ public class CairoReadonlyEngineTest extends AbstractCairoTest {
                 createTable(tableName, engine);
 
                 roEngine.reloadTableNames();
-                try (MemoryMARW mem = Vm.getMARWInstance()) {
+                try (MemoryMARW mem = Vm.getCMARWInstance()) {
                     roEngine.rename(
                             AllowAllSecurityContext.INSTANCE,
                             Path.getThreadLocal(root),
@@ -177,7 +182,7 @@ public class CairoReadonlyEngineTest extends AbstractCairoTest {
                     );
                 }
 
-                currentMicros += 1_100_000L;
+                setCurrentMicros(1_100_000L);
                 Assert.assertEquals(
                         engine.verifyTableName(tableName),
                         roEngine.verifyTableName(tableName)
@@ -195,6 +200,6 @@ public class CairoReadonlyEngineTest extends AbstractCairoTest {
         table1.timestamp("ts")
                 .col("x", ColumnType.INT)
                 .col("y", ColumnType.STRING);
-        return TestUtils.create(table1, cairoEngine);
+        return TestUtils.createTable(cairoEngine, table1);
     }
 }

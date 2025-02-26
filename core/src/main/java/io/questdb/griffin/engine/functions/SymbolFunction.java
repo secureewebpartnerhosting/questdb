@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,10 +26,16 @@ package io.questdb.griffin.engine.functions;
 
 import io.questdb.cairo.ColumnType;
 import io.questdb.cairo.sql.Record;
-import io.questdb.cairo.sql.*;
+import io.questdb.cairo.sql.RecordCursorFactory;
+import io.questdb.cairo.sql.ScalarFunction;
+import io.questdb.cairo.sql.StaticSymbolTable;
+import io.questdb.cairo.sql.SymbolTable;
+import io.questdb.griffin.SqlUtil;
 import io.questdb.std.BinarySequence;
 import io.questdb.std.Long256;
-import io.questdb.std.str.*;
+import io.questdb.std.str.CharSink;
+import io.questdb.std.str.Utf8Sequence;
+import io.questdb.std.str.Utf8StringSink;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -39,7 +45,6 @@ import org.jetbrains.annotations.Nullable;
  * getInt() are not cached.*
  */
 public abstract class SymbolFunction implements ScalarFunction, SymbolTable {
-
     private final Utf8StringSink utf8SinkA = new Utf8StringSink();
     private final Utf8StringSink utf8SinkB = new Utf8StringSink();
 
@@ -65,7 +70,8 @@ public abstract class SymbolFunction implements ScalarFunction, SymbolTable {
 
     @Override
     public char getChar(Record rec) {
-        throw new UnsupportedOperationException();
+        CharSequence value = getSymbol(rec);
+        return value == null ? 0 : value.charAt(0);
     }
 
     @Override
@@ -159,11 +165,6 @@ public abstract class SymbolFunction implements ScalarFunction, SymbolTable {
     }
 
     @Override
-    public void getStr(Record rec, Utf16Sink utf16Sink) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public CharSequence getStrB(Record rec) {
         return getSymbolB(rec);
     }
@@ -175,7 +176,8 @@ public abstract class SymbolFunction implements ScalarFunction, SymbolTable {
 
     @Override
     public final long getTimestamp(Record rec) {
-        throw new UnsupportedOperationException();
+        final CharSequence value = getSymbol(rec);
+        return SqlUtil.implicitCastSymbolAsTimestamp(value);
     }
 
     @Override
@@ -184,22 +186,30 @@ public abstract class SymbolFunction implements ScalarFunction, SymbolTable {
     }
 
     @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        utf8Sink.put(getStrA(rec));
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(Record rec) {
-        utf8SinkA.clear();
-        utf8SinkA.put(getStrA(rec));
-        return utf8SinkA;
+        final CharSequence cs = getStrA(rec);
+        if (cs != null) {
+            utf8SinkA.clear();
+            utf8SinkA.put(cs);
+            return utf8SinkA;
+        }
+        return null;
     }
 
     @Override
     public Utf8Sequence getVarcharB(Record rec) {
-        utf8SinkB.clear();
-        utf8SinkB.put(getStrB(rec));
-        return utf8SinkB;
+        final CharSequence cs = getStrB(rec);
+        if (cs != null) {
+            utf8SinkB.clear();
+            utf8SinkB.put(cs);
+            return utf8SinkB;
+        }
+        return null;
+    }
+
+    @Override
+    public final int getVarcharSize(Record rec) {
+        throw new UnsupportedOperationException();
     }
 
     public abstract boolean isSymbolTableStatic();

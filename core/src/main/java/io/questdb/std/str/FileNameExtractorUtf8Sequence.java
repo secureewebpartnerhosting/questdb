@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -49,6 +49,11 @@ public class FileNameExtractorUtf8Sequence implements Utf8Sequence {
         return base.byteAt(lo + index);
     }
 
+    @Override
+    public boolean isAscii() {
+        return base.isAscii();
+    }
+
     public Utf8Sequence of(Utf8Sequence base) {
         this.base = base;
         this.hi = base.size();
@@ -60,11 +65,6 @@ public class FileNameExtractorUtf8Sequence implements Utf8Sequence {
             }
         }
         return this;
-    }
-
-    @Override
-    public boolean isAscii() {
-        return base.isAscii();
     }
 
     @Override

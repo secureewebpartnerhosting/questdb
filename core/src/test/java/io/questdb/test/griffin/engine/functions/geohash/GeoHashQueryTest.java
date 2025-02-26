@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -92,8 +92,8 @@ public class GeoHashQueryTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             for (int l = ColumnType.GEOLONG_MAX_BITS; l > 0; l--) {
                 String tableName = "pos" + l;
-                ddl(String.format("create table %s(x long)", tableName));
-                ddl(String.format("alter table %s add hash geohash(%sb)", tableName, l));
+                execute(String.format("create table %s(x long)", tableName));
+                execute(String.format("alter table %s add hash geohash(%sb)", tableName, l));
 
                 String columnType = l % 5 == 0 ? (l / 5) + "c" : l + "b";
                 assertSql("column\ttype\tindexed\tindexBlockCapacity\tsymbolCached\tsymbolCapacity\tdesignated\tupsertKey\n" +
@@ -106,9 +106,9 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testAlterTableAddGeoHashBitsColumnInvalidSyntax() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table pos(x long)");
+            execute("create table pos(x long)");
             try {
-                ddl("alter table pos add hash geohash(1)");
+                execute("alter table pos add hash geohash(1)");
             } catch (SqlException e) {
                 TestUtils.assertContains(
                         e.getFlyweightMessage(),
@@ -122,9 +122,9 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testAlterTableAddGeoHashBitsColumnInvalidSyntax2() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table pos(x long)");
+            execute("create table pos(x long)");
             try {
-                assertException("alter table pos add hash geohash");
+                assertExceptionNoLeakCheck("alter table pos add hash geohash");
             } catch (SqlException e) {
                 TestUtils.assertContains(e.getFlyweightMessage(), "missing GEOHASH precision");
                 Assert.assertEquals("alter table pos add hash geohash".length(), e.getPosition());
@@ -135,9 +135,9 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testAlterTableAddGeoHashBitsColumnInvalidSyntax22() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table pos(x long)");
+            execute("create table pos(x long)");
             try {
-                assertException("alter table pos add hash geohash()");
+                assertExceptionNoLeakCheck("alter table pos add hash geohash()");
             } catch (SqlException e) {
                 TestUtils.assertContains(e.getFlyweightMessage(), "missing GEOHASH precision");
                 Assert.assertEquals("alter table pos add hash geohash(".length(), e.getPosition());
@@ -148,9 +148,9 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testAlterTableAddGeoHashBitsColumnInvalidSyntax3() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table pos(x long)", sqlExecutionContext);
+            execute("create table pos(x long)", sqlExecutionContext);
             try {
-                assertException("alter table pos add hash geohash(11)");
+                assertExceptionNoLeakCheck("alter table pos add hash geohash(11)");
             } catch (SqlException e) {
                 TestUtils.assertContains(
                         e.getFlyweightMessage(),
@@ -164,9 +164,9 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testAlterTableAddGeoHashBitsColumnInvalidSyntax4() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table pos(x long)");
+            execute("create table pos(x long)");
             try {
-                assertException("alter table pos add hash geohash(11c 1)");
+                assertExceptionNoLeakCheck("alter table pos add hash geohash(11c 1)");
             } catch (SqlException e) {
                 TestUtils.assertContains(
                         e.getFlyweightMessage(),
@@ -180,9 +180,9 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testAlterTableAddGeoHashBitsColumnInvalidSyntax5() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table pos(x long)");
+            execute("create table pos(x long)");
             try {
-                assertException("alter table pos add hash geohash(11c");
+                assertExceptionNoLeakCheck("alter table pos add hash geohash(11c");
             } catch (SqlException e) {
                 TestUtils.assertContains(
                         e.getFlyweightMessage(),
@@ -198,8 +198,8 @@ public class GeoHashQueryTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             for (int l = 12; l > 0; l--) {
                 String tableName = "pos" + l;
-                ddl(String.format("create table %s(x long)", tableName));
-                ddl(String.format("alter table %s add hash geohash(%sc)", tableName, l));
+                execute(String.format("create table %s(x long)", tableName));
+                execute(String.format("alter table %s add hash geohash(%sc)", tableName, l));
                 assertSql(
                         "column\ttype\tindexed\tindexBlockCapacity\tsymbolCached\tsymbolCapacity\tdesignated\tupsertKey\n" +
                                 "x\tLONG\tfalse\t0\tfalse\t0\tfalse\tfalse\n" +
@@ -213,7 +213,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testDirectWrite() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "rnd_geohash(5) geo1," +
                     "rnd_geohash(15) geo2," +
                     "rnd_geohash(20) geo4," +
@@ -254,7 +254,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testDirectWriteEmpty() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "rnd_geohash(5) geo1," +
                     "rnd_geohash(15) geo2," +
                     "rnd_geohash(20) geo4," +
@@ -281,11 +281,11 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testDistinctGeoHashJoin() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(4c)) geo4," +
                     "x " +
                     "from long_sequence(10))");
-            ddl("create table t2 as (select " +
+            execute("create table t2 as (select " +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(4c)) geo4," +
                     "x " +
                     "from long_sequence(2))");
@@ -305,7 +305,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testDynamicGeoHashPrecisionTrim() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table pos(" +
+            execute("create table pos(" +
                     "time timestamp, " +
                     "uuid symbol, " +
                     "hash8 geohash(8c), " +
@@ -313,7 +313,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
                     "hash2 geohash(2c), " +
                     "hash1 geohash(1c)" +
                     ")");
-            insert("insert into pos values('2021-05-10T23:59:59.160000Z','YYY','0f91tzzz','0f91tzzz','0f91tzzz','0f91tzzz')");
+            execute("insert into pos values('2021-05-10T23:59:59.160000Z','YYY','0f91tzzz','0f91tzzz','0f91tzzz','0f91tzzz')");
             assertSql("cast\tcast1\tcast2\tcast3\n" +
                     "0f91tz\t0f9\t0\t0\n", "select cast(hash8 as geohash(6c)), cast(hash4 as geohash(3c)), cast(hash2 as geohash(1c)), cast(hash1 as geohash(1b)) from pos"
             );
@@ -347,7 +347,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testGeoHashEqualsTest() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "cast(rnd_str('questdb', '1234567') as geohash(7c)) geo4, " +
                     "x " +
                     "from long_sequence(3))");
@@ -362,12 +362,12 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testGeoHashJoinOnGeoHash() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(4c)) geo4," +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(1c)) geo1," +
                     "x " +
                     "from long_sequence(10))");
-            ddl("create table t2 as (select " +
+            execute("create table t2 as (select " +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(4c)) geo4," +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(1c)) geo1," +
                     "x " +
@@ -391,13 +391,13 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testGeoHashJoinOnGeoHash2() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(4c)) geo4," +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(1c)) geo1," +
                     "x," +
                     "timestamp_sequence(0, 1000000) ts " +
                     "from long_sequence(10)) timestamp(ts)");
-            ddl("create table t2 as (select " +
+            execute("create table t2 as (select " +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(4c)) geo4," +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(1c)) geo1," +
                     "x," +
@@ -405,10 +405,10 @@ public class GeoHashQueryTest extends AbstractCairoTest {
                     "from long_sequence(2)) timestamp(ts)");
 
             assertSql("geo4\tgeo1\tx\tts\tgeo41\tgeo11\tx1\tts1\n" +
-                    "ques\tq\t1\t1970-01-01T00:00:00.000000Z\t\t\tNaN\t\n" +
+                    "ques\tq\t1\t1970-01-01T00:00:00.000000Z\t\t\tnull\t\n" +
                     "1234\t3\t2\t1970-01-01T00:00:01.000000Z\t1234\tq\t1\t1970-01-01T00:00:00.000000Z\n" +
-                    "3456\t3\t3\t1970-01-01T00:00:02.000000Z\t\t\tNaN\t\n" +
-                    "3456\t1\t4\t1970-01-01T00:00:03.000000Z\t\t\tNaN\t\n" +
+                    "3456\t3\t3\t1970-01-01T00:00:02.000000Z\t\t\tnull\t\n" +
+                    "3456\t1\t4\t1970-01-01T00:00:03.000000Z\t\t\tnull\t\n" +
                     "ques\t1\t5\t1970-01-01T00:00:04.000000Z\tques\t3\t2\t1970-01-01T00:00:01.000000Z\n" +
                     "1234\t3\t6\t1970-01-01T00:00:05.000000Z\t1234\tq\t1\t1970-01-01T00:00:00.000000Z\n" +
                     "1234\t1\t7\t1970-01-01T00:00:06.000000Z\t1234\tq\t1\t1970-01-01T00:00:00.000000Z\n" +
@@ -424,12 +424,12 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testGeoHashJoinTest() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "rnd_geohash(20) geo4," +
                     "rnd_geohash(40) geo8," +
                     "x " +
                     "from long_sequence(3))");
-            ddl("create table t2 as (select " +
+            execute("create table t2 as (select " +
                     "rnd_geohash(5) geo1," +
                     "rnd_geohash(10) geo2," +
                     "x " +
@@ -445,7 +445,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testGeoHashNotEqualsNullTest() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "cast(rnd_str('questdb', '1234567') as geohash(7c)) geo4, " +
                     "x " +
                     "from long_sequence(3))");
@@ -461,7 +461,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testGeoHashNotEqualsTest() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "cast(rnd_str('questdb', '1234567') as geohash(7c)) geo4, " +
                     "x " +
                     "from long_sequence(3))");
@@ -477,8 +477,8 @@ public class GeoHashQueryTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             for (int l = 12; l > 0; l--) {
                 String tableName = "pos" + l;
-                ddl(String.format("create table %s(hash geohash(%sc))", tableName, l));
-                insert(String.format("insert into %s values('1234567890quest')", tableName));
+                execute(String.format("create table %s(hash geohash(%sc))", tableName, l));
+                execute(String.format("insert into %s values('1234567890quest')", tableName));
                 String value = "1234567890quest".substring(0, l);
                 assertSql("hash\n"
                         + value + "\n", "select hash from " + tableName
@@ -490,7 +490,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testGeoHashSimpleGroupBy() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "cast(rnd_str('questdb', '1234567') as geohash(7c)) geo4, " +
                     "x " +
                     "from long_sequence(3))");
@@ -505,7 +505,7 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     public void testGeoHashUpcast() throws Exception {
         assertMemoryLeak(() -> {
             try {
-                assertException("select cast(cast('questdb' as geohash(6c)) as geohash(7c)) from long_sequence(1)");
+                assertExceptionNoLeakCheck("select cast(cast('questdb' as geohash(6c)) as geohash(7c)) from long_sequence(1)");
             } catch (SqlException ex) {
                 TestUtils.assertContains(ex.getFlyweightMessage(), "CAST cannot narrow values from GEOHASH(30b) to GEOHASH(35b)");
             }
@@ -515,9 +515,9 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testInsertGeoHashTooFewChars() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table pos(time timestamp, uuid symbol, hash8 geohash(8c))", sqlExecutionContext);
+            execute("create table pos(time timestamp, uuid symbol, hash8 geohash(8c))", sqlExecutionContext);
             try {
-                assertException("insert into pos values('2021-05-10T23:59:59.160000Z','YYY','f91t')");
+                assertExceptionNoLeakCheck("insert into pos values('2021-05-10T23:59:59.160000Z','YYY','f91t')");
             } catch (ImplicitCastException ex) {
                 TestUtils.assertContains(ex.getFlyweightMessage(), "inconvertible value: `f91t` [STRING -> GEOHASH(8c)]");
             }
@@ -578,13 +578,13 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     public void testMakeGeoHashToDifferentColumnSize() throws Exception {
         assertMemoryLeak(() -> {
 
-            ddl("create table pos as ( " +
+            execute("create table pos as ( " +
                     " select" +
                     "(rnd_double()*180.0 - 90.0) as lat, " +
                     "(rnd_double()*360.0 - 180.0) as lon " +
                     "from long_sequence(1))");
 
-            ddl("create table tb1 as ( select" +
+            execute("create table tb1 as ( select" +
                     " make_geohash(lon, lat, 5) as g1c, " +
                     " make_geohash(lon, lat, 10) as g2c, " +
                     " make_geohash(lon, lat, 20) as g4c, " +
@@ -600,17 +600,17 @@ public class GeoHashQueryTest extends AbstractCairoTest {
     @Test
     public void testWithColTops() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     "x," +
                     "timestamp_sequence(0, 1000000) ts " +
                     "from long_sequence(2))");
 
-            ddl("alter table t1 add a1 geohash(1c)");
-            ddl("alter table t1 add a2 geohash(2c)");
-            ddl("alter table t1 add a4 geohash(4c)");
-            ddl("alter table t1 add a8 geohash(8c)");
+            execute("alter table t1 add a1 geohash(1c)");
+            execute("alter table t1 add a2 geohash(2c)");
+            execute("alter table t1 add a4 geohash(4c)");
+            execute("alter table t1 add a8 geohash(8c)");
 
-            insert("insert into t1 select x," +
+            execute("insert into t1 select x," +
                     "timestamp_sequence(0, 1000000) ts," +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(1c)) geo1," +
                     "cast(rnd_str('quest', '1234', '3456') as geohash(2c)) geo2," +

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,14 @@
 
 package io.questdb.test.griffin;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.EntryUnavailableException;
+import io.questdb.cairo.SymbolMapReader;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableWriter;
 import io.questdb.griffin.SqlCompiler;
+import io.questdb.griffin.SqlCompilerImpl;
 import io.questdb.griffin.SqlException;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.DefaultTestCairoConfiguration;
@@ -46,20 +52,20 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add mycol int not null, mycol2 int");
+                    execute("alter table x add mycol int not null, mycol2 int");
 
-                    assertQueryPlain(
+                    assertQueryNoLeakCheck(
                             "c\tmycol\tmycol2\n" +
-                                    "XYZ\tNaN\tNaN\n" +
-                                    "ABC\tNaN\tNaN\n" +
-                                    "ABC\tNaN\tNaN\n" +
-                                    "XYZ\tNaN\tNaN\n" +
-                                    "\tNaN\tNaN\n" +
-                                    "CDE\tNaN\tNaN\n" +
-                                    "CDE\tNaN\tNaN\n" +
-                                    "ABC\tNaN\tNaN\n" +
-                                    "\tNaN\tNaN\n" +
-                                    "XYZ\tNaN\tNaN\n",
+                                    "XYZ\tnull\tnull\n" +
+                                    "ABC\tnull\tnull\n" +
+                                    "ABC\tnull\tnull\n" +
+                                    "XYZ\tnull\tnull\n" +
+                                    "\tnull\tnull\n" +
+                                    "CDE\tnull\tnull\n" +
+                                    "CDE\tnull\tnull\n" +
+                                    "ABC\tnull\tnull\n" +
+                                    "\tnull\tnull\n" +
+                                    "XYZ\tnull\tnull\n",
                             "select c, mycol, mycol2 from x"
                     );
                 }
@@ -105,7 +111,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                         // make sure we don't release writer until main test finishes
                         Assert.assertTrue(haltLatch.await(5, TimeUnit.SECONDS));
                     } catch (Throwable e) {
-                        e.printStackTrace();
+                        e.printStackTrace(System.out);
                         errorCounter.incrementAndGet();
                     } finally {
                         engine.clear();
@@ -115,7 +121,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
 
                 startBarrier.await();
                 try {
-                    ddl("alter table x add column xx int", sqlExecutionContext);
+                    execute("alter table x add column xx int", sqlExecutionContext);
                     Assert.fail();
                 } finally {
                     haltLatch.countDown();
@@ -134,24 +140,43 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add column mycol int");
+                    execute("alter table x add column mycol int");
 
-                    assertQueryPlain(
+                    assertQueryNoLeakCheck(
                             "c\tmycol\n" +
-                                    "XYZ\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "XYZ\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "XYZ\tNaN\n",
+                                    "XYZ\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "XYZ\tnull\n" +
+                                    "\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "\tnull\n" +
+                                    "XYZ\tnull\n",
                             "select c, mycol from x"
                     );
                 }
         );
+    }
+
+    @Test
+    public void testAddColumnIfNoExistsUnexpectedToken() throws Exception {
+        assertFailure("alter table x add column if not a int", 32,
+                "unexpected token 'a' for if not exists"
+        );
+    }
+
+    @Test
+    public void testAddColumnIfNotExists() throws Exception {
+        createX();
+        execute("alter table x add column if not exists a int");
+        execute("alter table x add column description string");
+    }
+
+    @Test
+    public void testAddColumnIfNotExistsWithMissingNotToken() throws Exception {
+        assertFailure("alter table x add column if exists b int", 28, "'not' expected");
     }
 
     @Test
@@ -161,7 +186,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                     createX();
 
                     try {
-                        ddl("alter table x add column D int", sqlExecutionContext);
+                        execute("alter table x add column D int", sqlExecutionContext);
                         Assert.fail();
                     } catch (SqlException e) {
                         TestUtils.assertContains(e.getFlyweightMessage(), "column 'D' already exists");
@@ -176,20 +201,20 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add \"mycol\" int not null");
+                    execute("alter table x add \"mycol\" int not null");
 
-                    assertQueryPlain(
+                    assertQueryNoLeakCheck(
                             "c\tmycol\n" +
-                                    "XYZ\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "XYZ\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "XYZ\tNaN\n",
+                                    "XYZ\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "XYZ\tnull\n" +
+                                    "\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "\tnull\n" +
+                                    "XYZ\tnull\n",
                             "select c, mycol from x"
                     );
                 }
@@ -202,20 +227,20 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add column \"mycol\" int not null");
+                    execute("alter table x add column \"mycol\" int not null");
 
-                    assertQueryPlain(
+                    assertQueryNoLeakCheck(
                             "c\tmycol\n" +
-                                    "XYZ\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "XYZ\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "XYZ\tNaN\n",
+                                    "XYZ\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "XYZ\tnull\n" +
+                                    "\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "\tnull\n" +
+                                    "XYZ\tnull\n",
                             "select c, mycol from x"
                     );
                 }
@@ -228,9 +253,9 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add \"spa ce\" string");
+                    execute("alter table x add \"spa ce\" string");
 
-                    assertQueryPlain(
+                    assertQueryNoLeakCheck(
                             "c\tspa ce\n" +
                                     "XYZ\t\n" +
                                     "ABC\t\n" +
@@ -254,20 +279,20 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add mycol int");
+                    execute("alter table x add mycol int");
 
-                    assertQueryPlain(
+                    assertQueryNoLeakCheck(
                             "c\tmycol\n" +
-                                    "XYZ\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "XYZ\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "XYZ\tNaN\n",
+                                    "XYZ\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "XYZ\tnull\n" +
+                                    "\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "\tnull\n" +
+                                    "XYZ\tnull\n",
                             "select c, mycol from x"
                     );
                 }
@@ -280,20 +305,20 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add mycol int not null");
+                    execute("alter table x add mycol int not null");
 
-                    assertQueryPlain(
+                    assertQueryNoLeakCheck(
                             "c\tmycol\n" +
-                                    "XYZ\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "XYZ\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "XYZ\tNaN\n",
+                                    "XYZ\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "XYZ\tnull\n" +
+                                    "\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "\tnull\n" +
+                                    "XYZ\tnull\n",
                             "select c, mycol from x"
                     );
                 }
@@ -306,20 +331,20 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add mycol int null");
+                    execute("alter table x add mycol int null");
 
-                    assertQueryPlain(
+                    assertQueryNoLeakCheck(
                             "c\tmycol\n" +
-                                    "XYZ\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "XYZ\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "CDE\tNaN\n" +
-                                    "ABC\tNaN\n" +
-                                    "\tNaN\n" +
-                                    "XYZ\tNaN\n",
+                                    "XYZ\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "XYZ\tnull\n" +
+                                    "\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "CDE\tnull\n" +
+                                    "ABC\tnull\n" +
+                                    "\tnull\n" +
+                                    "XYZ\tnull\n",
                             "select c, mycol from x"
                     );
                 }
@@ -329,6 +354,13 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
     @Test
     public void testAddDuplicateColumn() throws Exception {
         assertFailure("alter table x add column d int", 25, "column 'd' already exists");
+    }
+
+    @Test
+    public void testAddDuplicateColumnIfNotExists() throws Exception {
+        createX();
+        execute("alter table x add column a int");
+        execute("alter table x add column if not exists a int");
     }
 
     @Test
@@ -348,7 +380,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
 
     @Test
     public void testAddInvalidType() throws Exception {
-        assertFailure("alter table x add column abc blah", 29, "invalid type");
+        assertFailure("alter table x add column abc blah", 29, "unsupported column type: blah");
     }
 
     @Test
@@ -366,9 +398,9 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                         }
                     };
 
-                    try (CairoEngine engine = new CairoEngine(configuration, metrics)) {
+                    try (CairoEngine engine = new CairoEngine(configuration)) {
                         try (SqlCompiler compiler = engine.getSqlCompiler()) {
-                            ddl(compiler, "alter table x add column meh symbol cache");
+                            execute(compiler, "alter table x add column meh symbol cache");
 
                             try (TableReader reader = getReader("x")) {
                                 SymbolMapReader smr = reader.getSymbolMapReader(16);
@@ -392,7 +424,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add column meh symbol capacity 2048");
+                    execute("alter table x add column meh symbol capacity 2048");
 
                     try (TableReader reader = getReader("x")) {
                         SymbolMapReader smr = reader.getSymbolMapReader(16);
@@ -448,7 +480,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add column meh symbol index");
+                    execute("alter table x add column meh symbol index");
 
                     try (TableReader reader = getReader("x")) {
                         SymbolMapReader smr = reader.getSymbolMapReader(16);
@@ -468,7 +500,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add column meh symbol index capacity 9000");
+                    execute("alter table x add column meh symbol index capacity 9000");
 
                     try (TableReader reader = getReader("x")) {
                         SymbolMapReader smr = reader.getSymbolMapReader(16);
@@ -494,7 +526,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add column meh symbol nocache");
+                    execute("alter table x add column meh symbol nocache");
 
                     try (TableReader reader = getReader("x")) {
                         SymbolMapReader smr = reader.getSymbolMapReader(16);
@@ -515,7 +547,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                     createX();
                     engine.clear();
 
-                    ddl("alter table x add column meh symbol;");
+                    execute("alter table x add column meh symbol;");
 
                     try (TableReader reader = getReader("x")) {
                         SymbolMapReader smr = reader.getSymbolMapReader(16);
@@ -543,9 +575,9 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                         }
                     };
 
-                    try (CairoEngine engine = new CairoEngine(configuration, metrics)) {
+                    try (CairoEngine engine = new CairoEngine(configuration)) {
                         try (SqlCompiler compiler = engine.getSqlCompiler()) {
-                            ddl(compiler, "alter table x add column meh symbol", sqlExecutionContext);
+                            execute(compiler, "alter table x add column meh symbol", sqlExecutionContext);
                             try (TableReader reader = getReader("x")) {
                                 SymbolMapReader smr = reader.getSymbolMapReader(16);
                                 Assert.assertNotNull(smr);
@@ -571,7 +603,7 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                     createX();
                     engine.clear();
 
-                    ddl("alter table x add column meh symbol");
+                    execute("alter table x add column meh symbol");
 
                     try (TableReader reader = getReader("x")) {
                         SymbolMapReader smr = reader.getSymbolMapReader(16);
@@ -596,19 +628,19 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add column mycol int, second symbol");
-                    assertQueryPlain(
+                    execute("alter table x add column mycol int, second symbol");
+                    assertQueryNoLeakCheck(
                             "c\tmycol\tsecond\n" +
-                                    "XYZ\tNaN\t\n" +
-                                    "ABC\tNaN\t\n" +
-                                    "ABC\tNaN\t\n" +
-                                    "XYZ\tNaN\t\n" +
-                                    "\tNaN\t\n" +
-                                    "CDE\tNaN\t\n" +
-                                    "CDE\tNaN\t\n" +
-                                    "ABC\tNaN\t\n" +
-                                    "\tNaN\t\n" +
-                                    "XYZ\tNaN\t\n",
+                                    "XYZ\tnull\t\n" +
+                                    "ABC\tnull\t\n" +
+                                    "ABC\tnull\t\n" +
+                                    "XYZ\tnull\t\n" +
+                                    "\tnull\t\n" +
+                                    "CDE\tnull\t\n" +
+                                    "CDE\tnull\t\n" +
+                                    "ABC\tnull\t\n" +
+                                    "\tnull\t\n" +
+                                    "XYZ\tnull\t\n",
                             "select c, mycol, second from x"
                     );
                 }
@@ -626,20 +658,20 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
                 () -> {
                     createX();
 
-                    ddl("alter table x add column mycol int; \n");
-                    ddl("alter table x add column second symbol;");
-                    assertQueryPlain(
+                    execute("alter table x add column mycol int; \n");
+                    execute("alter table x add column second symbol;");
+                    assertQueryNoLeakCheck(
                             "c\tmycol\tsecond\n" +
-                                    "XYZ\tNaN\t\n" +
-                                    "ABC\tNaN\t\n" +
-                                    "ABC\tNaN\t\n" +
-                                    "XYZ\tNaN\t\n" +
-                                    "\tNaN\t\n" +
-                                    "CDE\tNaN\t\n" +
-                                    "CDE\tNaN\t\n" +
-                                    "ABC\tNaN\t\n" +
-                                    "\tNaN\t\n" +
-                                    "XYZ\tNaN\t\n",
+                                    "XYZ\tnull\t\n" +
+                                    "ABC\tnull\t\n" +
+                                    "ABC\tnull\t\n" +
+                                    "XYZ\tnull\t\n" +
+                                    "\tnull\t\n" +
+                                    "CDE\tnull\t\n" +
+                                    "CDE\tnull\t\n" +
+                                    "ABC\tnull\t\n" +
+                                    "\tnull\t\n" +
+                                    "XYZ\tnull\t\n",
                             "select c, mycol, second from x"
                     );
                 }
@@ -648,22 +680,34 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
 
     @Test
     public void testExpectActionKeyword() throws Exception {
-        assertFailure("alter table x", 13, "'add', 'alter', 'attach', 'detach', 'drop', 'resume', 'rename', 'set' or 'squash' expected");
+        assertFailure("alter table x", 13, SqlCompilerImpl.ALTER_TABLE_EXPECTED_TOKEN_DESCR);
     }
 
     @Test
     public void testExpectTableKeyword() throws Exception {
-        assertFailure("alter x", 6, "'table' expected");
+        assertFailure("alter x", 6, "'table' or 'materialized' expected");
     }
 
     @Test
     public void testExpectTableKeyword2() throws Exception {
-        assertFailure("alter", 5, "'table' expected");
+        assertFailure("alter", 5, "'table' or 'materialized' expected");
     }
 
     @Test
     public void testExpectTableName() throws Exception {
         assertFailure("alter table", 11, "table name expected");
+    }
+
+    @Test
+    public void testQueryVarcharAboveColumnTop() throws Exception {
+        assertMemoryLeak(() -> {
+            execute("create table x as (select x id, from long_sequence(3))");
+            execute("alter table x add column a_varchar varchar");
+            execute("insert into x values (4, 'added-1'), (5, 'added-2')");
+            assertQuery("a_varchar\n\n\n\nadded-1\nadded-2\n",
+                    "select a_varchar from x", null, null, true, true
+            );
+        });
     }
 
     @Test
@@ -673,19 +717,13 @@ public class AlterTableAddColumnTest extends AbstractCairoTest {
 
     private void assertFailure(String sql, int position, String message) throws Exception {
         assertMemoryLeak(() -> {
-            try {
-                createX();
-                ddl(sql, sqlExecutionContext);
-                Assert.fail();
-            } catch (SqlException e) {
-                Assert.assertEquals(position, e.getPosition());
-                TestUtils.assertContains(e.getFlyweightMessage(), message);
-            }
+            createX();
+            assertExceptionNoLeakCheck(sql, position, message);
         });
     }
 
     private void createX() throws SqlException {
-        ddl(
+        execute(
                 "create table x as (" +
                         "select" +
                         " cast(x as int) i," +

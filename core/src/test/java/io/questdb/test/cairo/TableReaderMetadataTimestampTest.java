@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,10 @@
 
 package io.questdb.test.cairo;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableReaderMetadata;
+import io.questdb.cairo.TableWriter;
 import io.questdb.std.str.StringSink;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.CreateTableTestUtils;
@@ -170,38 +173,34 @@ public class TableReaderMetadataTimestampTest extends AbstractCairoTest {
                 Assert.assertEquals(13, metadata.getColumnCount());
                 Assert.assertEquals(expectedInitialTimestampIndex, metadata.getTimestampIndex());
                 long structureVersion;
-                try (TableWriter writer = newOffPoolWriter(configuration, tableName, metrics)) {
+                try (TableWriter writer = newOffPoolWriter(configuration, tableName)) {
                     writer.removeColumn("timestamp");
                     structureVersion = writer.getMetadataVersion();
                 }
 
-                long pTransitionIndex = metadata.createTransitionIndex(structureVersion);
+                metadata.prepareTransition(structureVersion);
                 StringSink sink = new StringSink();
-                try {
-                    metadata.applyTransitionIndex();
-                    Assert.assertEquals(columnCount, metadata.getColumnCount());
-                    for (int i = 0; i < columnCount; i++) {
-                        sink.put(metadata.getColumnName(i)).put(':').put(ColumnType.nameOf(metadata.getColumnType(i))).put('\n');
-                    }
-
-                    final String expected = "int:INT\n" +
-                            "short:SHORT\n" +
-                            "byte:BYTE\n" +
-                            "double:DOUBLE\n" +
-                            "float:FLOAT\n" +
-                            "long:LONG\n" +
-                            "str:" + ColumnType.nameOf(ColumnType.STRING) + "\n" +
-                            "sym:SYMBOL\n" +
-                            "bool:BOOLEAN\n" +
-                            "bin:BINARY\n" +
-                            "date:DATE\n" +
-                            "varchar:" + ColumnType.nameOf(ColumnType.VARCHAR) + "\n";
-
-                    TestUtils.assertEquals(expected, sink);
-                    Assert.assertEquals(-1, metadata.getTimestampIndex());
-                } finally {
-                    TableUtils.freeTransitionIndex(pTransitionIndex);
+                metadata.applyTransition();
+                Assert.assertEquals(columnCount, metadata.getColumnCount());
+                for (int i = 0; i < columnCount; i++) {
+                    sink.put(metadata.getColumnName(i)).put(':').put(ColumnType.nameOf(metadata.getColumnType(i))).put('\n');
                 }
+
+                final String expected = "int:INT\n" +
+                        "short:SHORT\n" +
+                        "byte:BYTE\n" +
+                        "double:DOUBLE\n" +
+                        "float:FLOAT\n" +
+                        "long:LONG\n" +
+                        "str:" + ColumnType.nameOf(ColumnType.STRING) + "\n" +
+                        "sym:SYMBOL\n" +
+                        "bool:BOOLEAN\n" +
+                        "bin:BINARY\n" +
+                        "date:DATE\n" +
+                        "varchar:" + ColumnType.nameOf(ColumnType.VARCHAR) + "\n";
+
+                TestUtils.assertEquals(expected, sink);
+                Assert.assertEquals(-1, metadata.getTimestampIndex());
             }
         });
     }
@@ -218,25 +217,21 @@ public class TableReaderMetadataTimestampTest extends AbstractCairoTest {
                 Assert.assertEquals(13, metadata.getColumnCount());
                 Assert.assertEquals(expectedInitialTimestampIndex, metadata.getTimestampIndex());
                 long structVersion;
-                try (TableWriter writer = newOffPoolWriter(configuration, tableName, metrics)) {
+                try (TableWriter writer = newOffPoolWriter(configuration, tableName)) {
                     manipulator.restructure(writer);
                     structVersion = writer.getMetadataVersion();
                 }
 
-                long address = metadata.createTransitionIndex(structVersion);
+                metadata.prepareTransition(structVersion);
                 StringSink sink = new StringSink();
-                try {
-                    metadata.applyTransitionIndex();
-                    Assert.assertEquals(expectedColumnCount, metadata.getColumnCount());
-                    for (int i = 0; i < expectedColumnCount; i++) {
-                        sink.put(metadata.getColumnName(i)).put(':').put(ColumnType.nameOf(metadata.getColumnType(i))).put('\n');
-                    }
-
-                    TestUtils.assertEquals(expected, sink);
-                    Assert.assertEquals(expectedFinalTimestampIndex, metadata.getTimestampIndex());
-                } finally {
-                    TableUtils.freeTransitionIndex(address);
+                metadata.applyTransition();
+                Assert.assertEquals(expectedColumnCount, metadata.getColumnCount());
+                for (int i = 0; i < expectedColumnCount; i++) {
+                    sink.put(metadata.getColumnName(i)).put(':').put(ColumnType.nameOf(metadata.getColumnType(i))).put('\n');
                 }
+
+                TestUtils.assertEquals(expected, sink);
+                Assert.assertEquals(expectedFinalTimestampIndex, metadata.getTimestampIndex());
             }
         });
     }

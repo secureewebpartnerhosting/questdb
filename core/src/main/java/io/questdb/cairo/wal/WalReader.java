@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,15 +24,26 @@
 
 package io.questdb.cairo.wal;
 
-import io.questdb.cairo.*;
-import io.questdb.cairo.vm.NullMemoryMR;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.ColumnTypeDriver;
+import io.questdb.cairo.SymbolMapReaderImpl;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.vm.NullMemoryCMR;
 import io.questdb.cairo.vm.Vm;
-import io.questdb.cairo.vm.api.MemoryMR;
-import io.questdb.cairo.vm.api.MemoryR;
+import io.questdb.cairo.vm.api.MemoryCMR;
+import io.questdb.cairo.vm.api.MemoryCR;
 import io.questdb.cairo.wal.seq.SequencerMetadata;
 import io.questdb.log.Log;
 import io.questdb.log.LogFactory;
-import io.questdb.std.*;
+import io.questdb.std.Chars;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.IntObjHashMap;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Misc;
+import io.questdb.std.ObjList;
 import io.questdb.std.str.Path;
 import org.jetbrains.annotations.NotNull;
 
@@ -45,7 +56,7 @@ import static io.questdb.cairo.wal.WalUtils.WAL_FORMAT_VERSION;
 public class WalReader implements Closeable {
     private static final Log LOG = LogFactory.getLog(WalReader.class);
     private final int columnCount;
-    private final ObjList<MemoryMR> columns;
+    private final ObjList<MemoryCMR> columns;
     private final WalDataCursor dataCursor = new WalDataCursor();
     private final WalEventCursor eventCursor;
     private final WalEventReader events;
@@ -65,11 +76,11 @@ public class WalReader implements Closeable {
 
         ff = configuration.getFilesFacade();
         path = new Path();
-        path.of(configuration.getRoot()).concat(tableToken.getDirName()).concat(walName);
+        path.of(configuration.getDbRoot()).concat(tableToken.getDirName()).concat(walName);
         rootLen = path.size();
 
         try {
-            metadata = new SequencerMetadata(ff, true);
+            metadata = new SequencerMetadata(ff, configuration.getCommitMode(), true);
             metadata.open(path.slash().put(segmentId), rootLen, tableToken);
             columnCount = metadata.getColumnCount();
             events = new WalEventReader(ff);
@@ -84,8 +95,8 @@ public class WalReader implements Closeable {
             final int capacity = 2 * columnCount + 2;
             columns = new ObjList<>(capacity);
             columns.setPos(capacity + 2);
-            columns.setQuick(0, NullMemoryMR.INSTANCE);
-            columns.setQuick(1, NullMemoryMR.INSTANCE);
+            columns.setQuick(0, NullMemoryCMR.INSTANCE);
+            columns.setQuick(1, NullMemoryCMR.INSTANCE);
             dataCursor.of(this);
         } catch (Throwable e) {
             close();
@@ -102,7 +113,7 @@ public class WalReader implements Closeable {
         LOG.debug().$("closed '").utf8(tableName).$('\'').$();
     }
 
-    public MemoryR getColumn(int absoluteIndex) {
+    public MemoryCR getColumn(int absoluteIndex) {
         return columns.getQuick(absoluteIndex);
     }
 
@@ -175,14 +186,14 @@ public class WalReader implements Closeable {
                 final CharSequence columnName = metadata.getColumnName(columnIndex);
                 final int dataMemIndex = getPrimaryColumnIndex(columnIndex);
                 final int auxMemIndex = dataMemIndex + 1;
-                final MemoryMR dataMem = columns.getQuick(dataMemIndex);
+                final MemoryCMR dataMem = columns.getQuick(dataMemIndex);
 
                 if (ColumnType.isVarSize(columnType)) {
                     ColumnTypeDriver columnTypeDriver = ColumnType.getDriver(columnType);
                     long auxMemSize = columnTypeDriver.getAuxVectorSize(rowCount);
                     TableUtils.iFile(path.trimTo(pathLen), columnName);
 
-                    MemoryMR auxMem = columns.getQuick(auxMemIndex);
+                    MemoryCMR auxMem = columns.getQuick(auxMemIndex);
                     auxMem = openOrCreateMemory(path, columns, auxMemIndex, auxMem, auxMemSize);
                     final long dataMemSize = columnTypeDriver.getDataVectorSizeAt(auxMem.addressOf(0), rowCount - 1);
                     TableUtils.dFile(path.trimTo(pathLen), columnName);
@@ -206,17 +217,17 @@ public class WalReader implements Closeable {
     }
 
     @NotNull
-    private MemoryMR openOrCreateMemory(
+    private MemoryCMR openOrCreateMemory(
             Path path,
-            ObjList<MemoryMR> columns,
+            ObjList<MemoryCMR> columns,
             int primaryIndex,
-            MemoryMR mem,
+            MemoryCMR mem,
             long columnSize
     ) {
-        if (mem != null && mem != NullMemoryMR.INSTANCE) {
-            mem.of(ff, path, columnSize, columnSize, MemoryTag.MMAP_TABLE_WAL_READER);
+        if (mem != null && mem != NullMemoryCMR.INSTANCE) {
+            mem.of(ff, path.$(), columnSize, columnSize, MemoryTag.MMAP_TABLE_WAL_READER);
         } else {
-            mem = Vm.getMRInstance(ff, path, columnSize, MemoryTag.MMAP_TABLE_WAL_READER);
+            mem = Vm.getCMRInstance(ff, path.$(), columnSize, MemoryTag.MMAP_TABLE_WAL_READER);
             columns.setQuick(primaryIndex, mem);
         }
         return mem;

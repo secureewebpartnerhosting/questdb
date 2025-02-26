@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,32 +32,20 @@ import io.questdb.griffin.engine.functions.StrFunction;
 import io.questdb.std.Mutable;
 import io.questdb.std.Numbers;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
-import io.questdb.std.str.*;
+import io.questdb.std.str.StringSink;
+import io.questdb.std.str.Utf8Sequence;
+import io.questdb.std.str.Utf8StringSink;
 
 public class StrBindVariable extends StrFunction implements ScalarFunction, Mutable {
-    private final int floatScale;
     private final StringSink utf16Sink = new StringSink();
     private final Utf8StringSink utf8Sink = new Utf8StringSink();
     private boolean isNull = true;
-
-    public StrBindVariable(int floatScale) {
-        this.floatScale = floatScale;
-    }
 
     @Override
     public void clear() {
         isNull = true;
         utf16Sink.clear();
         utf8Sink.clear();
-    }
-
-    @Override
-    public void getStr(Record rec, Utf16Sink utf16Sink) {
-        if (isNull) {
-            utf16Sink.put((CharSequence) null);
-        } else {
-            utf16Sink.put(this.utf16Sink);
-        }
     }
 
     @Override
@@ -79,15 +67,6 @@ public class StrBindVariable extends StrFunction implements ScalarFunction, Muta
     }
 
     @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        if (isNull) {
-            utf8Sink.put((CharSequence) null);
-        } else {
-            utf8Sink.put(this.utf8Sink);
-        }
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(Record rec) {
         return isNull ? null : utf8Sink;
     }
@@ -98,7 +77,15 @@ public class StrBindVariable extends StrFunction implements ScalarFunction, Muta
     }
 
     @Override
-    public boolean isReadThreadSafe() {
+    public int getVarcharSize(Record rec) {
+        if (isNull) {
+            return -1;
+        }
+        return utf8Sink.size();
+    }
+
+    @Override
+    public boolean isNonDeterministic() {
         return true;
     }
 
@@ -107,8 +94,13 @@ public class StrBindVariable extends StrFunction implements ScalarFunction, Muta
         return true;
     }
 
+    @Override
+    public boolean isThreadSafe() {
+        return true;
+    }
+
     public void setTimestamp(long value) {
-        isNull = value == Numbers.LONG_NaN;
+        isNull = value == Numbers.LONG_NULL;
         if (!isNull) {
             utf16Sink.clear();
             TimestampFormatUtils.appendDateTimeUSec(utf16Sink, value);
@@ -167,7 +159,7 @@ public class StrBindVariable extends StrFunction implements ScalarFunction, Muta
     }
 
     public void setValue(long value) {
-        isNull = value == Numbers.LONG_NaN;
+        isNull = value == Numbers.LONG_NULL;
         if (!isNull) {
             utf16Sink.clear();
             utf16Sink.put(value);
@@ -177,7 +169,7 @@ public class StrBindVariable extends StrFunction implements ScalarFunction, Muta
     }
 
     public void setValue(int value) {
-        isNull = value == Numbers.INT_NaN;
+        isNull = value == Numbers.INT_NULL;
         if (!isNull) {
             utf16Sink.clear();
             utf16Sink.put(value);
@@ -187,7 +179,7 @@ public class StrBindVariable extends StrFunction implements ScalarFunction, Muta
     }
 
     public void setValue(double value) {
-        isNull = Double.isNaN(value);
+        isNull = Numbers.isNull(value);
         if (!isNull) {
             utf16Sink.clear();
             utf16Sink.put(value);
@@ -197,12 +189,12 @@ public class StrBindVariable extends StrFunction implements ScalarFunction, Muta
     }
 
     public void setValue(float value) {
-        isNull = Float.isNaN(value);
+        isNull = Numbers.isNull(value);
         if (!isNull) {
             utf16Sink.clear();
-            utf16Sink.put(value, floatScale);
+            utf16Sink.put(value);
             utf8Sink.clear();
-            utf8Sink.put(value, floatScale);
+            utf8Sink.put(value);
         }
     }
 

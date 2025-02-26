@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,10 @@
 
 package io.questdb.std.datetime.microtime;
 
-import io.questdb.std.*;
+import io.questdb.std.CharSequenceObjHashMap;
+import io.questdb.std.Numbers;
+import io.questdb.std.NumericException;
+import io.questdb.std.Os;
 import io.questdb.std.datetime.DateFormat;
 import io.questdb.std.datetime.DateLocale;
 import io.questdb.std.datetime.DateLocaleFactory;
@@ -79,20 +82,11 @@ public class TimestampFormatUtils {
     }
 
     public static void append0(@NotNull CharSink<?> sink, int val) {
-        if (Math.abs(val) < 10) {
-            sink.putAscii('0');
-        }
-        sink.put(val);
+        DateFormatUtils.append0(sink, val);
     }
 
     public static void append00(@NotNull CharSink<?> sink, int val) {
-        int v = Math.abs(val);
-        if (v < 10) {
-            sink.putAscii('0').putAscii('0');
-        } else if (v < 100) {
-            sink.putAscii('0');
-        }
-        sink.put(val);
+        DateFormatUtils.append00(sink, val);
     }
 
     public static void append00000(@NotNull CharSink<?> sink, int val) {
@@ -144,35 +138,29 @@ public class TimestampFormatUtils {
     }
 
     public static void appendHour12(@NotNull CharSink<?> sink, int hour) {
-        if (hour < 12) {
-            Numbers.append(sink, hour);
-        } else {
-            Numbers.append(sink, hour - 12);
-        }
+        Numbers.append(sink, hour % 12);
     }
 
     public static void appendHour121(@NotNull CharSink<?> sink, int hour) {
-        if (hour < 12) {
-            Numbers.append(sink, hour + 1);
-        } else {
-            Numbers.append(sink, hour - 11);
-        }
+        DateFormatUtils.appendHour121(sink, hour);
     }
 
     public static void appendHour121Padded(@NotNull CharSink<?> sink, int hour) {
-        if (hour < 12) {
-            append0(sink, hour + 1);
-        } else {
-            append0(sink, hour - 11);
-        }
+        int h12 = (hour + 11) % 12 + 1;
+        append0(sink, h12);
     }
 
     public static void appendHour12Padded(@NotNull CharSink<?> sink, int hour) {
-        if (hour < 12) {
-            append0(sink, hour);
-        } else {
-            append0(sink, hour - 12);
-        }
+        append0(sink, hour % 12);
+    }
+
+    public static void appendHour241(@NotNull CharSink<?> sink, int hour) {
+        DateFormatUtils.appendHour241(sink, hour);
+    }
+
+    public static void appendHour241Padded(@NotNull CharSink<?> sink, int hour) {
+        int h24 = (hour + 23) % 24 + 1;
+        append0(sink, h24);
     }
 
     public static void appendYear(@NotNull CharSink<?> sink, int val) {
@@ -222,26 +210,11 @@ public class TimestampFormatUtils {
     }
 
     public static void assertRemaining(int pos, int hi) throws NumericException {
-        if (pos < hi) {
-            return;
-        }
-        throw NumericException.INSTANCE;
+        DateFormatUtils.assertRemaining(pos, hi);
     }
 
     public static int assertString(@NotNull CharSequence delimiter, int len, @NotNull CharSequence in, int pos, int hi) throws NumericException {
-        if (delimiter.charAt(0) == '\'' && delimiter.charAt(len - 1) == '\'') {
-            assertRemaining(pos + len - 3, hi);
-            if (!Chars.equals(delimiter, 1, len - 1, in, pos, pos + len - 2)) {
-                throw NumericException.INSTANCE;
-            }
-            return pos + len - 2;
-        } else {
-            assertRemaining(pos + len - 1, hi);
-            if (!Chars.equals(delimiter, in, pos, pos + len)) {
-                throw NumericException.INSTANCE;
-            }
-            return pos + len;
-        }
+        return DateFormatUtils.assertString(delimiter, len, in, pos, hi);
     }
 
     public static long compute(
@@ -271,20 +244,21 @@ public class TimestampFormatUtils {
             throw NumericException.INSTANCE;
         }
 
-        switch (hourType) {
-            case HOUR_PM:
+        if (hourType == HOUR_24) {
+            // wrong 24-hour clock hour
+            if (hour < 0 || hour > 24) {
+                throw NumericException.INSTANCE;
+            }
+            hour %= 24;
+        } else {
+            // wrong 12-hour clock hour
+            if (hour < 0 || hour > 12) {
+                throw NumericException.INSTANCE;
+            }
+            hour %= 12;
+            if (hourType == HOUR_PM) {
                 hour += 12;
-            case HOUR_24:
-                // wrong hour
-                if (hour < 0 || hour > 23) {
-                    throw NumericException.INSTANCE;
-                }
-                break;
-            default:
-                // wrong 12-hour clock hour
-                if (hour < 0 || hour > 11) {
-                    throw NumericException.INSTANCE;
-                }
+            }
         }
 
         // wrong day of month
@@ -355,25 +329,31 @@ public class TimestampFormatUtils {
     }
 
     // YYYYMMDD
-    public static void formatYYYYMMDD(@NotNull CharSink<?> sink, long millis) {
-        int y = Timestamps.getYear(millis);
+    public static void formatYYYYMMDD(@NotNull CharSink<?> sink, long micros) {
+        int y = Timestamps.getYear(micros);
         boolean l = Timestamps.isLeapYear(y);
-        int m = Timestamps.getMonthOfYear(millis, y, l);
+        int m = Timestamps.getMonthOfYear(micros, y, l);
         Numbers.append(sink, y);
         append0(sink, m);
-        append0(sink, Timestamps.getDayOfMonth(millis, y, m, l));
+        append0(sink, Timestamps.getDayOfMonth(micros, y, m, l));
     }
 
     public static long getReferenceYear() {
         return referenceYear;
     }
 
+    // may be used to initialize calendar indexes ahead of using them
+    @TestOnly
     public static void init() {
     }
 
     @TestOnly
     public static long parseDateTime(@NotNull CharSequence seq) throws NumericException {
         return NANOS_UTC_FORMAT.parse(seq, 0, seq.length(), EN_LOCALE);
+    }
+
+    public static long parseHTTP(@NotNull CharSequence in) throws NumericException {
+        return HTTP_FORMAT.parse(in, EN_LOCALE);
     }
 
     // YYYY-MM-DDThh:mm:ss.mmmZ

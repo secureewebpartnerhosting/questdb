@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,12 +24,24 @@
 
 package io.questdb.test.cutlass.line.udp;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.TableWriter;
 import io.questdb.cutlass.line.udp.DefaultLineUdpReceiverConfiguration;
 import io.questdb.cutlass.line.udp.LineUdpLexer;
 import io.questdb.cutlass.line.udp.LineUdpParserImpl;
 import io.questdb.cutlass.line.udp.LineUdpReceiverConfiguration;
-import io.questdb.std.*;
+import io.questdb.std.Chars;
+import io.questdb.std.Files;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.NumericException;
+import io.questdb.std.Unsafe;
 import io.questdb.std.datetime.microtime.MicrosecondClock;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
 import io.questdb.std.str.Path;
@@ -38,6 +50,7 @@ import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.DefaultTestCairoConfiguration;
 import io.questdb.test.cairo.TableModel;
 import io.questdb.test.cairo.TestFilesFacade;
+import io.questdb.test.cairo.TestTableReaderRecordCursor;
 import io.questdb.test.tools.TestMicroClock;
 import io.questdb.test.tools.TestUtils;
 import org.jetbrains.annotations.NotNull;
@@ -54,29 +67,29 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
     @Test
     public void testAddColumnDefaultDouble() throws Exception {
         testAddColumnFloat(ColumnType.DOUBLE, "tag\ttag2\tfield\tf4\tfield2\tfx\ttimestamp\tf5\n" +
-                "abc\txyz\t100\t9.034\tstr\ttrue\t1970-01-01T00:01:40.000000Z\tNaN\n" +
-                "woopsie\tdaisy\t127\t3.08891\tcomment\ttrue\t1970-01-01T00:01:40.000000Z\tNaN\n" +
+                "abc\txyz\t100\t9.034\tstr\ttrue\t1970-01-01T00:01:40.000000Z\tnull\n" +
+                "woopsie\tdaisy\t127\t3.08891\tcomment\ttrue\t1970-01-01T00:01:40.000000Z\tnull\n" +
                 "444\td555\t110\t1.4\tcomment\ttrue\t1970-01-01T00:01:40.000000Z\t55.0\n" +
-                "666\t777\t40\t1.1\tcomment\\ X\tfalse\t1970-01-01T00:01:40.000000Z\tNaN\n");
+                "666\t777\t40\t1.1\tcomment\\ X\tfalse\t1970-01-01T00:01:40.000000Z\tnull\n");
     }
 
     @Test
     public void testAddColumnDefaultFloat() throws Exception {
         testAddColumnFloat(ColumnType.FLOAT, "tag\ttag2\tfield\tf4\tfield2\tfx\ttimestamp\tf5\n" +
-                "abc\txyz\t100\t9.0340\tstr\ttrue\t1970-01-01T00:01:40.000000Z\tNaN\n" +
-                "woopsie\tdaisy\t127\t3.0889\tcomment\ttrue\t1970-01-01T00:01:40.000000Z\tNaN\n" +
+                "abc\txyz\t100\t9.0340\tstr\ttrue\t1970-01-01T00:01:40.000000Z\tnull\n" +
+                "woopsie\tdaisy\t127\t3.0889\tcomment\ttrue\t1970-01-01T00:01:40.000000Z\tnull\n" +
                 "444\td555\t110\t1.4000\tcomment\ttrue\t1970-01-01T00:01:40.000000Z\t55.0000\n" +
-                "666\t777\t40\t1.1000\tcomment\\ X\tfalse\t1970-01-01T00:01:40.000000Z\tNaN\n");
+                "666\t777\t40\t1.1000\tcomment\\ X\tfalse\t1970-01-01T00:01:40.000000Z\tnull\n");
     }
 
     @Test
     public void testAddColumnDefaultInteger() throws Exception {
-        testAddColumnInteger(ColumnType.INT, "NaN");
+        testAddColumnInteger(ColumnType.INT, "null");
     }
 
     @Test
     public void testAddColumnDefaultLong() throws Exception {
-        testAddColumnInteger(ColumnType.LONG, "NaN");
+        testAddColumnInteger(ColumnType.LONG, "null");
     }
 
     @Test
@@ -127,7 +140,7 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
     public void testBadDouble1() throws Exception {
         final String expected1 = "sym2\tdouble\tint\tbool\tstr\ttimestamp\tsym1\n" +
                 "xyz\t1.6\t15\ttrue\tstring1\t1970-01-01T00:25:00.000000Z\t\n" +
-                "\tNaN\t11\tfalse\tstring2\t1970-01-01T00:25:00.000000Z\tabc\n" +
+                "\tnull\t11\tfalse\tstring2\t1970-01-01T00:25:00.000000Z\tabc\n" +
                 "\t9.4\t6\tfalse\tstring3\t1970-01-01T00:25:00.000000Z\trow3\n" +
                 "\t0.3\t91\ttrue\tstring4\t1970-01-01T00:25:00.000000Z\trow4\n";
 
@@ -193,7 +206,7 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
     public void testBadInt1() throws Exception {
         final String expected1 = "sym2\tdouble\tint\tbool\tstr\ttimestamp\tsym1\n" +
                 "xyz\t1.6\t15\ttrue\tstring1\t1970-01-01T00:25:00.000000Z\t\n" +
-                "\t1.3\tNaN\tfalse\tstring2\t1970-01-01T00:25:00.000000Z\tabc\n" +
+                "\t1.3\tnull\tfalse\tstring2\t1970-01-01T00:25:00.000000Z\tabc\n" +
                 "\t9.4\t6\tfalse\tstring3\t1970-01-01T00:25:00.000000Z\trow3\n" +
                 "\t0.3\t91\ttrue\tstring4\t1970-01-01T00:25:00.000000Z\trow4\n";
 
@@ -214,7 +227,7 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
     @Test
     public void testBadInt2() throws Exception {
         final String expected1 = "sym2\tdouble\tint\tbool\tstr\ttimestamp\tsym1\n" +
-                "xyz\t1.6\tNaN\ttrue\tstring1\t1970-01-01T00:25:00.000000Z\t\n" +
+                "xyz\t1.6\tnull\ttrue\tstring1\t1970-01-01T00:25:00.000000Z\t\n" +
                 "\t1.3\t11\tfalse\tstring2\t1970-01-01T00:25:00.000000Z\tabc\n" +
                 "\t9.4\t6\tfalse\tstring3\t1970-01-01T00:25:00.000000Z\trow3\n" +
                 "\t0.3\t91\ttrue\tstring4\t1970-01-01T00:25:00.000000Z\trow4\n";
@@ -316,7 +329,7 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
         };
 
         // open writer so that pool cannot have it
-        try (TableWriter ignored = newOffPoolWriter(configuration, "x", metrics)) {
+        try (TableWriter ignored = newOffPoolWriter(configuration, "x")) {
             assertThat(expected, lines, "x", configuration);
         }
     }
@@ -579,7 +592,7 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testExistingTableRemovedColumnAndAddedBack() throws Exception {
+    public void testExistingTableRemovedColumnulldAddedBack() throws Exception {
         TableModel model = new TableModel(configuration, "t_ilp21",
                 PartitionBy.NONE)
                 .col("event", ColumnType.SHORT)
@@ -696,7 +709,7 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
     @Test
     public void testLong() throws Exception {
         final String expected1 = "sym2\tdouble\tint\tbool\tstr\ttimestamp\tsym1\n" +
-                "xyz\t1.6\tNaN\ttrue\tstring1\t1970-01-01T00:25:00.000000Z\t\n" +
+                "xyz\t1.6\tnull\ttrue\tstring1\t1970-01-01T00:25:00.000000Z\t\n" +
                 "\t1.3\t11\tfalse\tstring2\t1970-01-01T00:25:00.000000Z\tabc\n" +
                 "\t9.4\t6\tfalse\tstring3\t1970-01-01T00:25:00.000000Z\trow3\n" +
                 "\t0.3\t91\ttrue\tstring4\t1970-01-01T00:25:00.000000Z\trow4\n";
@@ -752,7 +765,7 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
 
         try (Path path = new Path()) {
             CharSequence dirName = "x" + TableUtils.SYSTEM_TABLE_NAME_SUFFIX;
-            Files.mkdirs(path.of(root).concat(dirName).slash$(), configuration.getMkDirMode());
+            Files.mkdirs(path.of(root).concat(dirName).slash(), configuration.getMkDirMode());
             assertThat(expected, lines, "y", configuration);
             Assert.assertEquals(TableUtils.TABLE_RESERVED, TableUtils.exists(configuration.getFilesFacade(), path, root, dirName));
         }
@@ -771,7 +784,7 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
         final String expected1 = "sym2\tdouble\tint\tbool\tstr\ttimestamp\tsym1\n" +
                 "xyz\t1.6\t15\ttrue\tstring1\t2017-10-03T10:00:00.000000Z\t\n" +
                 "\t1.3\t11\tfalse\tstring2\t2017-10-03T10:00:00.010000Z\tabc\n" +
-                "\tNaN\t6\tfalse\tstring3\t2017-10-03T10:00:00.030000Z\trow3\n" +
+                "\tnull\t6\tfalse\tstring3\t2017-10-03T10:00:00.030000Z\trow3\n" +
                 "\t0.3\t91\ttrue\tstring4\t2017-10-03T10:00:00.050000Z\trow4\n";
 
         final String expected2 = "asym1\tasym2\tadouble\ttimestamp\n" +
@@ -890,8 +903,11 @@ public class LineUdpParserImplTest extends AbstractCairoTest {
 
     private void assertTable(CharSequence expected, CharSequence tableName) {
         refreshTablesInBaseEngine();
-        try (TableReader reader = newOffPoolReader(configuration, tableName)) {
-            assertCursorTwoPass(expected, reader.getCursor(), reader.getMetadata());
+        try (
+                TableReader reader = newOffPoolReader(configuration, tableName);
+                TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+        ) {
+            assertCursorTwoPass(expected, cursor, reader.getMetadata());
         }
     }
 

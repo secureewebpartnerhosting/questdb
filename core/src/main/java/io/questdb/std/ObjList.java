@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ public class ObjList<T> implements Mutable, Sinkable, ReadOnlyObjList<T> {
         System.arraycopy(other.buffer, 0, this.buffer, 0, pos);
     }
 
+    @SafeVarargs
     @SuppressWarnings("unchecked")
     public ObjList(T... other) {
         this.buffer = (T[]) new Object[Math.max(other.length, DEFAULT_ARRAY_SIZE)];
@@ -60,9 +61,6 @@ public class ObjList<T> implements Mutable, Sinkable, ReadOnlyObjList<T> {
         this.buffer = (T[]) new Object[Math.max(capacity, DEFAULT_ARRAY_SIZE)];
     }
 
-    /**
-     * {@inheritDoc}
-     */
     public void add(T value) {
         checkCapacity(pos + 1);
         buffer[pos++] = value;
@@ -95,9 +93,7 @@ public class ObjList<T> implements Mutable, Sinkable, ReadOnlyObjList<T> {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
     public void clear() {
         if (pos > 0) {
             Arrays.fill(buffer, null);
@@ -138,9 +134,6 @@ public class ObjList<T> implements Mutable, Sinkable, ReadOnlyObjList<T> {
         pos = Math.max(pos, capacity);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public T get(int index) {
         if (index < pos) {
@@ -172,7 +165,7 @@ public class ObjList<T> implements Mutable, Sinkable, ReadOnlyObjList<T> {
     /**
      * Returns element at the specified position. This method does not do
      * bounds check and may cause memory corruption if index is out of bounds.
-     * Instead the responsibility to check bounds is placed on application code,
+     * Instead, the responsibility to check bounds is placed on application code,
      * which is often the case anyway, for example in indexed for() loop.
      *
      * @param index of the element
@@ -229,11 +222,24 @@ public class ObjList<T> implements Mutable, Sinkable, ReadOnlyObjList<T> {
 
     public int indexOfNull() {
         for (int i = 0, n = pos; i < n; i++) {
-            if (null == getQuick(i)) {
+            if (getQuick(i) == null) {
                 return i;
             }
         }
         return -1;
+    }
+
+    public int indexOfRef(Object o) {
+        if (o == null) {
+            return indexOfNull();
+        } else {
+            for (int i = 0, n = pos; i < n; i++) {
+                if (o == getQuick(i)) {
+                    return i;
+                }
+            }
+            return -1;
+        }
     }
 
     public void insert(int index, int length, T defaultValue) {
@@ -286,15 +292,15 @@ public class ObjList<T> implements Mutable, Sinkable, ReadOnlyObjList<T> {
         buffer[index] = value;
     }
 
-    public void setAll(int capacity, T value) {
-        checkCapacity(capacity);
-        pos = capacity;
+    public void setAll(int count, T value) {
+        checkCapacity(count);
+        pos = count;
         Arrays.fill(buffer, value);
     }
 
-    public void setPos(int capacity) {
-        checkCapacity(capacity);
-        pos = capacity;
+    public void setPos(int newPos) {
+        checkCapacity(newPos);
+        pos = newPos;
     }
 
     public void setQuick(int index, T value) {

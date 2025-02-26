@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 package io.questdb.test;
 
 import io.questdb.ServerMain;
+import io.questdb.cairo.CairoEngine;
 import io.questdb.cairo.security.AllowAllSecurityContext;
 import io.questdb.cairo.sql.Record;
 import io.questdb.cairo.sql.RecordCursor;
@@ -57,19 +58,21 @@ public class ServerMainCleanStartupTest extends AbstractBootstrapTest {
 
             try (
                     final ServerMain serverMain = new ServerMain(getServerMainArgs());
-                    SqlExecutionContext sqlExecutionContext = new SqlExecutionContextImpl(serverMain.getEngine(), 1).with(AllowAllSecurityContext.INSTANCE, null)
+                    SqlExecutionContext sqlExecutionContext = new SqlExecutionContextImpl(serverMain.getEngine(), 1).with(AllowAllSecurityContext.INSTANCE)
             ) {
                 serverMain.start();
-                serverMain.getEngine().compile("create table x (a int, t timestamp) timestamp(t) partition by day wal", sqlExecutionContext);
-                serverMain.getEngine().compile("create table y (b int, t timestamp) timestamp(t) partition by day wal", sqlExecutionContext);
+                serverMain.getEngine().execute("create table x (a int, t timestamp) timestamp(t) partition by day wal", sqlExecutionContext);
+                serverMain.getEngine().execute("create table y (b int, t timestamp) timestamp(t) partition by day wal", sqlExecutionContext);
 
-                serverMain.getEngine().compile("insert into y values(100, 1)", sqlExecutionContext);
-                serverMain.getEngine().compile("insert into y values(200, 2)", sqlExecutionContext);
+                CairoEngine cairoEngine1 = serverMain.getEngine();
+                cairoEngine1.execute("insert into y values(100, 1)", sqlExecutionContext);
+                CairoEngine cairoEngine = serverMain.getEngine();
+                cairoEngine.execute("insert into y values(200, 2)", sqlExecutionContext);
 
                 // wait for the row count
                 try (RecordCursorFactory rfc = serverMain.getEngine().select("select count() from y", sqlExecutionContext)) {
                     while (true) {
-                        try (RecordCursor cursor = rfc.getCursor(sqlExecutionContext)){
+                        try (RecordCursor cursor = rfc.getCursor(sqlExecutionContext)) {
                             Record rec = cursor.getRecord();
                             if (cursor.hasNext()) {
                                 if (rec.getLong(0) == 2) {
@@ -87,9 +90,9 @@ public class ServerMainCleanStartupTest extends AbstractBootstrapTest {
                         sqlExecutionContext,
                         "select * from wal_tables order by 1",
                         sink,
-                        "name\tsuspended\twriterTxn\twriterLagTxnCount\tsequencerTxn\n" +
-                                "x\tfalse\t0\t0\t0\n" +
-                                "y\tfalse\t2\t0\t2\n"
+                        "name\tsuspended\twriterTxn\tbufferedTxnSize\tsequencerTxn\terrorTag\terrorMessage\tmemoryPressure\n" +
+                                "x\tfalse\t0\t0\t0\t\t\t0\n" +
+                                "y\tfalse\t2\t0\t2\t\t\t0\n"
                 );
 
 
@@ -99,7 +102,6 @@ public class ServerMainCleanStartupTest extends AbstractBootstrapTest {
                         "select table_name, ownership_reason from writer_pool where table_name in ('x','y') order by 1",
                         sink,
                         "table_name\townership_reason\n" +
-                                "x\t\n" +
                                 "y\t\n"
                 );
 
@@ -108,7 +110,7 @@ public class ServerMainCleanStartupTest extends AbstractBootstrapTest {
             // start a new server; it should not attempt to open new writers
             try (
                     final ServerMain serverMain = new ServerMain(getServerMainArgs());
-                    SqlExecutionContext sqlExecutionContext = new SqlExecutionContextImpl(serverMain.getEngine(), 1).with(AllowAllSecurityContext.INSTANCE, null)
+                    SqlExecutionContext sqlExecutionContext = new SqlExecutionContextImpl(serverMain.getEngine(), 1).with(AllowAllSecurityContext.INSTANCE)
             ) {
                 serverMain.start();
 

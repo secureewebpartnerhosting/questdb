@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -61,14 +61,14 @@ public class DistinctIntKeyTest extends AbstractCairoTest {
         final SqlExecutionContext sqlExecutionContext = TestUtils.createSqlExecutionCtx(engine, workerCount);
 
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table tab as (select timestamp_sequence('2020-01-01', 10 * 60 * 1000000L) ts, x::int i from long_sequence(10000))" +
                             " timestamp(ts) PARTITION BY MONTH",
                     sqlExecutionContext
             );
 
             try {
-                assertException("select DISTINCT i from tab order by 1 LIMIT 3", sqlExecutionContext);
+                assertExceptionNoLeakCheck("select DISTINCT i from tab order by 1 LIMIT 3", sqlExecutionContext);
             } catch (OutOfMemoryError e) {
                 // ignore
             }
@@ -136,7 +136,7 @@ public class DistinctIntKeyTest extends AbstractCairoTest {
     @Test
     public void testDistinctOnBrokenTable() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table tab as (select timestamp_sequence('2020-01-01', 10 * 60 * 1000000L) ts, x::int i from long_sequence(10000))" +
                             " timestamp(ts) PARTITION BY MONTH"
             );
@@ -145,12 +145,12 @@ public class DistinctIntKeyTest extends AbstractCairoTest {
             final String partition = "2020-02";
 
             TableToken tableToken = engine.verifyTableName("tab");
-            try (Path path = new Path().of(engine.getConfiguration().getRoot()).concat(tableToken).concat(partition).$()) {
+            try (Path path = new Path().of(engine.getConfiguration().getDbRoot()).concat(tableToken).concat(partition)) {
                 Assert.assertTrue(Files.rmdir(path, true));
             }
 
             try {
-                assertException("select DISTINCT i from tab order by 1 LIMIT 3");
+                assertExceptionNoLeakCheck("select DISTINCT i from tab order by 1 LIMIT 3");
             } catch (CairoException e) {
                 TestUtils.assertContains(e.getFlyweightMessage(), "Partition '2020-02' does not exist in table 'tab' directory");
             }

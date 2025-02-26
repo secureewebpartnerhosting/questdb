@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,11 +24,22 @@
 
 package io.questdb.griffin.engine.functions.catalogue;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.AbstractRecordCursorFactory;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.GenericRecordMetadata;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableColumnMetadata;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.TxReader;
 import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
 import io.questdb.cairo.sql.RecordCursor;
 import io.questdb.cairo.sql.RecordMetadata;
+import io.questdb.cairo.wal.seq.SeqTxnTracker;
 import io.questdb.cairo.wal.seq.TableTransactionLogFile;
 import io.questdb.griffin.FunctionFactory;
 import io.questdb.griffin.PlanSink;
@@ -36,21 +47,29 @@ import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.CursorFunction;
 import io.questdb.log.Log;
 import io.questdb.log.LogFactory;
-import io.questdb.std.*;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.IntList;
+import io.questdb.std.Misc;
+import io.questdb.std.Numbers;
+import io.questdb.std.ObjHashSet;
+import io.questdb.std.ObjList;
 import io.questdb.std.datetime.millitime.MillisecondClock;
 import io.questdb.std.str.Path;
 
-import static io.questdb.cairo.TableUtils.META_FILE_NAME;
-import static io.questdb.cairo.wal.WalUtils.*;
+import static io.questdb.cairo.wal.WalUtils.SEQ_DIR;
+import static io.questdb.cairo.wal.WalUtils.TXNLOG_FILE_NAME;
 
 public class WalTableListFunctionFactory implements FunctionFactory {
     private static final Log LOG = LogFactory.getLog(WalTableListFunctionFactory.class);
     private static final RecordMetadata METADATA;
     private static final String SIGNATURE = "wal_tables()";
+    private static final int bufferedTxnSizeColumn;
+    private static final int errorMessageColumn;
+    private static final int errorTagColumn;
+    private static final int memoryPressureLevelColumn;
     private static final int nameColumn;
     private static final int sequencerTxnColumn;
     private static final int suspendedColumn;
-    private static final int writerLagTxnCountColumn;
     private static final int writerTxnColumn;
 
     @Override
@@ -89,7 +108,8 @@ public class WalTableListFunctionFactory implements FunctionFactory {
         public WalTableListCursorFactory(CairoConfiguration configuration, SqlExecutionContext sqlExecutionContext) {
             super(METADATA);
             this.ff = configuration.getFilesFacade();
-            this.rootPath = new Path().of(configuration.getRoot());
+            this.rootPath = new Path();
+            rootPath.of(configuration.getDbRoot());
             this.sqlExecutionContext = sqlExecutionContext;
             this.cursor = new TableListRecordCursor();
         }
@@ -146,14 +166,13 @@ public class WalTableListFunctionFactory implements FunctionFactory {
                 }
 
                 tableIndex++;
-                int n = tableBucket.size();
+                final int n = tableBucket.size();
                 for (; tableIndex < n; tableIndex++) {
-                    TableToken tableToken = tableBucket.get(tableIndex);
+                    final TableToken tableToken = tableBucket.get(tableIndex);
                     if (engine.isWalTable(tableToken) && record.switchTo(tableToken)) {
                         break;
                     }
                 }
-
                 return tableIndex < n;
             }
 
@@ -173,10 +192,13 @@ public class WalTableListFunctionFactory implements FunctionFactory {
             }
 
             public class TableListRecord implements Record {
+                private long bufferedTxnSize;
+                private String errorMessage;
+                private String errorTag;
+                private int memoryPressureLevel;
                 private long sequencerTxn;
                 private boolean suspendedFlag;
                 private String tableName;
-                private long writerLagTxnCount;
                 private long writerTxn;
 
                 @Override
@@ -188,23 +210,37 @@ public class WalTableListFunctionFactory implements FunctionFactory {
                 }
 
                 @Override
+                public int getInt(int col) {
+                    if (col == memoryPressureLevelColumn) {
+                        return memoryPressureLevel;
+                    }
+                    return Numbers.INT_NULL;
+                }
+
+                @Override
                 public long getLong(int col) {
                     if (col == writerTxnColumn) {
                         return writerTxn;
                     }
-                    if (col == writerLagTxnCountColumn) {
-                        return writerLagTxnCount;
+                    if (col == bufferedTxnSizeColumn) {
+                        return bufferedTxnSize;
                     }
                     if (col == sequencerTxnColumn) {
                         return sequencerTxn;
                     }
-                    return Numbers.LONG_NaN;
+                    return Numbers.LONG_NULL;
                 }
 
                 @Override
                 public CharSequence getStrA(int col) {
                     if (col == nameColumn) {
                         return tableName;
+                    }
+                    if (col == errorTagColumn) {
+                        return errorTag;
+                    }
+                    if (col == errorMessageColumn) {
+                        return errorMessage;
                     }
                     return null;
                 }
@@ -216,42 +252,70 @@ public class WalTableListFunctionFactory implements FunctionFactory {
 
                 @Override
                 public int getStrLen(int col) {
-                    CharSequence value = getStrA(col);
-                    return value != null ? value.length() : TableUtils.NULL_LEN;
+                    return TableUtils.lengthOf(getStrA(col));
                 }
 
                 private boolean switchTo(final TableToken tableToken) {
                     try {
+                        long txnFd = -1;
+                        int rootLen = -1;
+                        SeqTxnTracker seqTxnTracker = engine.getTableSequencerAPI().getTxnTracker(tableToken);
+                        memoryPressureLevel = seqTxnTracker.getMemoryPressureLevel();
                         tableName = tableToken.getTableName();
-                        int rootLen = rootPath.size();
-                        rootPath.concat(tableToken).concat(SEQ_DIR);
-                        int metaFd = -1;
-                        int txnFd = -1;
+
+                        if (seqTxnTracker.isInitialised()) {
+                            suspendedFlag = seqTxnTracker.isSuspended();
+                            sequencerTxn = seqTxnTracker.getSeqTxn();
+                            writerTxn = seqTxnTracker.getWriterTxn();
+                            bufferedTxnSize = seqTxnTracker.getLagTxnCount();
+                            if (suspendedFlag) {
+                                // only read error details from seqTxnTracker if the table is suspended
+                                // when the table is not suspended, it is not guaranteed that error details are immediately cleared
+                                errorTag = seqTxnTracker.getErrorTag().text();
+                                errorMessage = seqTxnTracker.getErrorMessage();
+                            } else {
+                                errorTag = "";
+                                errorMessage = "";
+                            }
+                            return true;
+                        }
+
                         try {
-                            metaFd = TableUtils.openRO(ff, rootPath, META_FILE_NAME, LOG);
+                            // We used to have suspended flag saved in the sequencer metadata file
+                            // but we no longer need it since we ignore suspended flag on the restart
+                            // and try to apply transactions once any way.
+
+                            // Not initialized means there will be an attempt to apply
+                            // meaning the table is not suspended
+                            suspendedFlag = false;
+
+                            rootLen = rootPath.size();
+                            rootPath.concat(tableToken).concat(SEQ_DIR);
+
                             txnFd = TableUtils.openRO(ff, rootPath, TXNLOG_FILE_NAME, LOG);
-                            suspendedFlag = ff.readNonNegativeByte(metaFd, SEQ_META_SUSPENDED) > 0;
                             sequencerTxn = ff.readNonNegativeLong(txnFd, TableTransactionLogFile.MAX_TXN_OFFSET_64);
+                            rootPath.trimTo(rootLen).concat(tableToken).concat(TableUtils.TXN_FILE_NAME).$();
+                            if (!ff.exists(rootPath.$())) {
+                                return false;
+                            }
+
+                            txReader.ofRO(rootPath.$(), PartitionBy.NONE);
+                            final CairoEngine engine = sqlExecutionContext.getCairoEngine();
+                            final MillisecondClock millisecondClock = engine.getConfiguration().getMillisecondClock();
+                            final long spinLockTimeout = engine.getConfiguration().getSpinLockTimeout();
+                            TableUtils.safeReadTxn(txReader, millisecondClock, spinLockTimeout);
+                            bufferedTxnSize = txReader.getLagTxnCount();
+                            SeqTxnTracker txnTracker = engine.getTableSequencerAPI().getTxnTracker(tableToken);
+                            return true;
                         } finally {
-                            rootPath.trimTo(rootLen);
-                            ff.close(metaFd);
-                            ff.close(txnFd);
+                            if (txnFd > -1) {
+                                ff.close(txnFd);
+                                txReader.close();
+                            }
+                            if (rootLen > -1) {
+                                rootPath.trimTo(rootLen);
+                            }
                         }
-
-                        rootPath.concat(tableToken).concat(TableUtils.TXN_FILE_NAME).$();
-                        if (!ff.exists(rootPath)) {
-                            return false;
-                        }
-                        txReader.ofRO(rootPath, PartitionBy.NONE);
-                        rootPath.trimTo(rootLen);
-
-                        final CairoEngine engine = sqlExecutionContext.getCairoEngine();
-                        MillisecondClock millisecondClock = engine.getConfiguration().getMillisecondClock();
-                        long spinLockTimeout = engine.getConfiguration().getSpinLockTimeout();
-                        TableUtils.safeReadTxn(txReader, millisecondClock, spinLockTimeout);
-                        writerTxn = txReader.getSeqTxn();
-                        writerLagTxnCount = txReader.getLagTxnCount();
-                        return true;
                     } catch (CairoException ex) {
                         if (ex.errnoReadPathDoesNotExist()) {
                             return false;
@@ -271,10 +335,16 @@ public class WalTableListFunctionFactory implements FunctionFactory {
         suspendedColumn = metadata.getColumnCount() - 1;
         metadata.add(new TableColumnMetadata("writerTxn", ColumnType.LONG));
         writerTxnColumn = metadata.getColumnCount() - 1;
-        metadata.add(new TableColumnMetadata("writerLagTxnCount", ColumnType.LONG));
-        writerLagTxnCountColumn = metadata.getColumnCount() - 1;
+        metadata.add(new TableColumnMetadata("bufferedTxnSize", ColumnType.LONG));
+        bufferedTxnSizeColumn = metadata.getColumnCount() - 1;
         metadata.add(new TableColumnMetadata("sequencerTxn", ColumnType.LONG));
         sequencerTxnColumn = metadata.getColumnCount() - 1;
+        metadata.add(new TableColumnMetadata("errorTag", ColumnType.STRING));
+        errorTagColumn = metadata.getColumnCount() - 1;
+        metadata.add(new TableColumnMetadata("errorMessage", ColumnType.STRING));
+        errorMessageColumn = metadata.getColumnCount() - 1;
+        metadata.add(new TableColumnMetadata("memoryPressure", ColumnType.INT));
+        memoryPressureLevelColumn = metadata.getColumnCount() - 1;
         METADATA = metadata;
     }
 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -55,6 +55,11 @@ public class LineUdpSender extends AbstractLineSender {
     }
 
     @Override
+    public void cancelRow() {
+        throw new LineSenderException("cancelRow() not supported by UDP transport");
+    }
+
+    @Override
     public final AbstractLineSender timestampColumn(CharSequence name, Instant value) {
         writeFieldName(name).put((value.getEpochSecond() * Timestamps.SECOND_NANOS + value.getNano()) / 1000);
         return this;
@@ -62,7 +67,7 @@ public class LineUdpSender extends AbstractLineSender {
 
     @Override
     public final AbstractLineSender timestampColumn(CharSequence name, long value, ChronoUnit unit) {
-        writeFieldName(name).put(value * unitToNanos(unit) / 1000);
+        writeFieldName(name).put(Timestamps.toMicros(value, unit));
         return this;
     }
 }

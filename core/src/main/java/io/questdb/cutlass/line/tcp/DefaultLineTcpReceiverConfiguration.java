@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,12 +26,12 @@ package io.questdb.cutlass.line.tcp;
 
 import io.questdb.DefaultFactoryProvider;
 import io.questdb.FactoryProvider;
+import io.questdb.Metrics;
 import io.questdb.cairo.ColumnType;
 import io.questdb.cairo.PartitionBy;
 import io.questdb.cutlass.line.LineTcpTimestampAdapter;
 import io.questdb.mp.WorkerPoolConfiguration;
 import io.questdb.network.DefaultIODispatcherConfiguration;
-import io.questdb.network.IODispatcherConfiguration;
 import io.questdb.network.NetworkFacade;
 import io.questdb.network.NetworkFacadeImpl;
 import io.questdb.std.FilesFacade;
@@ -41,8 +41,9 @@ import io.questdb.std.datetime.microtime.MicrosecondClockImpl;
 import io.questdb.std.datetime.millitime.MillisecondClock;
 import io.questdb.std.datetime.millitime.MillisecondClockImpl;
 
-public class DefaultLineTcpReceiverConfiguration implements LineTcpReceiverConfiguration {
+public class DefaultLineTcpReceiverConfiguration extends DefaultIODispatcherConfiguration implements LineTcpReceiverConfiguration {
     private static final WorkerPoolConfiguration SHARED_CONFIGURATION = new WorkerPoolConfiguration() {
+
         @Override
         public String getPoolName() {
             return "ilptcp";
@@ -114,11 +115,6 @@ public class DefaultLineTcpReceiverConfiguration implements LineTcpReceiverConfi
     }
 
     @Override
-    public IODispatcherConfiguration getDispatcherConfiguration() {
-        return DefaultIODispatcherConfiguration.INSTANCE;
-    }
-
-    @Override
     public FactoryProvider getFactoryProvider() {
         return DefaultFactoryProvider.INSTANCE;
     }
@@ -149,6 +145,11 @@ public class DefaultLineTcpReceiverConfiguration implements LineTcpReceiverConfi
     }
 
     @Override
+    public Metrics getMetrics() {
+        return Metrics.ENABLED;
+    }
+
+    @Override
     public MicrosecondClock getMicrosecondClock() {
         return MicrosecondClockImpl.INSTANCE;
     }
@@ -159,17 +160,17 @@ public class DefaultLineTcpReceiverConfiguration implements LineTcpReceiverConfi
     }
 
     @Override
-    public int getNetMsgBufferSize() {
-        return 2048;
-    }
-
-    @Override
     public NetworkFacade getNetworkFacade() {
         return NetworkFacadeImpl.INSTANCE;
     }
 
     @Override
-    public long getSymbolCacheWaitUsBeforeReload() {
+    public int getRecvBufferSize() {
+        return 2048;
+    }
+
+    @Override
+    public long getSymbolCacheWaitBeforeReload() {
         return 500_000;
     }
 
@@ -199,22 +200,17 @@ public class DefaultLineTcpReceiverConfiguration implements LineTcpReceiverConfi
     }
 
     @Override
-    public boolean isStringAsTagSupported() {
-        return false;
-    }
-
-    @Override
     public boolean isStringToCharCastAllowed() {
         return false;
     }
 
     @Override
-    public boolean isSymbolAsFieldSupported() {
+    public boolean isUseLegacyStringDefault() {
         return false;
     }
 
     @Override
-    public boolean isUseLegacyStringDefault() {
+    public boolean logMessageOnError() {
         return true;
     }
 }

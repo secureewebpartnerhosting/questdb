@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ import io.questdb.griffin.PlanSink;
 import io.questdb.griffin.engine.functions.StrFunction;
 import io.questdb.std.Chars;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 import io.questdb.std.str.Utf8String;
 
 public class StrConstant extends StrFunction implements ConstantFunction {
@@ -76,11 +75,6 @@ public class StrConstant extends StrFunction implements ConstantFunction {
     }
 
     @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        utf8Sink.put(utf8Value);
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(Record rec) {
         return utf8Value;
     }
@@ -88,6 +82,16 @@ public class StrConstant extends StrFunction implements ConstantFunction {
     @Override
     public Utf8Sequence getVarcharB(Record rec) {
         return utf8Value;
+    }
+
+    @Override
+    public int getVarcharSize(Record rec) {
+        return utf8Value != null ? utf8Value.size() : TableUtils.NULL_LEN;
+    }
+
+    @Override
+    public boolean isNullConstant() {
+        return value == null;
     }
 
     @Override

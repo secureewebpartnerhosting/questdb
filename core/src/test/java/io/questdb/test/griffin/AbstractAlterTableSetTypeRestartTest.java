@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -43,7 +43,11 @@ import org.junit.Assert;
 import org.postgresql.util.PSQLException;
 
 import java.io.IOException;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 import static org.junit.Assert.*;
 
@@ -118,7 +122,7 @@ abstract class AbstractAlterTableSetTypeRestartTest extends AbstractBootstrapTes
     }
 
     static Path doesConvertFileExist(CairoEngine engine, TableToken token, boolean doesExist) {
-        final Path path = Path.PATH.get().of(engine.getConfiguration().getRoot()).concat(token).concat(WalUtils.CONVERT_FILE_NAME);
+        final Path path = Path.PATH.get().of(engine.getConfiguration().getDbRoot()).concat(token).concat(WalUtils.CONVERT_FILE_NAME);
         Assert.assertEquals(Utf8s.toString(path), doesExist, Files.exists(path.$()));
         return doesExist ? path : null;
     }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,14 @@
 
 package io.questdb.griffin.engine.join;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.AbstractRecordMetadata;
+import io.questdb.cairo.ArrayColumnTypes;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.ColumnTypes;
+import io.questdb.cairo.SingleColumnType;
+import io.questdb.cairo.TableColumnMetadata;
 import io.questdb.cairo.map.Map;
 import io.questdb.cairo.map.MapKey;
 import io.questdb.cairo.map.MapValue;
@@ -39,13 +46,21 @@ import java.io.Closeable;
 
 public class JoinRecordMetadata extends AbstractRecordMetadata implements Closeable {
 
-    private final static ColumnTypes keyTypes;
-    private final static ColumnTypes valueTypes;
+    private static final ColumnTypes keyTypes;
+    private static final ColumnTypes valueTypes;
     private final Map map;
     private int refCount;
 
     public JoinRecordMetadata(CairoConfiguration configuration, int columnCount) {
-        this.map = new OrderedMap(configuration.getSqlJoinMetadataPageSize(), keyTypes, valueTypes, columnCount * 2, 0.6, configuration.getSqlJoinMetadataMaxResizes(), MemoryTag.NATIVE_JOIN_MAP);
+        this.map = new OrderedMap(
+                configuration.getSqlJoinMetadataPageSize(),
+                keyTypes,
+                valueTypes,
+                columnCount * 2,
+                0.6,
+                configuration.getSqlJoinMetadataMaxResizes(),
+                MemoryTag.NATIVE_JOIN_MAP
+        );
         this.timestampIndex = -1;
         this.columnCount = 0;
         this.refCount = 1;
@@ -86,15 +101,15 @@ public class JoinRecordMetadata extends AbstractRecordMetadata implements Closea
     }
 
     public void add(CharSequence tableAlias, TableColumnMetadata m) {
-        final CharSequence columnName = m.getName();
+        final CharSequence columnName = m.getColumnName();
         final int dot = addAlias(tableAlias, columnName);
         final Utf16Sink b = Misc.getThreadLocalSink();
         TableColumnMetadata cm;
         if (dot == -1) {
             cm = new TableColumnMetadata(
                     b.put(tableAlias).put('.').put(columnName).toString(),
-                    m.getType(),
-                    m.isIndexed(),
+                    m.getColumnType(),
+                    m.isSymbolIndexFlag(),
                     m.getIndexValueBlockCapacity(),
                     m.isSymbolTableStatic(),
                     m.getMetadata()

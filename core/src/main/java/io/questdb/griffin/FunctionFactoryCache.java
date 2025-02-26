@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,11 @@ import io.questdb.griffin.engine.functions.SwappingArgsFunctionFactory;
 import io.questdb.griffin.model.ExpressionNode;
 import io.questdb.log.Log;
 import io.questdb.log.LogFactory;
-import io.questdb.std.*;
+import io.questdb.std.CharSequenceHashSet;
+import io.questdb.std.IntHashSet;
+import io.questdb.std.LowerCaseCharSequenceHashSet;
+import io.questdb.std.LowerCaseCharSequenceObjHashMap;
+import io.questdb.std.ObjList;
 import io.questdb.std.str.Sinkable;
 import org.jetbrains.annotations.TestOnly;
 
@@ -49,7 +53,7 @@ public class FunctionFactoryCache {
         boolean enableTestFactories = configuration.enableTestFactories();
         LOG.info().$("loading functions [test=").$(enableTestFactories).$(']').$();
         for (FunctionFactory factory : functionFactories) {
-            if (!factory.getClass().getName().contains("test") || enableTestFactories) {
+            if (!factory.getClass().getName().contains("io.questdb.griffin.engine.functions.test.") || enableTestFactories) {
                 try {
                     final FunctionFactoryDescriptor descriptor = new FunctionFactoryDescriptor(factory);
                     final String name = descriptor.getName();
@@ -76,6 +80,15 @@ public class FunctionFactoryCache {
                                 addFactoryToList(factories, greaterThan);
                                 // `b > a` == !(`b <= a`)
                                 addFactoryToList(factories, createNegatingFactory("<=", greaterThan));
+                                break;
+                            case ">":
+                                // `a > b` == `a <= b`
+                                addFactoryToList(factories, createNegatingFactory("<=", factory));
+                                FunctionFactory lessThan = createSwappingFactory("<", factory);
+                                // `a > b` == `b < a`
+                                addFactoryToList(factories, lessThan);
+                                // `b < a` == !(`b >= a`)
+                                addFactoryToList(factories, createNegatingFactory(">=", lessThan));
                                 break;
                         }
                     } else if (factory.isGroupBy()) {

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ import io.questdb.std.BinarySequence;
 import io.questdb.std.Chars;
 import io.questdb.std.IntList;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.StringSink;
 
 public class Base64FunctionFactory implements FunctionFactory {
@@ -83,23 +82,28 @@ public class Base64FunctionFactory implements FunctionFactory {
         @Override
         public CharSequence getStrA(final Record rec) {
             final BinarySequence sequence = getArg().getBin(rec);
+            if (sequence == null) {
+                return null;
+            }
             sinkA.clear();
             Chars.base64Encode(sequence, this.maxLength, sinkA);
             return sinkA;
         }
 
         @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            final BinarySequence sequence = getArg().getBin(rec);
-            Chars.base64Encode(sequence, this.maxLength, utf16Sink);
-        }
-
-        @Override
         public CharSequence getStrB(final Record rec) {
             final BinarySequence sequence = getArg().getBin(rec);
+            if (sequence == null) {
+                return null;
+            }
             sinkB.clear();
             Chars.base64Encode(sequence, this.maxLength, sinkB);
             return sinkB;
+        }
+
+        @Override
+        public boolean isThreadSafe() {
+            return false;
         }
 
         @Override

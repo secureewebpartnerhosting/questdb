@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@ import io.questdb.griffin.engine.functions.constants.StrConstant;
 import io.questdb.std.*;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
 import io.questdb.std.str.StringSink;
-import io.questdb.std.str.Utf16Sink;
 
 public class CastTimestampToStrFunctionFactory implements FunctionFactory {
     @Override
@@ -64,7 +63,7 @@ public class CastTimestampToStrFunctionFactory implements FunctionFactory {
         public CharSequence getStrA(Record rec) {
             sinkA.clear();
             final long value = arg.getTimestamp(rec);
-            if (value == Numbers.LONG_NaN) {
+            if (value == Numbers.LONG_NULL) {
                 return null;
             }
             TimestampFormatUtils.appendDateTimeUSec(sinkA, value);
@@ -72,19 +71,10 @@ public class CastTimestampToStrFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            final long value = arg.getTimestamp(rec);
-            if (value == Numbers.LONG_NaN) {
-                return;
-            }
-            TimestampFormatUtils.appendDateTimeUSec(utf16Sink, value);
-        }
-
-        @Override
         public CharSequence getStrB(Record rec) {
             sinkB.clear();
             final long value = arg.getTimestamp(rec);
-            if (value == Numbers.LONG_NaN) {
+            if (value == Numbers.LONG_NULL) {
                 return null;
             }
             TimestampFormatUtils.appendDateTimeUSec(sinkB, value);

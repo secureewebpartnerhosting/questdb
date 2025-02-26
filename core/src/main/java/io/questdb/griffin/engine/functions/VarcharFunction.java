@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,7 +32,10 @@ import io.questdb.cairo.sql.ScalarFunction;
 import io.questdb.griffin.SqlUtil;
 import io.questdb.std.BinarySequence;
 import io.questdb.std.Long256;
-import io.questdb.std.str.*;
+import io.questdb.std.str.CharSink;
+import io.questdb.std.str.StringSink;
+import io.questdb.std.str.Utf8Sequence;
+import io.questdb.std.str.Utf8s;
 
 public abstract class VarcharFunction implements ScalarFunction {
     private final StringSink utf16SinkA = new StringSink();
@@ -150,14 +153,6 @@ public abstract class VarcharFunction implements ScalarFunction {
     }
 
     @Override
-    public void getStr(Record rec, Utf16Sink utf16Sink) {
-        Utf8Sequence utf8seq = getVarcharA(rec);
-        if (utf8seq != null) {
-            Utf8s.utf8ToUtf16(utf8seq, utf16Sink);
-        }
-    }
-
-    @Override
     public CharSequence getStrA(Record rec) {
         Utf8Sequence utf8seq = getVarcharA(rec);
         if (utf8seq == null) {
@@ -187,8 +182,7 @@ public abstract class VarcharFunction implements ScalarFunction {
 
     @Override
     public int getStrLen(Record rec) {
-        CharSequence cs = getStrA(rec);
-        return cs != null ? cs.length() : TableUtils.NULL_LEN;
+        return TableUtils.lengthOf(getStrA(rec));
     }
 
     @Override
@@ -209,5 +203,14 @@ public abstract class VarcharFunction implements ScalarFunction {
     @Override
     public final int getType() {
         return ColumnType.VARCHAR;
+    }
+
+    @Override
+    public int getVarcharSize(Record rec) {
+        Utf8Sequence utf8seq = getVarcharA(rec);
+        if (utf8seq == null) {
+            return TableUtils.NULL_LEN;
+        }
+        return utf8seq.size();
     }
 }

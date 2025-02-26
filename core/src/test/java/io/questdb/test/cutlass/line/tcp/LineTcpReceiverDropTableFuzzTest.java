@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@
 
 package io.questdb.test.cutlass.line.tcp;
 
-import io.questdb.cairo.TableUtils;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.log.Log;
@@ -34,6 +33,7 @@ import io.questdb.mp.SOCountDownLatch;
 import io.questdb.std.ObjList;
 import io.questdb.std.Os;
 import io.questdb.std.Rnd;
+import io.questdb.std.str.Path;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -55,24 +55,22 @@ public class LineTcpReceiverDropTableFuzzTest extends AbstractLineTcpReceiverFuz
     @Test
     public void testInsertDropParallel() throws Exception {
         Assume.assumeTrue(walEnabled);
-        Rnd rnd = TestUtils.generateRandom(LOG);
-        maintenanceInterval = rnd.nextLong(200);
-        minIdleMsBeforeWriterRelease = rnd.nextLong(200);
+        maintenanceInterval = random.nextLong(200);
+        minIdleMsBeforeWriterRelease = random.nextLong(200);
         initLoadParameters(
-                1 + rnd.nextInt(5000),
-                1 + rnd.nextInt(10),
-                1 + rnd.nextInt(3),
-                1 + rnd.nextInt(4),
-                1 + rnd.nextLong(500)
+                1 + random.nextInt(5000),
+                1 + random.nextInt(10),
+                1 + random.nextInt(3),
+                1 + random.nextInt(4),
+                1 + random.nextLong(500)
         );
-        initDropParameters(rnd.nextInt(8), rnd.nextInt(4));
+        initDropParameters(random.nextInt(8), random.nextInt(4));
         initFuzzParameters(
                 -1,
                 -1,
                 -1,
                 -1,
                 -1,
-                false,
                 false,
                 false,
                 false
@@ -115,8 +113,8 @@ public class LineTcpReceiverDropTableFuzzTest extends AbstractLineTcpReceiverFuz
 
                 for (int i = 0; i < numOfDrops; i++) {
                     final CharSequence tableName = pickCreatedTableName(rnd);
-                    sql = "drop table " + tableName;
-                    drop(sql, executionContext, eventSubSeq);
+                    sql = "drop table if exists " + tableName;
+                    execute(sql, executionContext, eventSubSeq);
                     Os.sleep(10);
                 }
             } catch (Exception e) {
@@ -124,7 +122,7 @@ public class LineTcpReceiverDropTableFuzzTest extends AbstractLineTcpReceiverFuz
                 failureCounter.incrementAndGet();
                 Assert.fail("Drop table failed [e=" + e + ", sql=" + sql + "]");
             } finally {
-                TableUtils.clearThreadLocals();
+                Path.clearThreadLocals();
                 dropsDone.countDown();
             }
         }).start();

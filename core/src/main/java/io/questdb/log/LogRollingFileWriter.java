@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,11 +24,22 @@
 
 package io.questdb.log;
 
+import io.questdb.cairo.CairoException;
 import io.questdb.mp.QueueConsumer;
 import io.questdb.mp.RingQueue;
 import io.questdb.mp.SCSequence;
 import io.questdb.mp.SynchronizedJob;
-import io.questdb.std.*;
+import io.questdb.std.DirectLongList;
+import io.questdb.std.Files;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.FilesFacadeImpl;
+import io.questdb.std.FindVisitor;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Misc;
+import io.questdb.std.Numbers;
+import io.questdb.std.NumericException;
+import io.questdb.std.Unsafe;
+import io.questdb.std.Vect;
 import io.questdb.std.datetime.microtime.MicrosecondClock;
 import io.questdb.std.datetime.microtime.MicrosecondClockImpl;
 import io.questdb.std.datetime.microtime.Timestamps;
@@ -52,8 +63,8 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
     private final int level;
     private final TemplateParser locationParser = new TemplateParser();
     private final DirectUtf8StringZ logFileName = new DirectUtf8StringZ();
-    private final Path path = new Path();
-    private final Path renameToPath = new Path();
+    private final Path path;
+    private final Path renameToPath;
     private final RingQueue<LogRecordUtf8Sink> ring;
     private final AtomicLong rolledCounter = new AtomicLong();
     private final SCSequence subSeq;
@@ -61,11 +72,11 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
     private long buf;
     private String bufferSize;
     private long currentSize;
-    private int fd = -1;
+    private long fd = -1;
     private long idleSpinCount = 0;
     private String lifeDuration;
     private long lim;
-    // can be set via reflection
+    // can be set via reflection in LogFactory.createWriter
     private String location;
     private String logDir;
     // used in size limit based auto-deletion; contains [last_modification_ts, packed_file_name_offsets] pairs
@@ -99,15 +110,25 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
             SCSequence subSeq,
             int level
     ) {
-        this.ff = ff;
-        this.clock = clock;
-        this.ring = ring;
-        this.subSeq = subSeq;
-        this.level = level;
+        try {
+            this.path = new Path();
+            this.renameToPath = new Path();
+            this.ff = ff;
+            this.clock = clock;
+            this.ring = ring;
+            this.subSeq = subSeq;
+            this.level = level;
+        } catch (Throwable th) {
+            close();
+            throw th;
+        }
     }
 
     @Override
     public void bindProperties(LogFactory factory) {
+        if (location == null) {
+            throw CairoException.nonCritical().put("rolling log file location not set [location=null]");
+        }
         locationParser.parseEnv(location, clock.getTicks());
         if (bufferSize != null) {
             try {
@@ -159,7 +180,7 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
         }
 
         if (rollEvery != null) {
-            switch (rollEvery.toUpperCase()) {
+            switch (rollEvery.trim().toUpperCase()) {
                 case "DAY":
                     rollDeadlineFunction = this::getNextDayDeadline;
                     break;
@@ -187,7 +208,11 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
         buf = _wptr = Unsafe.malloc(nBufferSize, MemoryTag.NATIVE_LOGGER);
         lim = buf + nBufferSize;
         openFile();
-        logFileTemplate = location.substring(path.toString().lastIndexOf(Files.SEPARATOR) + 1, location.indexOf('$'));
+        // handles when $ is omitted from the log file location
+        if (location.indexOf('$') < 0) {
+            throw CairoException.nonCritical().put("rolling log file location does not contain `$` character [location=").put(location).put(']');
+        }
+        logFileTemplate = location.substring(path.toString().lastIndexOf(Files.SEPARATOR) + 1, location.lastIndexOf('$'));
         logDir = location.substring(0, location.indexOf(logFileTemplate) - 1);
     }
 
@@ -207,6 +232,11 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
         Misc.free(renameToPath);
         Misc.free(logFileList);
         Misc.free(logFileNameSink);
+    }
+
+    @TestOnly
+    public NextDeadline getRollDeadlineFunction() {
+        return rollDeadlineFunction;
     }
 
     @TestOnly
@@ -323,7 +353,7 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
     }
 
     private long getNextYearDeadline() {
-        return Timestamps.addYear(Timestamps.floorYYYY(clock.getTicks()), 1);
+        return Timestamps.addYears(Timestamps.floorYYYY(clock.getTicks()), 1);
     }
 
     private void openFile() {
@@ -387,15 +417,23 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
         // The list is sorted by last modification ts ASC, so we iterate in reverse order
         // starting with the newest files.
         long totalSize = 0;
-        for (long i = logFileList.size() - 1; i > -1; i -= 2) {
+        long lastIndex = logFileList.size() - 2;
+        for (long i = lastIndex; i > -1; i -= 2) {
             final long packedOffsets = logFileList.get(i);
             final int startOffset = Numbers.decodeLowInt(packedOffsets);
             final int endOffset = Numbers.decodeHighInt(packedOffsets);
             CharSequence fileName = logFileNameSink.subSequence(startOffset, endOffset);
-            path.trimTo(logDir.length()).concat(fileName).$();
-            if ((totalSize += Files.length(path)) > nSizeLimit) {
-                if (!ff.removeQuiet(path)) {
-                    throw new LogError("cannot remove: " + path);
+            path.trimTo(logDir.length()).concat(fileName);
+
+            // Don't check the file size if already over the limit.
+            totalSize += (totalSize <= nSizeLimit) ? Files.length(path.$()) : 0;
+
+            // Leave last file on disk always.
+            if (i != lastIndex && totalSize > nSizeLimit) {
+                // Delete if not the last
+                if (!ff.removeQuiet(path.$())) {
+                    // Do not stall the logging, log the error and continue.
+                    System.err.println("cannot remove: " + path + ", errno: " + ff.errno());
                 }
             }
         }
@@ -405,23 +443,27 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
         if (type == Files.DT_FILE && Files.notDots(filePointer)) {
             logFileName.of(filePointer);
             if (Utf8s.containsAscii(logFileName, logFileTemplate)) {
-                path.trimTo(logDir.length()).concat(filePointer).$();
+                path.trimTo(logDir.length()).concat(filePointer);
                 int startOffset = logFileNameSink.length();
                 logFileNameSink.put(logFileName);
                 int endOffset = logFileNameSink.length();
-                logFileList.add(ff.getLastModified(path));
-                logFileList.add(Numbers.encodeLowHighInts(startOffset, endOffset));
+                // It will be sorted as 128 bits hence
+                // set 2 longs for an entry, [packed_offsets, last_modification_ts]
+                // and it will sort it by last_modification_ts first and then by packed_offsets
+                long packedOffsets = Numbers.encodeLowHighInts(startOffset, endOffset);
+                logFileList.add(packedOffsets);
+                logFileList.add(ff.getLastModified(path.$()));
             }
         }
     }
 
     private void removeExpiredLogs(long filePointer, int type) {
         if (type == Files.DT_FILE && Files.notDots(filePointer)) {
-            path.trimTo(logDir.length()).concat(filePointer).$();
+            path.trimTo(logDir.length()).concat(filePointer);
             logFileName.of(filePointer);
             if (Utf8s.containsAscii(logFileName, logFileTemplate)
                     && clock.getTicks() - ff.getLastModified(path.$()) * Timestamps.MILLI_MICROS > nLifeDuration) {
-                if (!ff.removeQuiet(path)) {
+                if (!ff.removeQuiet(path.$())) {
                     throw new LogError("cannot remove: " + path);
                 }
             }
@@ -452,7 +494,7 @@ public class LogRollingFileWriter extends SynchronizedJob implements Closeable, 
     }
 
     @FunctionalInterface
-    private interface NextDeadline {
+    public interface NextDeadline {
         long getDeadline();
     }
 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ public class InStrFunctionFactoryTest extends AbstractFunctionFactoryTest {
 
     @Test
     public void testBadConstant() {
-        assertFailure(12, "STRING constant expected", "xv", "an", 10);
+        assertFailure(12, "cannot compare STRING with type INT", "xv", "an", 10);
     }
 
     @Test
@@ -56,6 +56,11 @@ public class InStrFunctionFactoryTest extends AbstractFunctionFactoryTest {
     @Test
     public void testTwoArgsOneChar() throws SqlException {
         call("xy", "xy", "yz", "l").andAssert(true);
+    }
+
+    @Test
+    public void testWithNulls() throws SqlException {
+        call(null, "xy", null).andAssert(true);
     }
 
     @Test

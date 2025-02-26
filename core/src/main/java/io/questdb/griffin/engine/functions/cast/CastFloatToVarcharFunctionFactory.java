@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,11 +30,10 @@ import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.FunctionFactory;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.constants.VarcharConstant;
-import io.questdb.std.Chars;
-import io.questdb.std.IntList;
-import io.questdb.std.Misc;
-import io.questdb.std.ObjList;
-import io.questdb.std.str.*;
+import io.questdb.std.*;
+import io.questdb.std.str.StringSink;
+import io.questdb.std.str.Utf8Sequence;
+import io.questdb.std.str.Utf8StringSink;
 
 public class CastFloatToVarcharFunctionFactory implements FunctionFactory {
 
@@ -71,34 +70,25 @@ public class CastFloatToVarcharFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-            final float value = arg.getFloat(rec);
-            if (Float.isNaN(value)) {
-                return;
-            }
-            utf8Sink.put(value, scale);
-        }
-
-        @Override
         public Utf8Sequence getVarcharA(Record rec) {
             final float value = arg.getFloat(rec);
-            if (Float.isNaN(value)) {
-                return null;
+            if (!Numbers.isNull(value)) {
+                sinkA.clear();
+                sinkA.put(value, scale);
+                return sinkA;
             }
-            sinkA.clear();
-            sinkA.put(value, 4);
-            return sinkA;
+            return null;
         }
 
         @Override
         public Utf8Sequence getVarcharB(Record rec) {
             final float value = arg.getFloat(rec);
-            if (Float.isNaN(value)) {
-                return null;
+            if (!Numbers.isNull(value)) {
+                sinkB.clear();
+                sinkB.put(value, scale);
+                return sinkB;
             }
-            sinkB.clear();
-            sinkB.put(value, 4);
-            return sinkB;
+            return null;
         }
     }
 }

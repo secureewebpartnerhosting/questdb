@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ public class FirstUuidGroupByFunctionFactoryTest extends AbstractCairoTest {
 
     @Test
     public void testAllNull() throws SqlException {
-        ddl("create table tab (f uuid)");
+        execute("create table tab (f uuid)");
 
         try (TableWriter w = getWriter("tab")) {
             for (int i = 100; i > 10; i--) {
@@ -54,15 +54,15 @@ public class FirstUuidGroupByFunctionFactoryTest extends AbstractCairoTest {
                 Record record = cursor.getRecord();
                 Assert.assertEquals(1, cursor.size());
                 Assert.assertTrue(cursor.hasNext());
-                Assert.assertEquals(Numbers.LONG_NaN, record.getLong128Lo(0));
-                Assert.assertEquals(Numbers.LONG_NaN, record.getLong128Hi(0));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getLong128Lo(0));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getLong128Hi(0));
             }
         }
     }
 
     @Test
     public void testFirstNull() throws SqlException {
-        ddl("create table tab (f uuid)");
+        execute("create table tab (f uuid)");
 
         final Rnd rnd = new Rnd();
         try (TableWriter w = getWriter("tab")) {
@@ -81,15 +81,15 @@ public class FirstUuidGroupByFunctionFactoryTest extends AbstractCairoTest {
                 Record record = cursor.getRecord();
                 Assert.assertEquals(1, cursor.size());
                 Assert.assertTrue(cursor.hasNext());
-                Assert.assertEquals(Numbers.LONG_NaN, record.getLong128Lo(0));
-                Assert.assertEquals(Numbers.LONG_NaN, record.getLong128Hi(0));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getLong128Lo(0));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getLong128Hi(0));
             }
         }
     }
 
     @Test
     public void testNonNull() throws SqlException {
-        ddl("create table tab (f uuid)");
+        execute("create table tab (f uuid)");
 
         final Rnd rnd = new Rnd();
         try (TableWriter w = getWriter("tab")) {
@@ -113,7 +113,7 @@ public class FirstUuidGroupByFunctionFactoryTest extends AbstractCairoTest {
 
     @Test
     public void testSomeNull() throws SqlException {
-        ddl("create table tab (f uuid)");
+        execute("create table tab (f uuid)");
 
         try (TableWriter w = getWriter("tab")) {
             for (int i = 100; i > 10; i--) {

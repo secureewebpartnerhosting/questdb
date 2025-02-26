@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ public class LastNotNullGroupByFunctionFactoryTest extends AbstractCairoTest {
     public void testAllNull() throws Exception {
         assertQuery(
                 "a0\ta1\ta2\ta3\ta4\ta5\ta6\ta7\ta8\ta9\ta10\ta11\ta12\ta13\ta14\n" +
-                        "\t\tNaN\tNaN\tNaN\tNaN\t\t\t\t\t\t\t\t\t\n",
+                        "\t\tnull\tnull\tnull\tnull\t\t\t\t\t\t\t\t\t\n",
                 "select last_not_null(a0) a0," +
                         "     last_not_null(a1) a1," +
                         "     last_not_null(a2) a2," +
@@ -79,7 +79,7 @@ public class LastNotNullGroupByFunctionFactoryTest extends AbstractCairoTest {
     public void testLastNotNull() throws Exception {
         UUID lastUuid = UUID.randomUUID();
 
-        ddl("create table tab (a0 char," +
+        execute("create table tab (a0 char," +
                 "a1 date," +
                 "a2 double," +
                 "a3 float," +
@@ -96,7 +96,7 @@ public class LastNotNullGroupByFunctionFactoryTest extends AbstractCairoTest {
                 "a14 ipv4 " +
                 ")");
 
-        insert("insert into tab values(" +
+        execute("insert into tab values(" +
                 "'b'," +
                 "to_date('2023-10-22','yyyy-MM-dd')," +
                 "22.2," +
@@ -114,7 +114,7 @@ public class LastNotNullGroupByFunctionFactoryTest extends AbstractCairoTest {
                 " '2.0.0.0'" +
                 ")");
 
-        insert("insert into tab values(" +
+        execute("insert into tab values(" +
                 "'a', " +
                 "to_date('2023-10-23','yyyy-MM-dd')," +
                 "2.2," +
@@ -132,7 +132,7 @@ public class LastNotNullGroupByFunctionFactoryTest extends AbstractCairoTest {
                 " '1.0.0.0'" +
                 ")");
 
-        insert("insert into tab (a1) values (null)"); // other columns default to null
+        execute("insert into tab (a1) values (null)"); // other columns default to null
 
         assertSql(
                 "a0\ta1\ta2\ta3\ta4\ta5\ta6\ta7\ta8\ta9\ta10\ta11\ta12\ta13\ta14\n" +

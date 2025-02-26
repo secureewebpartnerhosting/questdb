@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -156,7 +156,7 @@ public class CastTest extends AbstractCairoTest {
 
     @Test
     public void testBooleanToDoubleConstant() throws Exception {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\n0.0\n",
                 "select cast(false as double)",
                 null,
@@ -165,7 +165,7 @@ public class CastTest extends AbstractCairoTest {
                 true
         );
 
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\n0.0\n",
                 "select cast((150 < 0) as double)",
                 null,
@@ -202,7 +202,7 @@ public class CastTest extends AbstractCairoTest {
 
     @Test
     public void testBooleanToFloatConstant() throws Exception {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\n0.0000\n",
                 "select cast(false as float)",
                 null,
@@ -211,7 +211,7 @@ public class CastTest extends AbstractCairoTest {
                 true
         );
 
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\n0.0000\n",
                 "select cast((150 < 100) as float)",
                 null,
@@ -248,7 +248,7 @@ public class CastTest extends AbstractCairoTest {
 
     @Test
     public void testBooleanToIntConstant() throws Exception {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\n0\n",
                 "select cast(false as int)",
                 null,
@@ -257,7 +257,7 @@ public class CastTest extends AbstractCairoTest {
                 true
         );
 
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\n0\n",
                 "select cast((150 < 0) as int)",
                 null,
@@ -266,7 +266,7 @@ public class CastTest extends AbstractCairoTest {
                 true
         );
 
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\n1\n",
                 "select cast((150 < 250) as int)",
                 null,
@@ -678,7 +678,7 @@ public class CastTest extends AbstractCairoTest {
                 false
         );
 
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\nfalse\n",
                 "select cast(0x00 as boolean)",
                 null,
@@ -686,7 +686,7 @@ public class CastTest extends AbstractCairoTest {
                 true,
                 true
         );
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\ntrue\n",
                 "select cast(0xF0 as boolean)",
                 null,
@@ -1384,13 +1384,13 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(cast(rnd_int(0,11,0)+47 as char) as double) from long_sequence(10)",
                 "a\n" +
                         "5.0\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "6.0\n" +
                         "3.0\n" +
                         "7.0\n" +
                         "6.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0.0\n" +
                         "9.0\n",
                 true,
@@ -1409,13 +1409,13 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(cast(rnd_int(0,11,0)+47 as char) as float) from long_sequence(10)",
                 "a\n" +
                         "5.0000\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "6.0000\n" +
                         "3.0000\n" +
                         "7.0000\n" +
                         "6.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0.0000\n" +
                         "9.0000\n",
                 true,
@@ -1434,13 +1434,13 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(cast(rnd_int(0,11,0)+47 as char) as int) from long_sequence(10)",
                 "a\n" +
                         "5\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "6\n" +
                         "3\n" +
                         "7\n" +
                         "6\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0\n" +
                         "9\n",
                 true,
@@ -1459,13 +1459,13 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(cast(rnd_int(0,11,0)+47 as char) as long) from long_sequence(10)",
                 "a\n" +
                         "5\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "6\n" +
                         "3\n" +
                         "7\n" +
                         "6\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0\n" +
                         "9\n",
                 true,
@@ -1962,14 +1962,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_date(1,150,2) as double) from long_sequence(10)",
                 "a\n" +
                         "67.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "30.0\n" +
                         "99.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "137.0\n" +
                         "127.0\n" +
                         "58.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "111.0\n",
                 true,
                 true,
@@ -1987,14 +1987,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_date(1,150,2) as float) from long_sequence(10)",
                 "a\n" +
                         "67.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "30.0000\n" +
                         "99.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "137.0000\n" +
                         "127.0000\n" +
                         "58.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "111.0000\n",
                 true,
                 true,
@@ -2012,14 +2012,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_date(1000000L, 1000000000L, 2) as int) from long_sequence(10)",
                 "a\n" +
                         "985257636\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "968130026\n" +
                         "555619965\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "712286238\n" +
                         "215755333\n" +
                         "720037886\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "129724714\n",
                 true,
                 true,
@@ -2037,14 +2037,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_date(1,15000000,2) as long) from long_sequence(10)",
                 "a\n" +
                         "13992367\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "7587030\n" +
                         "11082999\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "602537\n" +
                         "5112277\n" +
                         "5361808\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "8600061\n",
                 true,
                 true,
@@ -2382,7 +2382,7 @@ public class CastTest extends AbstractCairoTest {
 
     @Test
     public void testDoubleToBoolean() throws Exception {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\nfalse\n",
                 "select cast(0.0 as boolean)",
                 null,
@@ -2390,7 +2390,7 @@ public class CastTest extends AbstractCairoTest {
                 true,
                 true
         );
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\ntrue\n",
                 "select cast(0.123 as boolean)",
                 null,
@@ -2493,7 +2493,7 @@ public class CastTest extends AbstractCairoTest {
                         "0.3491070363730514\n" +
                         "0.7611029514995744\n" +
                         "0.4217768841969397\n" +
-                        "NaN\n",
+                        "null\n",
                 true,
                 true,
                 false
@@ -2518,7 +2518,7 @@ public class CastTest extends AbstractCairoTest {
                         "0.3491\n" +
                         "0.7611\n" +
                         "0.4218\n" +
-                        "NaN\n",
+                        "null\n",
                 true,
                 true,
                 false
@@ -2568,7 +2568,7 @@ public class CastTest extends AbstractCairoTest {
                         "349\n" +
                         "761\n" +
                         "421\n" +
-                        "NaN\n",
+                        "null\n",
                 true,
                 true,
                 false
@@ -2802,14 +2802,14 @@ public class CastTest extends AbstractCairoTest {
                         "0.3491070363730514\t0.3491070363730514\n" +
                         "0.7611029514995744\t0.7611029514995744\n" +
                         "0.4217768841969397\t0.4217768841969397\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "0.7261136209823622\t0.7261136209823622\n" +
                         "0.4224356661645131\t0.4224356661645131\n" +
                         "0.7094360487171202\t0.7094360487171202\n" +
                         "0.38539947865244994\t0.38539947865244994\n" +
                         "0.0035983672154330515\t0.0035983672154330515\n" +
                         "0.3288176907679504\t0.3288176907679504\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "0.9771103146051203\t0.9771103146051203\n" +
                         "0.24808812376657652\t0.24808812376657652\n" +
                         "0.6381607531178513\t0.6381607531178513\n",
@@ -2930,7 +2930,7 @@ public class CastTest extends AbstractCairoTest {
 
     @Test
     public void testFloatToBoolean() throws Exception {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\ntrue\n",
                 "select cast(0.0002 as boolean)",
                 null,
@@ -2938,7 +2938,7 @@ public class CastTest extends AbstractCairoTest {
                 true,
                 true
         );
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\nfalse\n",
                 "select cast(0.0000 as boolean)",
                 null,
@@ -3033,14 +3033,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_float(2) as double) from long_sequence(10)",
                 "a\n" +
                         "0.804322361946106\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0.0848696231842041\n" +
                         "0.29919904470443726\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0.934460461139679\n" +
                         "0.1312335729598999\n" +
                         "0.7905675172805786\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0.2245233654975891\n",
                 true,
                 true,
@@ -3058,14 +3058,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_float(2) as float) from long_sequence(10)",
                 "a\n" +
                         "0.8043\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0.0849\n" +
                         "0.2992\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0.9345\n" +
                         "0.1312\n" +
                         "0.7906\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "0.2245\n",
                 true,
                 true,
@@ -3083,14 +3083,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_float(2)*10000 as int) from long_sequence(10)",
                 "a\n" +
                         "8043\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "848\n" +
                         "2991\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "9344\n" +
                         "1312\n" +
                         "7905\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "2245\n",
                 true,
                 true,
@@ -3100,7 +3100,7 @@ public class CastTest extends AbstractCairoTest {
 
     @Test
     public void testFloatToLong() throws Exception {
-        ddl("create table rndfloat as (select rnd_float(2) fl from long_sequence(10))");
+        execute("create table rndfloat as (select rnd_float(2) fl from long_sequence(10))");
         engine.releaseAllReaders();
         engine.releaseAllWriters();
 
@@ -3112,14 +3112,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select fl, cast(fl*10000000000l as long) from rndfloat",
                 "fl\ta\n" +
                         "0.804322361946106\t8043223619\n" +
-                        "NaN\tNaN\n" +
+                        "null\tnull\n" +
                         "0.0848696231842041\t848696231\n" +
                         "0.29919904470443726\t2991990447\n" +
-                        "NaN\tNaN\n" +
+                        "null\tnull\n" +
                         "0.934460461139679\t9344604611\n" +
                         "0.1312335729598999\t1312335729\n" +
                         "0.7905675172805786\t7905675172\n" +
-                        "NaN\tNaN\n" +
+                        "null\tnull\n" +
                         "0.2245233654975891\t2245233654\n",
                 true,
                 true,
@@ -3346,22 +3346,22 @@ public class CastTest extends AbstractCairoTest {
         assertQuery(
                 "b\ta\n" +
                         "0.8043\t0.8043\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "0.0849\t0.0849\n" +
                         "0.2992\t0.2992\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "0.9345\t0.9345\n" +
                         "0.1312\t0.1312\n" +
                         "0.7906\t0.7906\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "0.2245\t0.2245\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "0.3491\t0.3491\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "0.7611\t0.7611\n" +
                         "0.5244\t0.5244\n" +
                         "0.5599\t0.5599\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "0.7261\t0.7261\n" +
                         "0.6277\t0.6277\n" +
                         "0.6694\t0.6694\n",
@@ -3579,7 +3579,7 @@ public class CastTest extends AbstractCairoTest {
 
     @Test
     public void testIntConstToBoolean() throws Exception {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\tcast1\tcast2\tcast3\ntrue\tfalse\ttrue\ttrue\n",
                 "select cast(-1 as boolean), cast(0 as boolean), cast(1 as boolean), cast(2 as boolean)",
                 null,
@@ -3601,7 +3601,7 @@ public class CastTest extends AbstractCairoTest {
                         "true\n" +
                         "true\n" +
                         "true\n" +
-                        "true\n" +
+                        "false\n" +
                         "true\n" +
                         "true\n" +
                         "true\n" +
@@ -3726,7 +3726,7 @@ public class CastTest extends AbstractCairoTest {
                         "19.0\n" +
                         "72.0\n" +
                         "90.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "7.0\n" +
                         "17.0\n" +
                         "65.0\n" +
@@ -3751,7 +3751,7 @@ public class CastTest extends AbstractCairoTest {
                         "19.0000\n" +
                         "72.0000\n" +
                         "90.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "7.0000\n" +
                         "17.0000\n" +
                         "65.0000\n" +
@@ -3776,7 +3776,7 @@ public class CastTest extends AbstractCairoTest {
                         "40\n" +
                         "60\n" +
                         "57\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "37\n" +
                         "38\n" +
                         "38\n" +
@@ -3801,7 +3801,7 @@ public class CastTest extends AbstractCairoTest {
                         "19\n" +
                         "72\n" +
                         "90\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "7\n" +
                         "17\n" +
                         "65\n" +
@@ -4033,22 +4033,22 @@ public class CastTest extends AbstractCairoTest {
         assertQuery(
                 "b\ta\n" +
                         "16\t16\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "11\t11\n" +
                         "20\t20\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "11\t11\n" +
                         "12\t12\n" +
                         "18\t18\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "17\t17\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "16\t16\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "19\t19\n" +
                         "15\t15\n" +
                         "15\t15\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "12\t12\n" +
                         "15\t15\n" +
                         "18\t18\n",
@@ -4168,6 +4168,24 @@ public class CastTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testIntervalToStr() throws Exception {
+        assertMemoryLeak(() -> assertSql(
+                "cast\n" +
+                        "('1991-11-08T09:53:57.643Z', '1995-12-22T06:21:36.636Z')\n" +
+                        "('1987-02-10T05:53:36.329Z', '1992-01-23T11:30:00.830Z')\n" +
+                        "('1976-02-09T03:40:32.587Z', '1979-08-18T11:00:20.247Z')\n" +
+                        "('2028-07-16T17:59:01.082Z', '2029-03-05T12:49:29.174Z')\n" +
+                        "('2014-08-18T15:50:20.864Z', '2016-02-17T19:58:31.466Z')\n" +
+                        "('1998-08-22T09:31:10.281Z', '2003-08-09T14:59:20.394Z')\n" +
+                        "('2031-04-13T21:30:51.977Z', '2033-04-24T06:22:27.339Z')\n" +
+                        "('1998-08-25T13:53:59.100Z', '2000-06-21T03:19:31.403Z')\n" +
+                        "('2031-02-04T05:18:53.600Z', '2033-08-21T03:18:57.217Z')\n" +
+                        "('1975-05-26T13:57:40.478Z', '1977-07-09T21:00:52.129Z')\n",
+                "select cast(rnd_interval() as string) from long_sequence(10)"
+        ));
+    }
+
+    @Test
     public void testLong256ToBoolean() throws Exception {
         assertQuery(
                 "a\n",
@@ -4190,7 +4208,7 @@ public class CastTest extends AbstractCairoTest {
                 true,
                 false
         );
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\nfalse\n",
                 "select cast(cast(0 as long) as boolean)",
                 null,
@@ -4198,7 +4216,7 @@ public class CastTest extends AbstractCairoTest {
                 true,
                 true
         );
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\ntrue\n",
                 "select cast(cast(100 as long) as boolean)",
                 null,
@@ -4345,7 +4363,7 @@ public class CastTest extends AbstractCairoTest {
                         "true\n" +
                         "true\n" +
                         "true\n" +
-                        "true\n" +
+                        "false\n" +
                         "true\n" +
                         "true\n" +
                         "true\n" +
@@ -4470,7 +4488,7 @@ public class CastTest extends AbstractCairoTest {
                         "67.0\n" +
                         "126.0\n" +
                         "124.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "57.0\n" +
                         "33.0\n" +
                         "85.0\n" +
@@ -4495,7 +4513,7 @@ public class CastTest extends AbstractCairoTest {
                         "67.0000\n" +
                         "126.0000\n" +
                         "124.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "57.0000\n" +
                         "33.0000\n" +
                         "85.0000\n" +
@@ -4520,7 +4538,7 @@ public class CastTest extends AbstractCairoTest {
                         "55\n" +
                         "48\n" +
                         "55\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "45\n" +
                         "36\n" +
                         "34\n" +
@@ -4545,7 +4563,7 @@ public class CastTest extends AbstractCairoTest {
                         "67\n" +
                         "126\n" +
                         "124\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "57\n" +
                         "33\n" +
                         "85\n" +
@@ -4777,22 +4795,22 @@ public class CastTest extends AbstractCairoTest {
         assertQuery(
                 "b\ta\n" +
                         "20\t20\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "11\t11\n" +
                         "13\t13\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "15\t15\n" +
                         "19\t19\n" +
                         "17\t17\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "10\t10\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "17\t17\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "17\t17\n" +
                         "18\t18\n" +
                         "18\t18\n" +
-                        "\tNaN\n" +
+                        "\tnull\n" +
                         "12\t12\n" +
                         "11\t11\n" +
                         "15\t15\n",
@@ -4960,7 +4978,7 @@ public class CastTest extends AbstractCairoTest {
                 false
         );
 
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\nfalse\n",
                 "select cast(cast(0 as short) as boolean)",
                 null,
@@ -4968,7 +4986,7 @@ public class CastTest extends AbstractCairoTest {
                 true,
                 true
         );
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\ntrue\n",
                 "select cast(cast(256 as short) as boolean)",
                 null,
@@ -5665,19 +5683,19 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_str('1234.556', '988.223', 'abc', null) as double) from long_sequence(15)",
                 "a\n" +
                         "1234.556\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "988.223\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "988.223\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "1234.556\n" +
                         "1234.556\n" +
                         "1234.556\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "988.223\n",
                 true,
                 true,
@@ -5711,19 +5729,19 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_str('9.23', '4.15', 'xyz', null) as float) from long_sequence(15)",
                 "a\n" +
                         "9.2300\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "4.1500\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "4.1500\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "9.2300\n" +
                         "9.2300\n" +
                         "9.2300\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "4.1500\n",
                 true,
                 true,
@@ -5743,10 +5761,10 @@ public class CastTest extends AbstractCairoTest {
                         "90092\n" +
                         "90092\n" +
                         "2203\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "2203\n" +
                         "90092\n" +
                         "2203\n",
@@ -5768,10 +5786,10 @@ public class CastTest extends AbstractCairoTest {
                         "2334\n" +
                         "2334\n" +
                         "99002\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "99002\n" +
                         "2334\n" +
                         "99002\n",
@@ -6156,19 +6174,19 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_symbol('1234.556', '988.223', 'abc', null) as double) from long_sequence(15)",
                 "a\n" +
                         "1234.556\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "988.223\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "988.223\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "1234.556\n" +
                         "1234.556\n" +
                         "1234.556\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "988.223\n",
                 true,
                 true,
@@ -6186,19 +6204,19 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_symbol('9.23', '4.15', 'xyz', null) as float) from long_sequence(15)",
                 "a\n" +
                         "9.2300\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "4.1500\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "4.1500\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "9.2300\n" +
                         "9.2300\n" +
                         "9.2300\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "4.1500\n",
                 true,
                 true,
@@ -6216,14 +6234,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_symbol('100', '200', 'abc', null) as int) from long_sequence(10)",
                 "a\n" +
                         "100\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "200\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "200\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "100\n",
                 true,
                 true,
@@ -6241,14 +6259,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_symbol('100', '200', 'abc', null) as long) from long_sequence(10)",
                 "a\n" +
                         "100\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "200\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "200\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "100\n",
                 true,
                 true,
@@ -6537,21 +6555,21 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_timestamp(10000000000L, 100000000000L, 2) as boolean) from long_sequence(10)",
                 "a\n" +
                         "true\n" +
+                        "false\n" +
+                        "true\n" +
+                        "true\n" +
+                        "false\n" +
                         "true\n" +
                         "true\n" +
                         "true\n" +
-                        "true\n" +
-                        "true\n" +
-                        "true\n" +
-                        "true\n" +
-                        "true\n" +
+                        "false\n" +
                         "true\n",
                 true,
                 true,
                 false
         );
 
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\nfalse\n",
                 "select cast(cast(0L as timestamp) as boolean)",
                 null,
@@ -6559,7 +6577,7 @@ public class CastTest extends AbstractCairoTest {
                 true,
                 true
         );
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "cast\ntrue\n",
                 "select cast(cast(5L as timestamp) as boolean)",
                 null,
@@ -6679,14 +6697,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_timestamp(1,150,2) as double) from long_sequence(10)",
                 "a\n" +
                         "67.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "30.0\n" +
                         "99.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "137.0\n" +
                         "127.0\n" +
                         "58.0\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "111.0\n",
                 true,
                 true,
@@ -6704,14 +6722,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_timestamp(1,150,2) as float) from long_sequence(10)",
                 "a\n" +
                         "67.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "30.0000\n" +
                         "99.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "137.0000\n" +
                         "127.0000\n" +
                         "58.0000\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "111.0000\n",
                 true,
                 true,
@@ -6729,14 +6747,14 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_timestamp(1000000L, 1000000000L, 2) as int) from long_sequence(10)",
                 "a\n" +
                         "985257636\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "968130026\n" +
                         "555619965\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "712286238\n" +
                         "215755333\n" +
                         "720037886\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "129724714\n",
                 true,
                 true,
@@ -6756,7 +6774,7 @@ public class CastTest extends AbstractCairoTest {
                         "13992367\n" +
                         "4501476\n" +
                         "2660374\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "5864007\n" +
                         "10281933\n" +
                         "6977935\n" +
@@ -7231,19 +7249,19 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_varchar('1234.556', '988.223', 'abc', null) as double) from long_sequence(15)",
                 "a\n" +
                         "1234.556\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "988.223\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "988.223\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "1234.556\n" +
                         "1234.556\n" +
                         "1234.556\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "988.223\n",
                 true,
                 true,
@@ -7277,19 +7295,19 @@ public class CastTest extends AbstractCairoTest {
                 "insert into tab select cast(rnd_varchar('9.23', '4.15', 'xyz', null) as float) from long_sequence(15)",
                 "a\n" +
                         "9.2300\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "4.1500\n" +
-                        "NaN\n" +
+                        "null\n" +
                         "4.1500\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "9.2300\n" +
                         "9.2300\n" +
                         "9.2300\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
                         "4.1500\n",
                 true,
                 true,
@@ -7334,10 +7352,10 @@ public class CastTest extends AbstractCairoTest {
                         "90092\n" +
                         "90092\n" +
                         "2203\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "2203\n" +
                         "90092\n" +
                         "2203\n",
@@ -7359,10 +7377,10 @@ public class CastTest extends AbstractCairoTest {
                         "2334\n" +
                         "2334\n" +
                         "99002\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
-                        "NaN\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
+                        "null\n" +
                         "99002\n" +
                         "2334\n" +
                         "99002\n",

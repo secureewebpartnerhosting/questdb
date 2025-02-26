@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,9 +32,7 @@ import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.constants.VarcharConstant;
 import io.questdb.std.IntList;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 import io.questdb.std.str.Utf8StringSink;
 
 public class CastShortToVarcharFunctionFactory implements FunctionFactory {
@@ -65,11 +63,6 @@ public class CastShortToVarcharFunctionFactory implements FunctionFactory {
 
         public Func(Function arg) {
             super(arg);
-        }
-
-        @Override
-        public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-            utf8Sink.put(arg.getShort(rec));
         }
 
         @Override

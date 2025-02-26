@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -106,6 +106,13 @@ public class GenericLexer implements ImmutableIterator<CharSequence> {
 
     public static CharSequence unquote(CharSequence value) {
         if (Chars.isQuoted(value)) {
+            return value.subSequence(1, value.length() - 1);
+        }
+        return immutableOf(value);
+    }
+
+    public static CharSequence unquoteIfNoDots(CharSequence value) {
+        if (Chars.isQuoted(value) && Chars.indexOf(value, '.') == -1) {
             return value.subSequence(1, value.length() - 1);
         }
         return immutableOf(value);
@@ -293,8 +300,8 @@ public class GenericLexer implements ImmutableIterator<CharSequence> {
         return last = flyweightSequence;
     }
 
-    public void of(CharSequence cs) {
-        of(cs, 0, cs == null ? 0 : cs.length());
+    public void of(CharSequence content) {
+        of(content, 0, content == null ? 0 : content.length());
     }
 
     public void of(CharSequence cs, int lo, int hi) {
@@ -461,7 +468,7 @@ public class GenericLexer implements ImmutableIterator<CharSequence> {
         }
     }
 
-    public class FloatingSequence extends AbstractCharSequence implements Mutable {
+    public class FloatingSequence extends AbstractCharSequence implements Mutable, BufferWindowCharSequence {
         int hi;
         int lo;
 
@@ -493,6 +500,13 @@ public class GenericLexer implements ImmutableIterator<CharSequence> {
 
         public void setLo(int lo) {
             this.lo = lo;
+        }
+
+        @Override
+        public void shiftLo(int positiveOffset) {
+            assert positiveOffset > -1;
+            this.lo += positiveOffset;
+            assert lo < hi;
         }
 
         @Override

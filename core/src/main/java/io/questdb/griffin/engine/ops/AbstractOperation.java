@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,9 +37,12 @@ import org.jetbrains.annotations.Nullable;
 public abstract class AbstractOperation implements AsyncWriterCommand, QuietCloseable {
     private static final long NO_CORRELATION_ID = -1L;
     protected @Nullable TableToken tableToken;
-    @Nullable SecurityContext securityContext;
-    @Nullable SqlExecutionContext sqlExecutionContext;
-    @Nullable CharSequence sqlText;
+    @Nullable
+    SecurityContext securityContext;
+    @Nullable
+    SqlExecutionContext sqlExecutionContext;
+    @Nullable
+    CharSequence sqlText;
     int tableNamePosition;
     private String cmdName;
     private int cmdType;
@@ -57,7 +60,9 @@ public abstract class AbstractOperation implements AsyncWriterCommand, QuietClos
 
     @Override
     public void close() {
-        // intentionally left empty
+        // todo: temporary fix, until a proper lifecycle around CompiledQuery
+        // is implemented
+//        this.tableToken = null;
     }
 
     @Override
@@ -94,7 +99,8 @@ public abstract class AbstractOperation implements AsyncWriterCommand, QuietClos
     }
 
     @Override
-    public @Nullable TableToken getTableToken() {
+    public @NotNull TableToken getTableToken() {
+        assert tableToken != null : "initialized operation";
         return tableToken;
     }
 
@@ -142,5 +148,9 @@ public abstract class AbstractOperation implements AsyncWriterCommand, QuietClos
         this.tableVersion = tableVersion;
         this.tableNamePosition = tableNamePosition;
         this.correlationId = NO_CORRELATION_ID;
+    }
+
+    public boolean isForceWalBypass() {
+        return false;
     }
 }

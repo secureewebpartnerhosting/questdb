@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,7 +34,11 @@ import io.questdb.griffin.model.ExecutionModel;
 import io.questdb.griffin.model.ExpressionNode;
 import io.questdb.griffin.model.QueryColumn;
 import io.questdb.griffin.model.QueryModel;
-import io.questdb.std.*;
+import io.questdb.std.Chars;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.LowerCaseCharSequenceHashSet;
+import io.questdb.std.LowerCaseCharSequenceIntHashMap;
+import io.questdb.std.ObjList;
 import io.questdb.std.str.Path;
 import io.questdb.std.str.Sinkable;
 import io.questdb.test.AbstractCairoTest;
@@ -43,6 +47,7 @@ import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 
 public class AbstractSqlParserTest extends AbstractCairoTest {
+
     private static void assertSyntaxError0(
             String query,
             int position,
@@ -54,14 +59,14 @@ public class AbstractSqlParserTest extends AbstractCairoTest {
                 for (int i = 0, n = tableModels.length; i < n; i++) {
                     AbstractCairoTest.create(tableModels[i]);
                 }
-                assertException(query, position, contains, false);
+                assertExceptionNoLeakCheck(query, position, contains, false);
             });
         } finally {
             try (Path path = new Path()) {
                 for (int i = 0, n = tableModels.length; i < n; i++) {
                     TableModel tableModel = tableModels[i];
                     TableToken tableToken = engine.verifyTableName(tableModel.getName());
-                    path.of(tableModel.getConfiguration().getRoot()).concat(tableToken).slash$();
+                    path.of(tableModel.getConfiguration().getDbRoot()).concat(tableToken).slash$();
                     configuration.getFilesFacade().rmdir(path);
                 }
             }
@@ -177,7 +182,7 @@ public class AbstractSqlParserTest extends AbstractCairoTest {
                 for (int i = 0, n = tableModels.length; i < n; i++) {
                     TableModel tableModel = tableModels[i];
                     TableToken tableToken = engine.verifyTableName(tableModel.getName());
-                    path.of(tableModel.getConfiguration().getRoot()).concat(tableToken).slash$();
+                    path.of(tableModel.getConfiguration().getDbRoot()).concat(tableToken).slash$();
                     Assert.assertTrue(filesFacade.rmdir(path));
                 }
             }

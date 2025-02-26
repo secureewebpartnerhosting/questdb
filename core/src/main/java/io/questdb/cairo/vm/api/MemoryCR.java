@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,12 +27,24 @@ package io.questdb.cairo.vm.api;
 import io.questdb.cairo.CairoException;
 import io.questdb.cairo.TableUtils;
 import io.questdb.cairo.vm.Vm;
-import io.questdb.std.*;
+import io.questdb.std.BinarySequence;
+import io.questdb.std.Long256;
+import io.questdb.std.Mutable;
+import io.questdb.std.Numbers;
+import io.questdb.std.Unsafe;
+import io.questdb.std.Vect;
 import io.questdb.std.str.CharSink;
 import io.questdb.std.str.DirectString;
 
-//contiguous readable 
+// contiguous readable
 public interface MemoryCR extends MemoryC, MemoryR {
+
+    long addressHi();
+
+    default boolean checkOffsetMapped(long offset) {
+        return offset <= size();
+    }
+
     default BinarySequence getBin(long offset, ByteSequenceView view) {
         final long addr = addressOf(offset);
         final long len = Unsafe.getUnsafe().getLong(addr);
@@ -65,6 +77,8 @@ public interface MemoryCR extends MemoryC, MemoryR {
         return Unsafe.getUnsafe().getDouble(addressOf(offset));
     }
 
+    long getFd();
+
     default float getFloat(long offset) {
         assert addressOf(offset + Float.BYTES) > 0;
         return Unsafe.getUnsafe().getFloat(addressOf(offset));
@@ -80,18 +94,13 @@ public interface MemoryCR extends MemoryC, MemoryR {
     }
 
     default long getLong(long offset) {
-        assert addressOf(offset + Long.BYTES) > 0;
+        assert offset > -1 && addressOf(offset + Long.BYTES) > 0;
         return Unsafe.getUnsafe().getLong(addressOf(offset));
     }
 
     default void getLong256(long offset, CharSink<?> sink) {
         final long addr = addressOf(offset + Long256.BYTES);
-        final long a, b, c, d;
-        a = Unsafe.getUnsafe().getLong(addr - Long.BYTES * 4);
-        b = Unsafe.getUnsafe().getLong(addr - Long.BYTES * 3);
-        c = Unsafe.getUnsafe().getLong(addr - Long.BYTES * 2);
-        d = Unsafe.getUnsafe().getLong(addr - Long.BYTES);
-        Numbers.appendLong256(a, b, c, d, sink);
+        Numbers.appendLong256FromUnsafe(addr - Long256.BYTES, sink);
     }
 
     default long getPageSize() {
@@ -105,9 +114,9 @@ public interface MemoryCR extends MemoryC, MemoryR {
     default DirectString getStr(long offset, DirectString view) {
         long addr = addressOf(offset);
         assert addr > 0;
-        if (Vm.PARANOIA_MODE && offset + 4 > size()) {
+        if (!checkOffsetMapped(offset + 4)) {
             throw CairoException.critical(0)
-                    .put("String is outside of file boundary [offset=")
+                    .put("string is outside of file boundary [offset=")
                     .put(offset)
                     .put(", size=")
                     .put(size())
@@ -116,11 +125,11 @@ public interface MemoryCR extends MemoryC, MemoryR {
 
         final int len = Unsafe.getUnsafe().getInt(addr);
         if (len != TableUtils.NULL_LEN) {
-            if (Vm.getStorageLength(len) + offset <= size()) {
+            if (checkOffsetMapped(Vm.getStorageLength(len) + offset)) {
                 return view.of(addr + Vm.STRING_LENGTH_BYTES, len);
             }
             throw CairoException.critical(0)
-                    .put("String is outside of file boundary [offset=")
+                    .put("string is outside of file boundary [offset=")
                     .put(offset)
                     .put(", len=")
                     .put(len)
@@ -133,6 +142,13 @@ public interface MemoryCR extends MemoryC, MemoryR {
 
     default int getStrLen(long offset) {
         return getInt(offset);
+    }
+
+    default boolean isFileBased() {
+        return false;
+    }
+
+    default void map() {
     }
 
     class ByteSequenceView implements BinarySequence, Mutable {

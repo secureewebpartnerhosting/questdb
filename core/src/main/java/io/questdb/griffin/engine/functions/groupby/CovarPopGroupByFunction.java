@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
 import org.jetbrains.annotations.NotNull;
 
-public class CovarPopGroupByFunction extends AbstractCovarGroupByFunction {
+public class CovarPopGroupByFunction extends CovarSampleGroupByFunctionFactory.CovarSampleGroupByFunction {
 
     protected CovarPopGroupByFunction(@NotNull Function arg0, @NotNull Function arg1) {
         super(arg0, arg1);

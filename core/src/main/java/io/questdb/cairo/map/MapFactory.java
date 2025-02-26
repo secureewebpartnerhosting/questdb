@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ public class MapFactory {
             @Transient @NotNull ColumnTypes keyTypes
     ) {
         final int keyCapacity = configuration.getSqlSmallMapKeyCapacity();
-        final int pageSize = configuration.getSqlSmallMapPageSize();
+        final long pageSize = configuration.getSqlSmallMapPageSize();
         return new OrderedMap(
                 pageSize,
                 keyTypes,
@@ -60,7 +60,7 @@ public class MapFactory {
             @Transient @Nullable ColumnTypes valueTypes
     ) {
         final int keyCapacity = configuration.getSqlSmallMapKeyCapacity();
-        final int pageSize = configuration.getSqlSmallMapPageSize();
+        final long pageSize = configuration.getSqlSmallMapPageSize();
         return new OrderedMap(
                 pageSize,
                 keyTypes,
@@ -83,7 +83,7 @@ public class MapFactory {
             @Transient @Nullable ColumnTypes valueTypes
     ) {
         final int keyCapacity = configuration.getSqlSmallMapKeyCapacity();
-        final int pageSize = configuration.getSqlSmallMapPageSize();
+        final long pageSize = configuration.getSqlSmallMapPageSize();
         return createUnorderedMap(configuration, keyTypes, valueTypes, keyCapacity, pageSize);
     }
 
@@ -98,16 +98,16 @@ public class MapFactory {
             @Transient @NotNull ColumnTypes keyTypes,
             @Transient @Nullable ColumnTypes valueTypes,
             int keyCapacity,
-            int pageSize
+            long pageSize
     ) {
         final int maxEntrySize = configuration.getSqlUnorderedMapMaxEntrySize();
 
         final int keySize = totalSize(keyTypes);
         final int valueSize = totalSize(valueTypes);
         if (keySize > 0) {
-            if (keySize <= Short.BYTES && valueSize <= maxEntrySize) {
+            if (keySize == Short.BYTES && valueSize <= maxEntrySize) {
                 return new Unordered2Map(keyTypes, valueTypes);
-            } else if (keySize <= Integer.BYTES && Integer.BYTES + valueSize <= maxEntrySize) {
+            } else if (keySize == Integer.BYTES && Integer.BYTES + valueSize <= maxEntrySize) {
                 return new Unordered4Map(
                         keyTypes,
                         valueTypes,
@@ -115,7 +115,7 @@ public class MapFactory {
                         configuration.getSqlFastMapLoadFactor(),
                         configuration.getSqlMapMaxResizes()
                 );
-            } else if (keySize <= Long.BYTES && Long.BYTES + valueSize <= maxEntrySize) {
+            } else if (keySize == Long.BYTES && Long.BYTES + valueSize <= maxEntrySize) {
                 return new Unordered8Map(
                         keyTypes,
                         valueTypes,
@@ -123,15 +123,20 @@ public class MapFactory {
                         configuration.getSqlFastMapLoadFactor(),
                         configuration.getSqlMapMaxResizes()
                 );
-            } else if (keySize <= 2 * Long.BYTES && 2 * Long.BYTES + valueSize <= maxEntrySize) {
-                return new Unordered16Map(
-                        keyTypes,
-                        valueTypes,
-                        keyCapacity,
-                        configuration.getSqlFastMapLoadFactor(),
-                        configuration.getSqlMapMaxResizes()
-                );
             }
+        }
+
+        if (keyTypes.getColumnCount() == 1
+                && keyTypes.getColumnType(0) == ColumnType.VARCHAR
+                && 2 * Long.BYTES + valueSize <= maxEntrySize) {
+            return new UnorderedVarcharMap(
+                    valueTypes,
+                    keyCapacity,
+                    configuration.getSqlFastMapLoadFactor(),
+                    configuration.getSqlMapMaxResizes(),
+                    configuration.getGroupByAllocatorDefaultChunkSize(),
+                    configuration.getGroupByAllocatorMaxChunkSize()
+            );
         }
 
         return new OrderedMap(

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,19 +30,22 @@ import io.questdb.cairo.sql.RecordCursor;
 import io.questdb.cairo.sql.RecordCursorFactory;
 import io.questdb.griffin.DefaultSqlExecutionCircuitBreakerConfiguration;
 import io.questdb.griffin.SqlException;
+import io.questdb.griffin.SqlExecutionContextImpl;
 import io.questdb.std.MemoryTag;
-import io.questdb.std.Misc;
 import io.questdb.std.datetime.millitime.MillisecondClock;
 import io.questdb.test.AbstractCairoTest;
 import org.jetbrains.annotations.NotNull;
-import org.junit.*;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
 
 public class OrderByTimeoutTest extends AbstractCairoTest {
 
     public static int breakConnection = -1;
 
-    @BeforeClass
-    public static void setUpStatic() throws Exception {
+    @Before
+    public void setUp() {
         circuitBreakerConfiguration = new DefaultSqlExecutionCircuitBreakerConfiguration() {
             @Override
             public boolean checkConnection() {
@@ -66,7 +69,7 @@ public class OrderByTimeoutTest extends AbstractCairoTest {
         };
         circuitBreaker = new NetworkSqlExecutionCircuitBreaker(circuitBreakerConfiguration, MemoryTag.NATIVE_HTTP_CONN) {
             @Override
-            public boolean checkIfTripped(long millis, int fd) {
+            public boolean checkIfTripped(long millis, long fd) {
                 return breakConnection == 0 || --breakConnection == 0;
             }
 
@@ -82,13 +85,8 @@ public class OrderByTimeoutTest extends AbstractCairoTest {
                 }
             }
         };
-        AbstractCairoTest.setUpStatic();
-    }
-
-    @AfterClass
-    public static void tearDownStatic() {
-        AbstractCairoTest.tearDownStatic();
-        circuitBreaker = Misc.free(circuitBreaker);
+        ((SqlExecutionContextImpl) sqlExecutionContext).with(circuitBreaker);
+        super.setUp();
     }
 
     @After
@@ -100,16 +98,17 @@ public class OrderByTimeoutTest extends AbstractCairoTest {
     @Test
     public void testTimeoutLimitedSizeSortedLightRecordCursor() throws Exception {
         assertMemoryLeak(() -> {
-            compile(
+            execute(
                     "CREATE TABLE trips as (" +
-                            "select rnd_long() a, rnd_long() b, timestamp_sequence('2022-01-03', 50000000000) ts from long_sequence(20)" +
+                            "select rnd_long() a, rnd_long() b, timestamp_sequence('2022-01-03', 50000000000) ts from long_sequence(100)" +
                             ") timestamp(ts) partition by day;"
             );
 
+            // this test somehow used to rely on code calling "getClock()" to decrement the breakLimit
+            // clock is cached and relying on it is not a good idea.
+            // We should select more rows than max value of the break limit.
             int breakTestLimit = 20;
-            String sql = "select * from trips " +
-                    " where ts between '2022-01-03' and '2022-02-01' and a > 1234567890L order by b desc limit 10";
-
+            String sql = "select * from trips  order by b desc limit 30";
             testSql(breakTestLimit, sql);
         });
     }
@@ -117,7 +116,7 @@ public class OrderByTimeoutTest extends AbstractCairoTest {
     @Test
     public void testTimeoutSortedLightRecordCursorFactory() throws Exception {
         assertMemoryLeak(() -> {
-            compile(
+            execute(
                     "CREATE TABLE trips as (" +
                             "select rnd_long() a, rnd_long() b, timestamp_sequence('2022-01-03', 50000000) ts from long_sequence(20)" +
                             ") timestamp(ts) partition by day;"
@@ -130,7 +129,7 @@ public class OrderByTimeoutTest extends AbstractCairoTest {
     @Test
     public void testTimeoutSortedRecordCursorFactory() throws Exception {
         assertMemoryLeak(() -> {
-            compile(
+            execute(
                     "CREATE TABLE trips as (" +
                             "select rnd_long() a, rnd_long() b, timestamp_sequence('2022-01-03', 50000000) ts from long_sequence(20)" +
                             ") timestamp(ts) partition by day;"

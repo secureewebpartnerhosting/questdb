@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,11 @@
 
 package io.questdb.test;
 
-import io.questdb.*;
+import io.questdb.DefaultTelemetryConfiguration;
+import io.questdb.MessageBus;
+import io.questdb.Metrics;
+import io.questdb.PropertyKey;
+import io.questdb.TelemetryConfiguration;
 import io.questdb.cairo.CairoConfiguration;
 import io.questdb.cairo.CairoEngine;
 import io.questdb.cairo.sql.BindVariableService;
@@ -35,7 +39,6 @@ import io.questdb.griffin.engine.functions.bind.BindVariableServiceImpl;
 import io.questdb.std.Misc;
 import io.questdb.test.cairo.Overrides;
 import io.questdb.test.tools.TestUtils;
-import org.jetbrains.annotations.NotNull;
 
 public class QuestDBTestNode {
     private final int nodeId;
@@ -76,7 +79,7 @@ public class QuestDBTestNode {
     }
 
     public Metrics getMetrics() {
-        return cairo.metrics;
+        return cairo.configuration.getMetrics();
     }
 
     public CharSequence getRoot() {
@@ -147,7 +150,6 @@ public class QuestDBTestNode {
     private static class Cairo {
         private final CairoConfiguration configuration;
         private final MessageBus messageBus;
-        private final Metrics metrics;
         private final Overrides overrides;
         private final boolean ownRoot;
         private final CharSequence root;
@@ -171,8 +173,7 @@ public class QuestDBTestNode {
             };
 
             configuration = configurationFactory.getInstance(root, telemetryConfiguration, overrides);
-            metrics = Metrics.enabled();
-            engine = engineFactory.getInstance(configuration, metrics);
+            engine = engineFactory.getInstance(configuration);
             messageBus = engine.getMessageBus();
         }
 
@@ -194,14 +195,6 @@ public class QuestDBTestNode {
                 TestUtils.removeTestPath(root);
             }
             overrides.reset();
-            clearWalQueue();
-        }
-
-        private void clearWalQueue() {
-            long seq;
-            while ((seq = engine.getMessageBus().getWalTxnNotificationSubSequence().next()) > -1) {
-                engine.getMessageBus().getWalTxnNotificationSubSequence().done(seq);
-            }
         }
 
         private void close() {
@@ -223,6 +216,7 @@ public class QuestDBTestNode {
                             -1,
                             circuitBreaker
                     );
+            sqlExecutionContext.initNow();
             bindVariableService.clear();
         }
 

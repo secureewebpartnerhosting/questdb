@@ -1,3 +1,27 @@
+/*******************************************************************************
+ *     ___                  _   ____  ____
+ *    / _ \ _   _  ___  ___| |_|  _ \| __ )
+ *   | | | | | | |/ _ \/ __| __| | | |  _ \
+ *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
+ *    \__\_\\__,_|\___||___/\__|____/|____/
+ *
+ *  Copyright (c) 2014-2019 Appsicle
+ *  Copyright (c) 2019-2024 QuestDB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+
 package io.questdb.test.cutlass.http;
 
 import io.questdb.*;
@@ -19,10 +43,20 @@ import org.junit.Test;
 import static io.questdb.PropServerConfiguration.JsonPropertyValueFormatter.*;
 
 public class SettingsEndpointTest extends AbstractBootstrapTest {
-    private static final String SETTINGS_PAYLOAD = "{" +
+    private static final String OSS_PAYLOAD = "{" +
+            "\"release.type\":\"OSS\"," +
+            "\"release.version\":\"[DEVELOPMENT]\"," +
+            "\"acl.enabled\":false," +
+            "\"posthog.enabled\":false," +
+            "\"posthog.api.key\":null" +
+            "}";
+
+    private static final String TEST_PAYLOAD = "{" +
             "\"cairo.snapshot.instance.id\":\"db\"," +
             "\"cairo.max.file.name.length\":127," +
-            "\"cairo.wal.supported\":true" +
+            "\"cairo.wal.supported\":true," +
+            "\"posthog.enabled\":false," +
+            "\"posthog.api.key\":null" +
             "}";
 
     @Before
@@ -39,7 +73,7 @@ public class SettingsEndpointTest extends AbstractBootstrapTest {
                 serverMain.start();
 
                 try (HttpClient httpClient = HttpClientFactory.newPlainTextInstance(new DefaultHttpClientConfiguration())) {
-                    assertSettingsRequest(httpClient, "{}");
+                    assertSettingsRequest(httpClient, OSS_PAYLOAD);
                 }
             }
         });
@@ -67,9 +101,21 @@ public class SettingsEndpointTest extends AbstractBootstrapTest {
                                     @Override
                                     public void populateSettings(CharSequenceObjHashMap<CharSequence> settings) {
                                         final CairoConfiguration config = getCairoConfiguration();
-                                        settings.put(PropertyKey.CAIRO_SNAPSHOT_INSTANCE_ID.getPropertyPath(), str(config.getDbDirectory().toString()));
+                                        settings.put(PropertyKey.CAIRO_LEGACY_SNAPSHOT_INSTANCE_ID.getPropertyPath(), str(config.getDbDirectory().toString()));
                                         settings.put(PropertyKey.CAIRO_MAX_FILE_NAME_LENGTH.getPropertyPath(), integer(config.getMaxFileNameLength()));
                                         settings.put(PropertyKey.CAIRO_WAL_SUPPORTED.getPropertyPath(), bool(config.isWalSupported()));
+                                    }
+                                };
+                            }
+
+                            @Override
+                            public PublicPassthroughConfiguration getPublicPassthroughConfiguration() {
+                                return new DefaultPublicPassthroughConfiguration() {
+                                    @Override
+                                    public void populateSettings(CharSequenceObjHashMap<CharSequence> settings) {
+                                        final PublicPassthroughConfiguration config = getPublicPassthroughConfiguration();
+                                        settings.put(PropertyKey.POSTHOG_ENABLED.getPropertyPath(), bool(config.isPosthogEnabled()));
+                                        settings.put(PropertyKey.POSTHOG_API_KEY.getPropertyPath(), str(config.getPosthogApiKey()));
                                     }
                                 };
                             }
@@ -84,7 +130,7 @@ public class SettingsEndpointTest extends AbstractBootstrapTest {
                 serverMain.start();
 
                 try (HttpClient httpClient = HttpClientFactory.newPlainTextInstance(new DefaultHttpClientConfiguration())) {
-                    assertSettingsRequest(httpClient, SETTINGS_PAYLOAD);
+                    assertSettingsRequest(httpClient, TEST_PAYLOAD);
                 }
             }
         });

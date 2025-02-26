@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ public class InfluxDBClientFailureTest extends AbstractTest {
             private final AtomicInteger attempt = new AtomicInteger();
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, Files.SEPARATOR + "x.d") && attempt.getAndIncrement() == 0) {
                     return -1;
                 }
@@ -95,7 +95,7 @@ public class InfluxDBClientFailureTest extends AbstractTest {
             private final AtomicInteger attempt = new AtomicInteger();
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, Files.SEPARATOR + "x.d") && attempt.getAndIncrement() == 0) {
                     throw new OutOfMemoryError();
                 }
@@ -134,10 +134,10 @@ public class InfluxDBClientFailureTest extends AbstractTest {
         final FilesFacade filesFacade = new FilesFacadeImpl() {
             private final AtomicInteger counter = new AtomicInteger(2);
 
-            private int fd;
+            private long fd;
 
             @Override
-            public long append(int fd, long buf, int len) {
+            public long append(long fd, long buf, long len) {
                 if (fd == this.fd && counter.decrementAndGet() == 0) {
                     throw CairoException.critical(24).put("test error");
                 }
@@ -145,8 +145,8 @@ public class InfluxDBClientFailureTest extends AbstractTest {
             }
 
             @Override
-            public int openRW(LPSZ name, long opts) {
-                int fd = super.openRW(name, opts);
+            public long openRW(LPSZ name, long opts) {
+                long fd = super.openRW(name, opts);
                 if (Utf8s.endsWithAscii(name, Files.SEPARATOR + EVENT_INDEX_FILE_NAME)
                         && Utf8s.containsAscii(name, "failed_table")) {
                     this.fd = fd;
@@ -186,10 +186,10 @@ public class InfluxDBClientFailureTest extends AbstractTest {
             private final AtomicInteger attempt = new AtomicInteger();
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, Files.SEPARATOR + "x.d") && attempt.getAndIncrement() == 0) {
                     try {
-                        server.get().getEngine().compile("drop table m1");
+                        server.get().getEngine().execute("drop table m1");
                     } catch (SqlException e) {
                         throw new RuntimeException(e);
                     }
@@ -226,10 +226,10 @@ public class InfluxDBClientFailureTest extends AbstractTest {
             private final AtomicInteger attempt = new AtomicInteger();
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, Files.SEPARATOR + "x.d") && attempt.getAndIncrement() == 0) {
                     try {
-                        server.get().getEngine().compile("drop table m1");
+                        server.get().getEngine().execute("drop table m1");
                     } catch (SqlException e) {
                         throw new AssertionError(e);
                     }
@@ -294,7 +294,7 @@ public class InfluxDBClientFailureTest extends AbstractTest {
             private final AtomicInteger counter = new AtomicInteger(0);
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, Files.SEPARATOR + "z.d") && counter.getAndIncrement() == 0) {
                     throw new UnsupportedOperationException();
                 }
@@ -343,10 +343,10 @@ public class InfluxDBClientFailureTest extends AbstractTest {
             private final AtomicInteger attempt = new AtomicInteger();
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, Files.SEPARATOR + "good_y.d") && attempt.getAndIncrement() == 0) {
                     try {
-                        server.get().getEngine().compile("drop table \"drop\"");
+                        server.get().getEngine().execute("drop table \"drop\"");
                     } catch (SqlException e) {
                         throw new RuntimeException(e);
                     }

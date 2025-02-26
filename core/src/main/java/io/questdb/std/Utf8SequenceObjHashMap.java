@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ package io.questdb.std;
 import io.questdb.std.str.Utf8Sequence;
 import io.questdb.std.str.Utf8String;
 import io.questdb.std.str.Utf8s;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 
@@ -57,7 +58,7 @@ public class Utf8SequenceObjHashMap<V> extends AbstractUtf8SequenceHashSet {
         list.clear();
     }
 
-    public V get(Utf8Sequence key) {
+    public V get(@NotNull Utf8Sequence key) {
         return valueAt(keyIndex(key));
     }
 
@@ -65,15 +66,15 @@ public class Utf8SequenceObjHashMap<V> extends AbstractUtf8SequenceHashSet {
         return list;
     }
 
-    public boolean put(Utf8String key, V value) {
+    public boolean put(@NotNull Utf8String key, V value) {
         return putAt(keyIndex(key), key, value);
     }
 
-    public boolean put(Utf8Sequence key, V value) {
+    public boolean put(@NotNull Utf8Sequence key, V value) {
         return putAt(keyIndex(key), key, value);
     }
 
-    public boolean putAt(int index, Utf8Sequence key, V value) {
+    public boolean putAt(int index, @NotNull Utf8Sequence key, V value) {
         assert value != null;
         if (index < 0) {
             values[-index - 1] = value;
@@ -90,7 +91,7 @@ public class Utf8SequenceObjHashMap<V> extends AbstractUtf8SequenceHashSet {
         return true;
     }
 
-    public boolean putAt(int index, Utf8String key, V value) {
+    public boolean putAt(int index, @NotNull Utf8String key, V value) {
         assert value != null;
         if (index < 0) {
             values[-index - 1] = value;

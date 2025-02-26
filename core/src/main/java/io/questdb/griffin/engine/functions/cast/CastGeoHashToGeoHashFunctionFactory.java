@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -249,7 +249,7 @@ public class CastGeoHashToGeoHashFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return false;
         }
 
@@ -290,26 +290,6 @@ public class CastGeoHashToGeoHashFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-            long value = getValue(rec);
-            if (value == GeoHashes.NULL) {
-                utf8Sink.putAscii("null");
-            } else {
-                print(value, utf8Sink);
-            }
-        }
-
-        @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            long value = getValue(rec);
-            if (value == GeoHashes.NULL) {
-                utf16Sink.putAscii("null");
-            } else {
-                print(value, utf16Sink);
-            }
-        }
-
-        @Override
         public Utf8Sequence getVarcharA(Record rec) {
             return toSink(getValue(rec), sinkA);
         }
@@ -320,7 +300,7 @@ public class CastGeoHashToGeoHashFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return false;
         }
 

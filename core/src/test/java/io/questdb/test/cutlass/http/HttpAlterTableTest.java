@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@
 
 package io.questdb.test.cutlass.http;
 
-import io.questdb.Metrics;
 import io.questdb.network.NetworkFacadeImpl;
 import io.questdb.test.AbstractTest;
 import org.junit.Rule;
@@ -48,36 +47,8 @@ public class HttpAlterTableTest extends AbstractTest {
             .build();
 
     @Test
-    public void testAlterTableResume() throws Exception {
-        Metrics metrics = Metrics.enabled();
-        testJsonQuery(metrics, engine -> {
-            // create table
-            sendAndReceiveDdl("CREATE TABLE test\n" +
-                    "AS(\n" +
-                    "    SELECT\n" +
-                    "        x id,\n" +
-                    "        timestamp_sequence(0L, 100000L) ts\n" +
-                    "    FROM long_sequence(1000) x)\n" +
-                    "TIMESTAMP(ts)\n" +
-                    "PARTITION BY DAY WAL");
-            drainWalQueue(engine);
-
-            // execute a SELECT query
-            String sql = "SELECT *\n" +
-                    "FROM test t1 JOIN test t2 \n" +
-                    "ON t1.id = t2.id\n" +
-                    "LIMIT 1";
-            sendAndReceiveBasicSelect(sql);
-
-            // RESUME
-            sendAndReceiveDdl("ALTER TABLE test RESUME WAL");
-        });
-    }
-
-    @Test
     public void testAlterTableSetType() throws Exception {
-        Metrics metrics = Metrics.enabled();
-        testJsonQuery(metrics, engine -> {
+        testJsonQuery((engine, sqlExecutionContext) -> {
             // create table
             sendAndReceiveDdl("CREATE TABLE test\n" +
                     "AS(\n" +
@@ -102,8 +73,7 @@ public class HttpAlterTableTest extends AbstractTest {
 
     @Test
     public void testAlterTableSquashPartition() throws Exception {
-        Metrics metrics = Metrics.enabled();
-        testJsonQuery(metrics, engine -> {
+        testJsonQuery((engine, sqlExecutionContext) -> {
             // create table
             sendAndReceiveDdl("CREATE TABLE test\n" +
                     "AS(\n" +
@@ -115,6 +85,36 @@ public class HttpAlterTableTest extends AbstractTest {
                     "PARTITION BY DAY");
 
             sendAndReceiveDdl("ALTER TABLE test SQUASH PARTITIONS");
+        });
+    }
+
+    @Test
+    public void testAlterTableSuspendResume() throws Exception {
+        testJsonQuery((engine, sqlExecutionContext) -> {
+            // create table
+            sendAndReceiveDdl("CREATE TABLE test\n" +
+                    "AS(\n" +
+                    "    SELECT\n" +
+                    "        x id,\n" +
+                    "        timestamp_sequence(0L, 100000L) ts\n" +
+                    "    FROM long_sequence(1000) x)\n" +
+                    "TIMESTAMP(ts)\n" +
+                    "PARTITION BY DAY WAL");
+
+            drainWalQueue(engine);
+
+            // execute a SELECT query
+            String sql = "SELECT *\n" +
+                    "FROM test t1 JOIN test t2 \n" +
+                    "ON t1.id = t2.id\n" +
+                    "LIMIT 1";
+            sendAndReceiveBasicSelect(sql);
+
+            // SUSPEND
+            sendAndReceiveDdl("ALTER TABLE test SUSPEND WAL");
+
+            // RESUME
+            sendAndReceiveDdl("ALTER TABLE test RESUME WAL");
         });
     }
 
@@ -177,12 +177,11 @@ public class HttpAlterTableTest extends AbstractTest {
         );
     }
 
-    private void testJsonQuery(Metrics metrics, HttpQueryTestBuilder.HttpClientCode code) throws Exception {
+    private void testJsonQuery(HttpQueryTestBuilder.HttpClientCode code) throws Exception {
         new HttpQueryTestBuilder()
                 .withWorkerCount(2)
                 .withTempFolder(root)
                 .withHttpServerConfigBuilder(new HttpServerConfigurationBuilder())
-                .withMetrics(metrics)
                 .run(code);
     }
 }

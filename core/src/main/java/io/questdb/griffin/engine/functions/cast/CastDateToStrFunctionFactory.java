@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.constants.StrConstant;
 import io.questdb.std.*;
 import io.questdb.std.str.StringSink;
-import io.questdb.std.str.Utf16Sink;
 
 public class CastDateToStrFunctionFactory implements FunctionFactory {
     @Override
@@ -62,7 +61,7 @@ public class CastDateToStrFunctionFactory implements FunctionFactory {
         @Override
         public CharSequence getStrA(Record rec) {
             final long value = arg.getDate(rec);
-            if (value == Numbers.LONG_NaN) {
+            if (value == Numbers.LONG_NULL) {
                 return null;
             }
             sinkA.clear();
@@ -71,18 +70,9 @@ public class CastDateToStrFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            final long value = arg.getDate(rec);
-            if (value == Numbers.LONG_NaN) {
-                return;
-            }
-            utf16Sink.putISODateMillis(value);
-        }
-
-        @Override
         public CharSequence getStrB(Record rec) {
             final long value = arg.getDate(rec);
-            if (value == Numbers.LONG_NaN) {
+            if (value == Numbers.LONG_NULL) {
                 return null;
             }
             sinkB.clear();

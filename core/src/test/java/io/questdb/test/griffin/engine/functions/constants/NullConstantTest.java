@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ public class NullConstantTest {
 
         Assert.assertEquals(ColumnType.NULL, constant.getType());
         Assert.assertTrue(constant.isConstant());
-        Assert.assertTrue(constant.isRuntimeConstant());
+        Assert.assertFalse(constant.isRuntimeConstant());
         Assert.assertTrue(constant.supportsRandomAccess());
         Assert.assertFalse(constant.isUndefined());
 
@@ -75,8 +75,6 @@ public class NullConstantTest {
         StringSink sink = new StringSink();
         constant.getLong256(null, sink);
         Assert.assertEquals(0, sink.length());
-        constant.getStr(null, sink);
-        Assert.assertEquals(0, sink.length());
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -97,10 +95,5 @@ public class NullConstantTest {
     @Test(expected = UnsupportedOperationException.class)
     public void testGetStrWithIndex() {
         NullConstant.NULL.getStrA(null, 0);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetStrWithSinkAndIndex() {
-        NullConstant.NULL.getStr(null, null, 0);
     }
 }

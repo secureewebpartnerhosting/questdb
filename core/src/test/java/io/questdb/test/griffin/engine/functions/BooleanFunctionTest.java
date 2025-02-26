@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,9 +28,6 @@ import io.questdb.cairo.sql.Record;
 import io.questdb.cairo.sql.SymbolTableSource;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.BooleanFunction;
-import io.questdb.std.str.StringSink;
-import io.questdb.std.str.Utf8Sink;
-import io.questdb.std.str.Utf8StringSink;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -49,7 +46,7 @@ public class BooleanFunctionTest {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return true;
         }
     };
@@ -65,10 +62,26 @@ public class BooleanFunctionTest {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return true;
         }
     };
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBin() {
+        functionA.getBin(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBinLen() {
+        functionA.getBinLen(null);
+    }
+
+    @Test
+    public void testGetByte() {
+        Assert.assertEquals(1, functionB.getByte(null));
+        Assert.assertEquals(0, functionA.getByte(null));
+    }
 
     @Test
     public void testGetChar() {
@@ -80,11 +93,29 @@ public class BooleanFunctionTest {
             }
 
             @Override
-            public boolean isReadThreadSafe() {
+            public boolean isThreadSafe() {
                 return true;
             }
         };
         Assert.assertEquals('T', function.getChar(null));
+    }
+
+    @Test
+    public void testGetDate() {
+        Assert.assertEquals(1, functionB.getDate(null));
+        Assert.assertEquals(0, functionA.getDate(null));
+    }
+
+    @Test
+    public void testGetDouble() {
+        Assert.assertEquals(1.0, functionB.getDouble(null), 0.000001);
+        Assert.assertEquals(0.0, functionA.getDouble(null), 0.000001);
+    }
+
+    @Test
+    public void testGetFloat() {
+        Assert.assertEquals(1.0, functionB.getFloat(null), 0.000001);
+        Assert.assertEquals(0.0, functionA.getFloat(null), 0.000001);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -108,37 +139,9 @@ public class BooleanFunctionTest {
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void testGetBin() {
-        functionA.getBin(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetBinLen() {
-        functionA.getBinLen(null);
-    }
-
-    @Test
-    public void testGetByte() {
-        Assert.assertEquals(1, functionB.getByte(null));
-        Assert.assertEquals(0, functionA.getByte(null));
-    }
-
-    @Test
-    public void testGetDate() {
-        Assert.assertEquals(1, functionB.getDate(null));
-        Assert.assertEquals(0, functionA.getDate(null));
-    }
-
-    @Test
-    public void testGetDouble() {
-        Assert.assertEquals(1.0, functionB.getDouble(null), 0.000001);
-        Assert.assertEquals(0.0, functionA.getDouble(null), 0.000001);
-    }
-
-    @Test
-    public void testGetFloat() {
-        Assert.assertEquals(1.0, functionB.getFloat(null), 0.000001);
-        Assert.assertEquals(0.0, functionA.getFloat(null), 0.000001);
+    public void testGetIPv4() {
+        Assert.assertEquals(1, functionB.getIPv4(null));
+        Assert.assertEquals(0, functionA.getIPv4(null));
     }
 
     @Test
@@ -147,69 +150,10 @@ public class BooleanFunctionTest {
         Assert.assertEquals(0, functionA.getInt(null));
     }
 
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetIPv4() {
-        Assert.assertEquals(1, functionB.getIPv4(null));
-        Assert.assertEquals(0, functionA.getIPv4(null));
-    }
-
     @Test
     public void testGetLong() {
         Assert.assertEquals(1, functionB.getLong(null));
         Assert.assertEquals(0, functionA.getLong(null));
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetRecordCursorFactory() {
-        functionA.getRecordCursorFactory();
-    }
-
-    @Test
-    public void testGetShort() {
-        Assert.assertEquals(1, functionB.getShort(null));
-        Assert.assertEquals(0, functionA.getShort(null));
-    }
-
-    @Test
-    public void testGetStr() {
-        Assert.assertEquals("false", functionA.getStrA(null));
-        Assert.assertEquals("true", functionB.getStrA(null));
-    }
-
-    @Test
-    public void testGetStrToSink() {
-        final StringSink sink = new StringSink();
-        functionA.getStr(null, sink);
-        TestUtils.assertEquals("false", sink);
-
-        sink.clear();
-
-        functionB.getStr(null, sink);
-        TestUtils.assertEquals("true", sink);
-    }
-
-    @Test
-    public void testGetStrLen() {
-        Assert.assertEquals("false".length(), functionA.getStrLen(null));
-        Assert.assertEquals("true".length(), functionB.getStrLen(null));
-    }
-
-    @Test
-    public void testGetSym() {
-        Assert.assertEquals("false", functionA.getSymbol(null));
-        Assert.assertEquals("true", functionB.getSymbol(null));
-    }
-
-    @Test
-    public void testGetSymB() {
-        Assert.assertEquals("false", functionA.getSymbolB(null));
-        Assert.assertEquals("true", functionB.getSymbolB(null));
-    }
-
-    @Test
-    public void testGetTimestamp() {
-        Assert.assertEquals(1, functionB.getTimestamp(null));
-        Assert.assertEquals(0, functionA.getTimestamp(null));
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -237,27 +181,56 @@ public class BooleanFunctionTest {
         functionA.getLong256B(null);
     }
 
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetRecordCursorFactory() {
+        functionA.getRecordCursorFactory();
+    }
+
     @Test
-    public void testGetVarcharToSink() {
-        Utf8Sink sink = new Utf8StringSink();
-        functionA.getVarchar(null, sink);
-        TestUtils.assertEquals("false", sink.toString());
+    public void testGetShort() {
+        Assert.assertEquals(1, functionB.getShort(null));
+        Assert.assertEquals(0, functionA.getShort(null));
+    }
 
-        sink = new Utf8StringSink();
+    @Test
+    public void testGetStr() {
+        Assert.assertEquals("false", functionA.getStrA(null));
+        Assert.assertEquals("true", functionB.getStrA(null));
+    }
 
-        functionB.getVarchar(null, sink);
-        TestUtils.assertEquals("true", sink.toString());
+    @Test
+    public void testGetStrLen() {
+        Assert.assertEquals("false".length(), functionA.getStrLen(null));
+        Assert.assertEquals("true".length(), functionB.getStrLen(null));
+    }
+
+    @Test
+    public void testGetSym() {
+        Assert.assertEquals("false", functionA.getSymbol(null));
+        Assert.assertEquals("true", functionB.getSymbol(null));
+    }
+
+    @Test
+    public void testGetSymB() {
+        Assert.assertEquals("false", functionA.getSymbolB(null));
+        Assert.assertEquals("true", functionB.getSymbolB(null));
+    }
+
+    @Test
+    public void testGetTimestamp() {
+        Assert.assertEquals(1, functionB.getTimestamp(null));
+        Assert.assertEquals(0, functionA.getTimestamp(null));
     }
 
     @Test
     public void testGetVarcharA() {
-        Assert.assertEquals("false", functionA.getVarcharA(null).toString());
-        Assert.assertEquals("true", functionB.getVarcharA(null).toString());
+        TestUtils.assertEquals("false", functionA.getVarcharA(null));
+        TestUtils.assertEquals("true", functionB.getVarcharA(null));
     }
 
     @Test
     public void testGetVarcharB() {
-        Assert.assertEquals("false", functionA.getVarcharB(null).toString());
-        Assert.assertEquals("true", functionB.getVarcharB(null).toString());
+        TestUtils.assertEquals("false", functionA.getVarcharB(null));
+        TestUtils.assertEquals("true", functionB.getVarcharB(null));
     }
 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ public class NotEqStrFunctionFactoryTest extends AbstractCairoTest {
                 "KF\tOP\t0.6797562990945702\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,1) a," +
                     " rnd_str(2,2,1) b," +
@@ -92,7 +92,7 @@ public class NotEqStrFunctionFactoryTest extends AbstractCairoTest {
                 "RY\tFB\t0.0011075361080621349\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,0) a," +
                     " rnd_str(2,2,0) b," +
@@ -120,7 +120,7 @@ public class NotEqStrFunctionFactoryTest extends AbstractCairoTest {
                 "RY\tFB\t0.0011075361080621349\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,0) a," +
                     " rnd_str(2,2,0) b," +
@@ -155,7 +155,7 @@ public class NotEqStrFunctionFactoryTest extends AbstractCairoTest {
                 "HO\tNV\t0.8940917126581895\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,1) a," +
                     " rnd_str(2,2,0) b," +
@@ -190,7 +190,7 @@ public class NotEqStrFunctionFactoryTest extends AbstractCairoTest {
                 "HO\tNV\t0.8940917126581895\n";
 
         assertMemoryLeak(() -> {
-            ddl("create table x as (" +
+            execute("create table x as (" +
                     " select" +
                     " rnd_str(2,2,1) a," +
                     " rnd_str(2,2,0) b," +

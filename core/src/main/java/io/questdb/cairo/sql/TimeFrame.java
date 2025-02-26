@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,10 +29,9 @@ import io.questdb.std.Rows;
 public interface TimeFrame {
 
     /**
-     * @return numeric index of the current time frame; not guaranteed
-     * to be sequentially growing
+     * @return numeric index of the current time frame.
      */
-    int getIndex();
+    int getFrameIndex();
 
     /**
      * Make sure to call {@link TimeFrameRecordCursor#open()} prior to this method.
@@ -60,6 +59,9 @@ public interface TimeFrame {
      * Unlike {@link #getTimestampHi()} this value is not precise, i.e. it may
      * be larger than the actual boundary. Yet, it doesn't require the frame
      * to be open.
+     * <p>
+     * Note that estimated timestamp intervals of subsequent time frames may
+     * intersect.
      *
      * @return upper range boundary of timestamps in the time frame, exclusive
      */
@@ -69,6 +71,9 @@ public interface TimeFrame {
      * Unlike {@link #getTimestampLo()} this value is not precise, i.e. it may
      * be smaller than the actual boundary. Yet, it doesn't require the frame
      * to be open.
+     * <p>
+     * Note that estimated timestamp intervals of subsequent time frames may
+     * intersect.
      *
      * @return lower range boundary of timestamps in the time frame, inclusive
      */

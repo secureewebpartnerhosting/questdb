@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,16 +24,52 @@
 
 package io.questdb.test.cairo.map;
 
-import io.questdb.cairo.*;
-import io.questdb.cairo.map.*;
+import io.questdb.cairo.ArrayColumnTypes;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.ColumnTypes;
+import io.questdb.cairo.EntityColumnFilter;
+import io.questdb.cairo.GeoHashes;
+import io.questdb.cairo.ListColumnFilter;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.RecordSink;
+import io.questdb.cairo.RecordSinkFactory;
+import io.questdb.cairo.SingleColumnType;
+import io.questdb.cairo.SymbolAsIntTypes;
+import io.questdb.cairo.SymbolAsStrTypes;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableWriter;
+import io.questdb.cairo.map.Map;
+import io.questdb.cairo.map.MapKey;
+import io.questdb.cairo.map.MapRecord;
+import io.questdb.cairo.map.MapRecordCursor;
+import io.questdb.cairo.map.MapValue;
+import io.questdb.cairo.map.MapValueMergeFunction;
+import io.questdb.cairo.map.OrderedMap;
 import io.questdb.cairo.sql.Record;
 import io.questdb.cairo.sql.RecordCursor;
-import io.questdb.std.*;
+import io.questdb.griffin.engine.functions.columns.LongColumn;
+import io.questdb.std.BinarySequence;
+import io.questdb.std.BitSet;
+import io.questdb.std.BytecodeAssembler;
+import io.questdb.std.Chars;
+import io.questdb.std.DirectLongLongHeap;
+import io.questdb.std.DirectLongLongMinHeap;
+import io.questdb.std.Interval;
+import io.questdb.std.Long256;
+import io.questdb.std.Long256Impl;
+import io.questdb.std.LongList;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Numbers;
+import io.questdb.std.ObjList;
+import io.questdb.std.Rnd;
+import io.questdb.std.Unsafe;
 import io.questdb.std.str.Utf8Sequence;
 import io.questdb.std.str.Utf8StringSink;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.TableModel;
 import io.questdb.test.cairo.TestRecord;
+import io.questdb.test.cairo.TestTableReaderRecordCursor;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -60,6 +96,7 @@ public class OrderedMapTest extends AbstractCairoTest {
             keyTypes.add(ColumnType.TIMESTAMP);
             keyTypes.add(ColumnType.getGeoHashTypeWithBits(13));
             keyTypes.add(ColumnType.LONG256);
+            keyTypes.add(ColumnType.INTERVAL);
 
             ArrayColumnTypes valueTypes = new ArrayColumnTypes();
             valueTypes.add(ColumnType.BYTE);
@@ -91,13 +128,9 @@ public class OrderedMapTest extends AbstractCairoTest {
                     key.putTimestamp(rnd.nextLong());
                     key.putShort(rnd.nextShort());
                     Long256Impl long256 = new Long256Impl();
-                    long256.setAll(
-                            rnd.nextLong(),
-                            rnd.nextLong(),
-                            rnd.nextLong(),
-                            rnd.nextLong()
-                    );
+                    long256.fromRnd(rnd);
                     key.putLong256(long256);
+                    key.putInterval(new Interval().of(rnd.nextPositiveInt(), rnd.nextPositiveInt()));
 
                     MapValue value = key.createValue();
                     Assert.assertTrue(value.isNew());
@@ -133,13 +166,9 @@ public class OrderedMapTest extends AbstractCairoTest {
                     key.putTimestamp(rnd.nextLong());
                     key.putShort(rnd.nextShort());
                     Long256Impl long256 = new Long256Impl();
-                    long256.setAll(
-                            rnd.nextLong(),
-                            rnd.nextLong(),
-                            rnd.nextLong(),
-                            rnd.nextLong()
-                    );
+                    long256.fromRnd(rnd);
                     key.putLong256(long256);
+                    key.putInterval(new Interval().of(rnd.nextPositiveInt(), rnd.nextPositiveInt()));
 
                     MapValue value = key.createValue();
                     Assert.assertFalse(value.isNew());
@@ -310,6 +339,7 @@ public class OrderedMapTest extends AbstractCairoTest {
             keyTypes.add(ColumnType.getGeoHashTypeWithBits(13));
             keyTypes.add(ColumnType.LONG256);
             keyTypes.add(ColumnType.UUID);
+            keyTypes.add(ColumnType.INTERVAL);
 
             ArrayColumnTypes valueTypes = new ArrayColumnTypes();
             valueTypes.add(ColumnType.BYTE);
@@ -360,6 +390,7 @@ public class OrderedMapTest extends AbstractCairoTest {
                     );
                     key.putLong256(long256);
                     key.putLong128(rnd.nextLong(), rnd.nextLong()); // UUID
+                    key.putInterval(new Interval().of(rnd.nextPositiveInt(), rnd.nextPositiveInt()));
 
                     MapValue value = key.createValue();
                     Assert.assertTrue(value.isNew());
@@ -413,6 +444,7 @@ public class OrderedMapTest extends AbstractCairoTest {
                     );
                     key.putLong256(long256);
                     key.putLong128(rnd.nextLong(), rnd.nextLong()); // UUID
+                    key.putInterval(new Interval().of(rnd.nextPositiveInt(), rnd.nextPositiveInt()));
 
                     MapValue value = key.createValue();
                     Assert.assertFalse(value.isNew());
@@ -547,7 +579,7 @@ public class OrderedMapTest extends AbstractCairoTest {
                     Utf8Sequence varchar = record.getVarcharA(1);
                     Assert.assertNotNull(varchar);
                     TestUtils.assertEquals(utf8Sink, varchar);
-                    Assert.assertFalse(varchar.isAscii());
+                    TestUtils.assertAsciiCompliance(varchar);
                     Assert.assertEquals(rnd.nextLong(), record.getLong(0));
                 }
             }
@@ -875,7 +907,7 @@ public class OrderedMapTest extends AbstractCairoTest {
             model.col("a", ColumnType.LONG).col("b", geohashType);
             AbstractCairoTest.create(model);
 
-            try (TableWriter writer = newOffPoolWriter(configuration, "x", metrics)) {
+            try (TableWriter writer = newOffPoolWriter(configuration, "x")) {
                 for (int i = 0; i < N; i++) {
                     TableWriter.Row row = writer.newRow();
                     long rndGeohash = GeoHashes.fromCoordinatesDeg(rnd.nextDouble() * 180 - 90, rnd.nextDouble() * 360 - 180, precisionBits);
@@ -886,7 +918,10 @@ public class OrderedMapTest extends AbstractCairoTest {
                 writer.commit();
             }
 
-            try (TableReader reader = newOffPoolReader(configuration, "x")) {
+            try (
+                    TableReader reader = newOffPoolReader(configuration, "x");
+                    TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+            ) {
                 EntityColumnFilter entityColumnFilter = new EntityColumnFilter();
                 entityColumnFilter.of(reader.getMetadata().getColumnCount());
 
@@ -910,12 +945,16 @@ public class OrderedMapTest extends AbstractCairoTest {
                                 1
                         )
                 ) {
-
-                    RecordSink sink = RecordSinkFactory.getInstance(asm, reader.getMetadata(), entityColumnFilter, true);
+                    BitSet writeSymbolAsString = new BitSet();
+                    for (int i = 0, n = reader.getMetadata().getColumnCount(); i < n; i++) {
+                        if (reader.getMetadata().getColumnType(i) == ColumnType.SYMBOL) {
+                            writeSymbolAsString.set(i);
+                        }
+                    }
+                    RecordSink sink = RecordSinkFactory.getInstance(asm, reader.getMetadata(), entityColumnFilter, writeSymbolAsString);
                     // this random will be populating values
                     Rnd rnd2 = new Rnd();
 
-                    RecordCursor cursor = reader.getCursor();
                     populateMap(map, rnd2, cursor, sink);
 
                     try (RecordCursor mapCursor = map.getCursor()) {
@@ -1171,12 +1210,12 @@ public class OrderedMapTest extends AbstractCairoTest {
 
             try (OrderedMap map = new OrderedMap(1024, keyTypes, valueTypes, 64, 0.8, 24)) {
                 final int N = 100000;
-                final IntList keyHashCodes = new IntList(N);
+                final LongList keyHashCodes = new LongList(N);
                 for (int i = 0; i < N; i++) {
                     MapKey key = map.withKey();
                     key.putInt(i);
                     key.putLong(i + 1);
-                    int hashCode = key.hash();
+                    long hashCode = key.hash();
                     keyHashCodes.add(hashCode);
 
                     MapValue value = key.createValue(hashCode);
@@ -1184,7 +1223,7 @@ public class OrderedMapTest extends AbstractCairoTest {
                     value.putLong(0, i + 2);
                 }
 
-                final IntList recordHashCodes = new IntList(N);
+                final LongList recordHashCodes = new LongList(N);
                 RecordCursor cursor = map.getCursor();
                 MapRecord record = map.getRecord();
                 while (cursor.hasNext()) {
@@ -1208,13 +1247,13 @@ public class OrderedMapTest extends AbstractCairoTest {
 
             try (OrderedMap map = new OrderedMap(1024, keyTypes, valueTypes, 64, 0.8, 24)) {
                 final int N = 100000;
-                final IntList keyHashCodes = new IntList(N);
+                final LongList keyHashCodes = new LongList(N);
                 for (int i = 0; i < N; i++) {
                     MapKey key = map.withKey();
                     key.putInt(i);
                     key.putStr(Chars.repeat("a", i % 32));
                     key.commit();
-                    int hashCode = key.hash();
+                    long hashCode = key.hash();
                     keyHashCodes.add(hashCode);
 
                     MapValue value = key.createValue(hashCode);
@@ -1222,7 +1261,7 @@ public class OrderedMapTest extends AbstractCairoTest {
                     value.putLong(0, i + 2);
                 }
 
-                final IntList recordHashCodes = new IntList(N);
+                final LongList recordHashCodes = new LongList(N);
                 RecordCursor cursor = map.getCursor();
                 MapRecord record = map.getRecord();
                 while (cursor.hasNext()) {
@@ -1567,7 +1606,10 @@ public class OrderedMapTest extends AbstractCairoTest {
 
             BytecodeAssembler asm = new BytecodeAssembler();
 
-            try (TableReader reader = newOffPoolReader(configuration, "x")) {
+            try (
+                    TableReader reader = newOffPoolReader(configuration, "x");
+                    TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+            ) {
                 EntityColumnFilter entityColumnFilter = new EntityColumnFilter();
                 entityColumnFilter.of(reader.getMetadata().getColumnCount());
 
@@ -1591,14 +1633,19 @@ public class OrderedMapTest extends AbstractCairoTest {
                                 1
                         )
                 ) {
-                    RecordSink sink = RecordSinkFactory.getInstance(asm, reader.getMetadata(), entityColumnFilter, true);
+                    BitSet writeSymbolAsString = new BitSet();
+                    for (int i = 0, n = reader.getMetadata().getColumnCount(); i < n; i++) {
+                        if (reader.getMetadata().getColumnType(i) == ColumnType.SYMBOL) {
+                            writeSymbolAsString.set(i);
+                        }
+                    }
+                    RecordSink sink = RecordSinkFactory.getInstance(asm, reader.getMetadata(), entityColumnFilter, writeSymbolAsString);
 
                     final int keyColumnOffset = map.getValueColumnCount();
 
                     // this random will be populating values
                     Rnd rnd2 = new Rnd();
 
-                    RecordCursor cursor = reader.getCursor();
                     populateMap(map, rnd2, cursor, sink);
 
                     try (RecordCursor mapCursor = map.getCursor()) {
@@ -1652,6 +1699,76 @@ public class OrderedMapTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testTopKFixedSizeKey() throws Exception {
+        TestUtils.assertMemoryLeak(() -> {
+            final int heapCapacity = 10;
+            SingleColumnType keyTypes = new SingleColumnType(ColumnType.LONG);
+            SingleColumnType valueTypes = new SingleColumnType(ColumnType.LONG);
+
+            try (
+                    OrderedMap map = new OrderedMap(Numbers.SIZE_1MB, keyTypes, valueTypes, 64, 0.8, Integer.MAX_VALUE);
+                    DirectLongLongHeap heap = new DirectLongLongMinHeap(heapCapacity, MemoryTag.NATIVE_DEFAULT)
+            ) {
+                for (int i = 0; i < 100; i++) {
+                    MapKey key = map.withKey();
+                    key.putLong(i);
+
+                    MapValue value = key.createValue();
+                    value.putLong(0, i);
+                }
+
+                MapRecordCursor mapCursor = map.getCursor();
+                mapCursor.longTopK(heap, new LongColumn(0));
+
+                Assert.assertEquals(heapCapacity, heap.size());
+
+                MapRecord mapRecord = mapCursor.getRecord();
+                DirectLongLongHeap.Cursor heapCursor = heap.getCursor();
+                for (int i = 0; i < heapCapacity; i++) {
+                    Assert.assertTrue(heapCursor.hasNext());
+                    mapCursor.recordAt(mapRecord, heapCursor.index());
+                    Assert.assertEquals(heapCursor.value(), mapRecord.getLong(0));
+                }
+            }
+        });
+    }
+
+    @Test
+    public void testTopKVarSizeKey() throws Exception {
+        TestUtils.assertMemoryLeak(() -> {
+            final int heapCapacity = 10;
+            SingleColumnType keyTypes = new SingleColumnType(ColumnType.STRING);
+            SingleColumnType valueTypes = new SingleColumnType(ColumnType.LONG);
+
+            try (
+                    OrderedMap map = new OrderedMap(Numbers.SIZE_1MB, keyTypes, valueTypes, 64, 0.8, Integer.MAX_VALUE);
+                    DirectLongLongHeap heap = new DirectLongLongMinHeap(heapCapacity, MemoryTag.NATIVE_DEFAULT)
+            ) {
+                for (int i = 0; i < 100; i++) {
+                    MapKey key = map.withKey();
+                    key.putStr(String.valueOf(i));
+
+                    MapValue value = key.createValue();
+                    value.putLong(0, i);
+                }
+
+                MapRecordCursor mapCursor = map.getCursor();
+                mapCursor.longTopK(heap, new LongColumn(0));
+
+                Assert.assertEquals(heapCapacity, heap.size());
+
+                MapRecord mapRecord = mapCursor.getRecord();
+                DirectLongLongHeap.Cursor heapCursor = heap.getCursor();
+                for (int i = 0; i < heapCapacity; i++) {
+                    Assert.assertTrue(heapCursor.hasNext());
+                    mapCursor.recordAt(mapRecord, heapCursor.index());
+                    Assert.assertEquals(heapCursor.value(), mapRecord.getLong(0));
+                }
+            }
+        });
+    }
+
+    @Test
     public void testValueAccess() throws Exception {
         TestUtils.assertMemoryLeak(() -> {
             final int N = 1000;
@@ -1662,7 +1779,10 @@ public class OrderedMapTest extends AbstractCairoTest {
 
             BytecodeAssembler asm = new BytecodeAssembler();
 
-            try (TableReader reader = newOffPoolReader(configuration, "x")) {
+            try (
+                    TableReader reader = newOffPoolReader(configuration, "x");
+                    TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+            ) {
                 EntityColumnFilter entityColumnFilter = new EntityColumnFilter();
                 entityColumnFilter.of(reader.getMetadata().getColumnCount());
 
@@ -1689,12 +1809,17 @@ public class OrderedMapTest extends AbstractCairoTest {
                                 1
                         )
                 ) {
-                    RecordSink sink = RecordSinkFactory.getInstance(asm, reader.getMetadata(), entityColumnFilter, true);
+                    BitSet writeSymbolAsString = new BitSet();
+                    for (int i = 0, n = reader.getMetadata().getColumnCount(); i < n; i++) {
+                        if (reader.getMetadata().getColumnType(i) == ColumnType.SYMBOL) {
+                            writeSymbolAsString.set(i);
+                        }
+                    }
+                    RecordSink sink = RecordSinkFactory.getInstance(asm, reader.getMetadata(), entityColumnFilter, writeSymbolAsString);
 
                     // this random will be populating values
                     Rnd rnd2 = new Rnd();
 
-                    RecordCursor cursor = reader.getCursor();
                     Record record = cursor.getRecord();
                     populateMapGeo(map, rnd2, cursor, sink);
 
@@ -1736,7 +1861,10 @@ public class OrderedMapTest extends AbstractCairoTest {
 
             BytecodeAssembler asm = new BytecodeAssembler();
 
-            try (TableReader reader = newOffPoolReader(configuration, "x")) {
+            try (
+                    TableReader reader = newOffPoolReader(configuration, "x");
+                    TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+            ) {
                 ListColumnFilter listColumnFilter = new ListColumnFilter();
                 for (int i = 0, n = reader.getMetadata().getColumnCount(); i < n; i++) {
                     listColumnFilter.add(i + 1);
@@ -1759,12 +1887,11 @@ public class OrderedMapTest extends AbstractCairoTest {
                                 N, 0.9f, 1
                         )
                 ) {
-                    RecordSink sink = RecordSinkFactory.getInstance(asm, reader.getMetadata(), listColumnFilter, false);
+                    RecordSink sink = RecordSinkFactory.getInstance(asm, reader.getMetadata(), listColumnFilter);
 
                     // this random will be populating values
                     Rnd rnd2 = new Rnd();
 
-                    RecordCursor cursor = reader.getCursor();
                     final Record record = cursor.getRecord();
                     long counter = 0;
                     while (cursor.hasNext()) {
@@ -1856,25 +1983,25 @@ public class OrderedMapTest extends AbstractCairoTest {
             Assert.assertEquals(rnd.nextByte(), record.getByte(keyColumnOffset));
             Assert.assertEquals(rnd.nextShort(), record.getShort(keyColumnOffset + 1));
             if (rnd.nextInt() % 4 == 0) {
-                Assert.assertEquals(Numbers.INT_NaN, record.getInt(keyColumnOffset + 2));
+                Assert.assertEquals(Numbers.INT_NULL, record.getInt(keyColumnOffset + 2));
             } else {
                 Assert.assertEquals(rnd.nextInt(), record.getInt(keyColumnOffset + 2));
             }
 
             if (rnd.nextInt() % 4 == 0) {
-                Assert.assertEquals(Numbers.LONG_NaN, record.getLong(keyColumnOffset + 3));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getLong(keyColumnOffset + 3));
             } else {
                 Assert.assertEquals(rnd.nextLong(), record.getLong(keyColumnOffset + 3));
             }
 
             if (rnd.nextInt() % 4 == 0) {
-                Assert.assertEquals(Numbers.LONG_NaN, record.getDate(keyColumnOffset + 4));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getDate(keyColumnOffset + 4));
             } else {
                 Assert.assertEquals(rnd.nextLong(), record.getDate(keyColumnOffset + 4));
             }
 
             if (rnd.nextInt() % 4 == 0) {
-                Assert.assertEquals(Numbers.LONG_NaN, record.getTimestamp(keyColumnOffset + 5));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getTimestamp(keyColumnOffset + 5));
             } else {
                 Assert.assertEquals(rnd.nextLong(), record.getTimestamp(keyColumnOffset + 5));
             }
@@ -1896,16 +2023,12 @@ public class OrderedMapTest extends AbstractCairoTest {
                 Assert.assertNull(record.getStrB(keyColumnOffset + 8));
                 Assert.assertEquals(-1, record.getStrLen(keyColumnOffset + 8));
                 AbstractCairoTest.sink.clear();
-                record.getStr(keyColumnOffset + 8, AbstractCairoTest.sink);
-                Assert.assertEquals(0, AbstractCairoTest.sink.length());
             } else {
                 CharSequence tmp = rnd.nextChars(5);
                 TestUtils.assertEquals(tmp, record.getStrA(keyColumnOffset + 8));
                 TestUtils.assertEquals(tmp, record.getStrB(keyColumnOffset + 8));
                 Assert.assertEquals(tmp.length(), record.getStrLen(keyColumnOffset + 8));
                 AbstractCairoTest.sink.clear();
-                record.getStr(keyColumnOffset + 8, AbstractCairoTest.sink);
-                TestUtils.assertEquals(tmp, AbstractCairoTest.sink);
             }
 
             // we are storing symbol as string, assert as such
@@ -1926,8 +2049,8 @@ public class OrderedMapTest extends AbstractCairoTest {
             }
 
             if (rnd.nextInt() % 4 == 0) {
-                Assert.assertEquals(Numbers.LONG_NaN, record.getLong128Hi(keyColumnOffset + 12));
-                Assert.assertEquals(Numbers.LONG_NaN, record.getLong128Lo(keyColumnOffset + 12));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getLong128Hi(keyColumnOffset + 12));
+                Assert.assertEquals(Numbers.LONG_NULL, record.getLong128Lo(keyColumnOffset + 12));
             } else {
                 Assert.assertEquals(rnd.nextLong(), record.getLong128Lo(keyColumnOffset + 12));
                 Assert.assertEquals(rnd.nextLong(), record.getLong128Hi(keyColumnOffset + 12));
@@ -2000,16 +2123,17 @@ public class OrderedMapTest extends AbstractCairoTest {
             if ((rnd.nextPositiveInt() % 4) == 0) {
                 Assert.assertNull(record.getStrA(col));
                 Assert.assertEquals(-1, record.getStrLen(col++));
-                Assert.assertNull(record.getVarcharA(col++));
+                Assert.assertNull(record.getVarcharA(col));
+                Assert.assertEquals(-1, record.getVarcharSize(col++));
             } else {
                 CharSequence expected = rnd.nextChars(rnd.nextPositiveInt() % 32);
                 TestUtils.assertEquals(expected, record.getStrA(col++));
                 utf8Sink.clear();
                 rnd.nextUtf8Str(rnd.nextPositiveInt() % 32, utf8Sink);
-                Utf8Sequence varchar = record.getVarcharA(col++);
+                Utf8Sequence varchar = record.getVarcharA(col);
                 Assert.assertNotNull(varchar);
-                Assert.assertFalse(varchar.isAscii());
                 TestUtils.assertEquals(utf8Sink, varchar);
+                Assert.assertEquals(varchar.size(), record.getVarcharSize(col++));
             }
 
             Assert.assertEquals(rnd.nextBoolean(), record.getBool(col++));
@@ -2017,15 +2141,13 @@ public class OrderedMapTest extends AbstractCairoTest {
             Assert.assertEquals(rnd.nextLong(), record.getTimestamp(col++));
             Assert.assertEquals(rnd.nextShort(), record.getShort(col++));
             Long256Impl long256 = new Long256Impl();
-            long256.setAll(
-                    rnd.nextLong(),
-                    rnd.nextLong(),
-                    rnd.nextLong(),
-                    rnd.nextLong()
-            );
+            long256.fromRnd(rnd);
             Assert.assertEquals(long256, record.getLong256A(col++));
             Assert.assertEquals(rnd.nextLong(), record.getLong128Lo(col));
-            Assert.assertEquals(rnd.nextLong(), record.getLong128Hi(col));
+            Assert.assertEquals(rnd.nextLong(), record.getLong128Hi(col++));
+            Interval interval = record.getInterval(col);
+            Assert.assertEquals(rnd.nextPositiveInt(), interval.getLo());
+            Assert.assertEquals(rnd.nextPositiveInt(), interval.getHi());
 
             // value part, it comes first in record
             col = 0;
@@ -2090,32 +2212,32 @@ public class OrderedMapTest extends AbstractCairoTest {
                 .col("m", ColumnType.UUID);
         AbstractCairoTest.create(model);
 
-        try (TableWriter writer = newOffPoolWriter(configuration, "x", metrics)) {
+        try (TableWriter writer = newOffPoolWriter(configuration, "x")) {
             for (int i = 0; i < n; i++) {
                 TableWriter.Row row = writer.newRow();
                 row.putByte(0, rnd.nextByte());
                 row.putShort(1, rnd.nextShort());
 
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putInt(2, Numbers.INT_NaN);
+                    row.putInt(2, Numbers.INT_NULL);
                 } else {
                     row.putInt(2, rnd.nextInt());
                 }
 
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putLong(3, Numbers.LONG_NaN);
+                    row.putLong(3, Numbers.LONG_NULL);
                 } else {
                     row.putLong(3, rnd.nextLong());
                 }
 
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putLong(4, Numbers.LONG_NaN);
+                    row.putLong(4, Numbers.LONG_NULL);
                 } else {
                     row.putDate(4, rnd.nextLong());
                 }
 
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putLong(5, Numbers.LONG_NaN);
+                    row.putLong(5, Numbers.LONG_NULL);
                 } else {
                     row.putTimestamp(5, rnd.nextLong());
                 }
@@ -2155,7 +2277,7 @@ public class OrderedMapTest extends AbstractCairoTest {
 
                 // UUID
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putLong128(12, Numbers.LONG_NaN, Numbers.LONG_NaN);
+                    row.putLong128(12, Numbers.LONG_NULL, Numbers.LONG_NULL);
                 } else {
                     row.putLong128(12, rnd.nextLong(), rnd.nextLong());
                 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,22 +25,19 @@
 package io.questdb.network;
 
 import io.questdb.log.Log;
-import io.questdb.metrics.LongGauge;
 import io.questdb.std.Mutable;
 import io.questdb.std.QuietCloseable;
 import org.jetbrains.annotations.NotNull;
 
 public abstract class IOContext<T extends IOContext<T>> implements Mutable, QuietCloseable {
     protected final Socket socket;
-    private final LongGauge connectionCountGauge;
     protected long heartbeatId = -1;
     private int disconnectReason;
     // keep dispatcher private to avoid context scheduling itself multiple times
     private IODispatcher<T> dispatcher;
 
-    protected IOContext(SocketFactory socketFactory, NetworkFacade nf, Log log, LongGauge connectionCountGauge) {
+    protected IOContext(SocketFactory socketFactory, NetworkFacade nf, Log log) {
         this.socket = socketFactory.newInstance(nf, log);
-        this.connectionCountGauge = connectionCountGauge;
     }
 
     @Override
@@ -57,35 +54,17 @@ public abstract class IOContext<T extends IOContext<T>> implements Mutable, Quie
         _clear();
     }
 
-    public int getDisconnectReason() {
-        return disconnectReason;
-    }
-
-
-    public PeerIsSlowToReadException registerDispatcherWrite() {
-        return PeerIsSlowToReadException.INSTANCE;
-    }
-
-    public HeartBeatException registerDispatcherHeartBeat() {
-        return HeartBeatException.INSTANCE;
-    }
-
-    public ServerDisconnectException registerDispatcherDisconnect(int reason) {
-        disconnectReason = reason;
-        return ServerDisconnectException.INSTANCE;
-    }
-
     public long getAndResetHeartbeatId() {
         long id = heartbeatId;
         heartbeatId = -1;
         return id;
     }
 
-    public PeerIsSlowToWriteException registerDispatcherRead() {
-        return PeerIsSlowToWriteException.INSTANCE;
+    public int getDisconnectReason() {
+        return disconnectReason;
     }
 
-    public int getFd() {
+    public long getFd() {
         return socket != null ? socket.getFd() : -1;
     }
 
@@ -109,13 +88,27 @@ public abstract class IOContext<T extends IOContext<T>> implements Mutable, Quie
     }
 
     @SuppressWarnings("unchecked")
-    public T of(int fd, @NotNull IODispatcher<T> dispatcher) {
-        if (fd != -1) {
-            connectionCountGauge.inc();
-        }
+    public T of(long fd, @NotNull IODispatcher<T> dispatcher) {
         socket.of(fd);
         this.dispatcher = dispatcher;
         return (T) this;
+    }
+
+    public ServerDisconnectException registerDispatcherDisconnect(int reason) {
+        disconnectReason = reason;
+        return ServerDisconnectException.INSTANCE;
+    }
+
+    public HeartBeatException registerDispatcherHeartBeat() {
+        return HeartBeatException.INSTANCE;
+    }
+
+    public PeerIsSlowToWriteException registerDispatcherRead() {
+        return PeerIsSlowToWriteException.INSTANCE;
+    }
+
+    public PeerIsSlowToReadException registerDispatcherWrite() {
+        return PeerIsSlowToReadException.INSTANCE;
     }
 
     public void setHeartbeatId(long heartbeatId) {
@@ -123,9 +116,6 @@ public abstract class IOContext<T extends IOContext<T>> implements Mutable, Quie
     }
 
     private void _clear() {
-        if (socket.getFd() != -1) {
-            connectionCountGauge.dec();
-        }
         heartbeatId = -1;
         socket.close();
         dispatcher = null;

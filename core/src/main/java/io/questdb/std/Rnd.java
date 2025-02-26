@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,9 @@ package io.questdb.std;
 
 import io.questdb.cairo.GeoHashes;
 import io.questdb.std.str.*;
+
+import java.util.Collections;
+import java.util.List;
 
 public class Rnd {
     private static final double DOUBLE_UNIT = 0x1.0p-53; // 1.0 / (1L << 53)
@@ -264,6 +267,13 @@ public class Rnd {
 
     public final void reset() {
         reset(0xdeadbeef, 0xdee4c0ed);
+    }
+
+    public void shuffle(List<?> list) {
+        for (int i = 1, n = list.size(); i < n; i++) {
+            int swapTarget = nextInt(i + 1);
+            Collections.swap(list, i, swapTarget);
+        }
     }
 
     public void syncWith(Rnd other) {

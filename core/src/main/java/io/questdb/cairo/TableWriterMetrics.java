@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,8 +26,9 @@ package io.questdb.cairo;
 
 import io.questdb.metrics.Counter;
 import io.questdb.metrics.MetricsRegistry;
+import io.questdb.std.Mutable;
 
-public class TableWriterMetrics {
+public class TableWriterMetrics implements Mutable {
 
     // Includes all types of commits (in-order and o3)
     private final Counter commitCounter;
@@ -51,6 +52,15 @@ public class TableWriterMetrics {
 
     public void addPhysicallyWrittenRows(long rows) {
         physicallyWrittenRowCounter.add(rows);
+    }
+
+    @Override
+    public void clear() {
+        commitCounter.reset();
+        committedRowCounter.reset();
+        o3CommitCounter.reset();
+        physicallyWrittenRowCounter.reset();
+        rollbackCounter.reset();
     }
 
     public long getCommitCount() {

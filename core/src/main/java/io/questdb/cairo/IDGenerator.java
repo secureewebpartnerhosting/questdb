@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,11 @@
 
 package io.questdb.cairo;
 
-import io.questdb.std.*;
+import io.questdb.std.Files;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Os;
+import io.questdb.std.Unsafe;
 import io.questdb.std.str.Path;
 
 import java.io.Closeable;
@@ -34,7 +38,7 @@ public class IDGenerator implements Closeable {
     private final String uniqueIdFileName;
     private final long uniqueIdMemSize;
 
-    private int uniqueIdFd = -1;
+    private long uniqueIdFd = -1;
     private long uniqueIdMem = 0;
 
     public IDGenerator(CairoConfiguration configuration, String uniqueIdFileName) {
@@ -72,17 +76,17 @@ public class IDGenerator implements Closeable {
     public void open(Path path) {
         close();
         if (path == null) {
-            path = Path.getThreadLocal(configuration.getRoot());
+            path = Path.getThreadLocal(configuration.getDbRoot());
         }
         final int rootLen = path.size();
         try {
-            path.concat(uniqueIdFileName).$();
+            path.concat(uniqueIdFileName);
             final FilesFacade ff = configuration.getFilesFacade();
-            uniqueIdFd = TableUtils.openFileRWOrFail(ff, path, configuration.getWriterFileOpenOpts());
+            uniqueIdFd = TableUtils.openFileRWOrFail(ff, path.$(), configuration.getWriterFileOpenOpts());
             uniqueIdMem = TableUtils.mapRW(ff, uniqueIdFd, uniqueIdMemSize, MemoryTag.MMAP_DEFAULT);
-        } catch (Throwable e) {
+        } catch (Throwable th) {
             close();
-            throw e;
+            throw th;
         } finally {
             path.trimTo(rootLen);
         }
@@ -95,7 +99,7 @@ public class IDGenerator implements Closeable {
     }
 
     long getCurrentId() {
-        assert uniqueIdMem > 0;
+        assert uniqueIdMem != 0;
         return Unsafe.getUnsafe().getLong(uniqueIdMem);
     }
 }

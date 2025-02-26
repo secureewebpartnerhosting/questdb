@@ -4,16 +4,16 @@
  *   | | | | | | |/ _ \/ __| __| | | |  _ \
  *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
  *    \__\_\\__,_|\___||___/\__|____/|____/
- * <p>
+ *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
- * <p>
+ *  Copyright (c) 2019-2024 QuestDB
+ *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- * <p>
+ *
  *  http://www.apache.org/licenses/LICENSE-2.0
- * <p>
+ *
  *  Unless required by applicable law or agreed to in writing, software
  *  distributed under the License is distributed on an "AS IS" BASIS,
  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -26,10 +26,7 @@ package io.questdb.test.griffin.engine.functions;
 
 import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.engine.functions.IPv4Function;
-import io.questdb.std.str.StringSink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
-import io.questdb.std.str.Utf8StringSink;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -42,15 +39,10 @@ public class IPv4FunctionTest {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return true;
         }
     };
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetChar() {
-        function.getChar(null);
-    }
 
     @Test(expected = UnsupportedOperationException.class)
     public void testGeoByte() {
@@ -93,6 +85,11 @@ public class IPv4FunctionTest {
     }
 
     @Test(expected = UnsupportedOperationException.class)
+    public void testGetChar() {
+        function.getChar(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
     public void testGetDate() {
         function.getDate(null);
     }
@@ -105,53 +102,6 @@ public class IPv4FunctionTest {
     @Test(expected = UnsupportedOperationException.class)
     public void testGetInt() {
         function.getInt(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetRecordCursorFactory() {
-        function.getRecordCursorFactory();
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetShort() {
-        function.getShort(null);
-    }
-
-    @Test
-    public void testGetStr() {
-        TestUtils.assertEquals("0.0.0.150", function.getStrA(null));
-    }
-
-    @Test
-    public void testGetStr2() {
-        StringSink sink = new StringSink();
-        function.getStr(null, sink);
-        TestUtils.assertEquals("0.0.0.150", sink);
-    }
-
-    @Test
-    public void testGetStrB() {
-        TestUtils.assertEquals("0.0.0.150", function.getStrB(null));
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetStrLen() {
-        function.getStrLen(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetSym() {
-        function.getSymbol(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetSymbolB() {
-        function.getSymbolB(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetTimestamp() {
-        function.getTimestamp(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -179,11 +129,44 @@ public class IPv4FunctionTest {
         function.getLong256B(null);
     }
 
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetRecordCursorFactory() {
+        function.getRecordCursorFactory();
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetShort() {
+        function.getShort(null);
+    }
+
     @Test
-    public void testGetVarcharToSink() {
-        Utf8Sink sink = new Utf8StringSink();
-        function.getVarchar(null, sink);
-        TestUtils.assertEquals("0.0.0.150", sink.toString());
+    public void testGetStr() {
+        TestUtils.assertEquals("0.0.0.150", function.getStrA(null));
+    }
+
+    @Test
+    public void testGetStrB() {
+        TestUtils.assertEquals("0.0.0.150", function.getStrB(null));
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetStrLen() {
+        function.getStrLen(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetSym() {
+        function.getSymbol(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetSymbolB() {
+        function.getSymbolB(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetTimestamp() {
+        function.getTimestamp(null);
     }
 
     @Test

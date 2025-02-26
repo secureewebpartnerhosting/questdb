@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,11 +25,10 @@
 package io.questdb.griffin.engine.union;
 
 import io.questdb.std.BinarySequence;
+import io.questdb.std.Interval;
 import io.questdb.std.Long256;
 import io.questdb.std.str.CharSink;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 public class UnionRecord extends AbstractUnionRecord {
 
@@ -148,6 +147,14 @@ public class UnionRecord extends AbstractUnionRecord {
     }
 
     @Override
+    public Interval getInterval(int col) {
+        if (useA) {
+            return recordA.getInterval(col);
+        }
+        return recordB.getInterval(col);
+    }
+
+    @Override
     public long getLong(int col) {
         if (useA) {
             return recordA.getLong(col);
@@ -213,15 +220,6 @@ public class UnionRecord extends AbstractUnionRecord {
     }
 
     @Override
-    public void getStr(int col, Utf16Sink utf16Sink) {
-        if (useA) {
-            recordA.getStr(col, utf16Sink);
-        } else {
-            recordB.getStr(col, utf16Sink);
-        }
-    }
-
-    @Override
     public CharSequence getStrB(int col) {
         if (useA) {
             return recordA.getStrB(col);
@@ -246,15 +244,6 @@ public class UnionRecord extends AbstractUnionRecord {
     }
 
     @Override
-    public void getVarchar(int col, Utf8Sink utf8Sink) {
-        if (useA) {
-            recordA.getVarchar(col, utf8Sink);
-        } else {
-            recordB.getVarchar(col, utf8Sink);
-        }
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(int col) {
         if (useA) {
             return recordA.getVarcharA(col);
@@ -268,5 +257,13 @@ public class UnionRecord extends AbstractUnionRecord {
             return recordA.getVarcharB(col);
         }
         return recordB.getVarcharB(col);
+    }
+
+    @Override
+    public int getVarcharSize(int col) {
+        if (useA) {
+            return recordA.getVarcharSize(col);
+        }
+        return recordB.getVarcharSize(col);
     }
 }

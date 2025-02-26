@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -65,13 +65,13 @@ public class WithClauseTest extends AbstractCairoTest {
     @Test
     public void testWithAliasOverridingTable3() throws Exception {
         assertMemoryLeak(() -> assertQuery("address\tbalance\n", "WITH balance as ( SELECT * FROM balance WHERE address = 1 ) \n" +
-                        "SELECT * FROM ( " +
-                        "WITH balance_other AS ( SELECT * FROM balance )\n" +
-                        "SELECT * FROM balance " +
-                        " ) ORDER BY 1 ", "CREATE TABLE balance (\n" +
-                        "  address LONG,\n" +
-                        "  balance DOUBLE\n" +
-                        ");", null, "insert into balance values ( 1, 1.0 ), (2, 2.0);", "address\tbalance\n1\t1.0\n", true, false, false));
+                "SELECT * FROM ( " +
+                "WITH balance_other AS ( SELECT * FROM balance )\n" +
+                "SELECT * FROM balance " +
+                " ) ORDER BY 1 ", "CREATE TABLE balance (\n" +
+                "  address LONG,\n" +
+                "  balance DOUBLE\n" +
+                ");", null, "insert into balance values ( 1, 1.0 ), (2, 2.0);", "address\tbalance\n1\t1.0\n", true, false, false));
     }
 
     @Test
@@ -106,7 +106,7 @@ public class WithClauseTest extends AbstractCairoTest {
     @Test
     public void testWithLatestByFilterGroup() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table contact_events2 as (\n" +
+            execute("create table contact_events2 as (\n" +
                     "  select cast(x as SYMBOL) _id,\n" +
                     "    rnd_symbol('c1', 'c2', 'c3', 'c4') contactid, \n" +
                     "    CAST(x as Timestamp) timestamp, \n" +
@@ -125,7 +125,7 @@ public class WithClauseTest extends AbstractCairoTest {
             String expected = sink.toString();
             Assert.assertTrue(expected.length() > 100);
 
-            assertQuery(expected,
+            assertQueryNoLeakCheck(expected,
                     "with eventlist as (\n" +
                             "    select * from contact_events2 where groupId = 'g1' latest on timestamp partition by _id order by timestamp\n" +
                             ")\n" +
@@ -134,4 +134,12 @@ public class WithClauseTest extends AbstractCairoTest {
         });
     }
 
+    @Test
+    public void testWithSelectTwoWheres() throws Exception {
+        assertException("with example as (select * from long_sequence(1))\n" +
+                        "select * from example where true where false;",
+                82,
+                "unexpected token [where]"
+        );
+    }
 }

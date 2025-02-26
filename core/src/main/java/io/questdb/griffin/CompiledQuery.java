@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,11 +24,11 @@
 
 package io.questdb.griffin;
 
-import io.questdb.cairo.TableToken;
 import io.questdb.cairo.sql.InsertOperation;
 import io.questdb.cairo.sql.OperationFuture;
 import io.questdb.cairo.sql.RecordCursorFactory;
 import io.questdb.griffin.engine.ops.AlterOperation;
+import io.questdb.griffin.engine.ops.Operation;
 import io.questdb.griffin.engine.ops.UpdateOperation;
 import io.questdb.mp.SCSequence;
 import io.questdb.std.Transient;
@@ -57,17 +57,20 @@ public interface CompiledQuery {
     short COMMIT = BEGIN + 1; // 19
     short ROLLBACK = COMMIT + 1; // 20
     short CREATE_TABLE_AS_SELECT = ROLLBACK + 1; // 21
-    short SNAPSHOT_DB_PREPARE = CREATE_TABLE_AS_SELECT + 1; // 22
-    short SNAPSHOT_DB_COMPLETE = SNAPSHOT_DB_PREPARE + 1; // 23
-    short DEALLOCATE = SNAPSHOT_DB_COMPLETE + 1; // 24
+    short CHECKPOINT_CREATE = CREATE_TABLE_AS_SELECT + 1; // 22
+    short CHECKPOINT_RELEASE = CHECKPOINT_CREATE + 1; // 23
+    short DEALLOCATE = CHECKPOINT_RELEASE + 1; // 24
     short EXPLAIN = DEALLOCATE + 1; // 25
     short TABLE_RESUME = EXPLAIN + 1; // 26
     short TABLE_SET_TYPE = TABLE_RESUME + 1; // 27
     short CREATE_USER = TABLE_SET_TYPE + 1; // 28
     short ALTER_USER = CREATE_USER + 1; // 29
-
     short CANCEL_QUERY = ALTER_USER + 1; // 30
-    short TYPES_COUNT = CANCEL_QUERY;
+    short TABLE_SUSPEND = CANCEL_QUERY + 1; // 31
+    short CREATE_MAT_VIEW = TABLE_SUSPEND + 1; // 32
+    short REFRESH_MAT_VIEW = CREATE_MAT_VIEW + 1; // 33
+    short EMPTY = REFRESH_MAT_VIEW + 1;
+    short TYPES_COUNT = EMPTY;
 
     /**
      * Executes the query.
@@ -85,6 +88,8 @@ public interface CompiledQuery {
     @Transient
     OperationFuture execute(SqlExecutionContext context, SCSequence eventSubSeq, boolean closeOnDone) throws SqlException;
 
+    boolean executedAtParseTime();
+
     /**
      * Returns number of rows changed by this command. Used e.g. in pg wire protocol.
      *
@@ -97,9 +102,11 @@ public interface CompiledQuery {
 
     InsertOperation getInsertOperation();
 
+    Operation getOperation();
+
     RecordCursorFactory getRecordCursorFactory();
 
-    String getSqlStatement();
+    String getSqlText();
 
     /**
      * Returns statement name for DEALLOCATE statement. Used e.g. in pg wire protocol.
@@ -108,13 +115,11 @@ public interface CompiledQuery {
      */
     CharSequence getStatementName();
 
-    TableToken getTableToken();
-
     short getType();
 
     UpdateOperation getUpdateOperation();
 
     CompiledQuery withContext(SqlExecutionContext sqlExecutionContext);
 
-    void withSqlStatement(String sqlStatement);
+    void withSqlText(String sqlText);
 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,7 +34,9 @@ import io.questdb.griffin.engine.functions.constants.VarcharConstant;
 import io.questdb.std.IntList;
 import io.questdb.std.Misc;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.*;
+import io.questdb.std.str.StringSink;
+import io.questdb.std.str.Utf8Sequence;
+import io.questdb.std.str.Utf8StringSink;
 
 public final class CastUuidToVarcharFunctionFactory implements FunctionFactory {
 
@@ -69,11 +71,6 @@ public final class CastUuidToVarcharFunctionFactory implements FunctionFactory {
 
         public Func(Function arg) {
             super(arg);
-        }
-
-        @Override
-        public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-            SqlUtil.implicitCastUuidAsStr(arg.getLong128Lo(rec), arg.getLong128Hi(rec), utf8Sink);
         }
 
         @Override

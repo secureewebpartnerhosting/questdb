@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,8 +28,26 @@ import io.questdb.cairo.CairoConfiguration;
 import io.questdb.cairo.sql.async.PageFrameReduceTask;
 import io.questdb.cutlass.text.CopyRequestTask;
 import io.questdb.cutlass.text.CopyTask;
-import io.questdb.mp.*;
-import io.questdb.tasks.*;
+import io.questdb.metrics.QueryTrace;
+import io.questdb.mp.ConcurrentQueue;
+import io.questdb.mp.FanOut;
+import io.questdb.mp.MCSequence;
+import io.questdb.mp.MPSequence;
+import io.questdb.mp.RingQueue;
+import io.questdb.mp.SCSequence;
+import io.questdb.mp.SPSequence;
+import io.questdb.tasks.ColumnIndexerTask;
+import io.questdb.tasks.ColumnPurgeTask;
+import io.questdb.tasks.ColumnTask;
+import io.questdb.tasks.GroupByMergeShardTask;
+import io.questdb.tasks.LatestByTask;
+import io.questdb.tasks.O3CopyTask;
+import io.questdb.tasks.O3OpenColumnTask;
+import io.questdb.tasks.O3PartitionPurgeTask;
+import io.questdb.tasks.O3PartitionTask;
+import io.questdb.tasks.TableWriterTask;
+import io.questdb.tasks.VectorAggregateTask;
+import io.questdb.tasks.WalTxnNotificationTask;
 
 import java.io.Closeable;
 
@@ -40,6 +58,12 @@ public interface MessageBus extends Closeable {
     RingQueue<ColumnPurgeTask> getColumnPurgeQueue();
 
     SCSequence getColumnPurgeSubSeq();
+
+    MPSequence getColumnTaskPubSeq();
+
+    RingQueue<ColumnTask> getColumnTaskQueue();
+
+    MCSequence getColumnTaskSubSeq();
 
     CairoConfiguration getConfiguration();
 
@@ -62,12 +86,6 @@ public interface MessageBus extends Closeable {
     RingQueue<LatestByTask> getLatestByQueue();
 
     MCSequence getLatestBySubSeq();
-
-    MPSequence getO3CallbackPubSeq();
-
-    RingQueue<O3CallbackTask> getO3CallbackQueue();
-
-    MCSequence getO3CallbackSubSeq();
 
     MPSequence getO3CopyPubSeq();
 
@@ -102,6 +120,12 @@ public interface MessageBus extends Closeable {
     int getPageFrameReduceShardCount();
 
     MCSequence getPageFrameReduceSubSeq(int shard);
+
+    MPSequence getQueryCacheEventPubSeq();
+
+    MCSequence getQueryCacheEventSubSeq();
+
+    ConcurrentQueue<QueryTrace> getQueryTraceQueue();
 
     FanOut getTableWriterEventFanOut();
 

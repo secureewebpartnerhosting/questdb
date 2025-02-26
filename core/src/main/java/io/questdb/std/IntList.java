@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -59,6 +59,10 @@ public class IntList implements Mutable, Sinkable {
         System.arraycopy(that.data, 0, this.data, p, s);
     }
 
+    public void allocate(int size) {
+        checkCapacity(size);
+    }
+
     public void arrayCopy(int srcPos, int dstPos, int length) {
         System.arraycopy(data, srcPos, data, dstPos, length);
     }
@@ -83,6 +87,16 @@ public class IntList implements Mutable, Sinkable {
 
     public int capacity() {
         return data.length;
+    }
+
+    public void checkCapacity(int capacity) {
+        int l = data.length;
+        if (capacity > l) {
+            int newCap = Math.max(l << 1, capacity);
+            int[] buf = new int[newCap];
+            System.arraycopy(data, 0, buf, 0, l);
+            this.data = buf;
+        }
     }
 
     public void clear() {
@@ -196,9 +210,6 @@ public class IntList implements Mutable, Sinkable {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     public void removeIndex(int index) {
         if (pos < 1 || index >= pos) {
             return;
@@ -244,6 +255,21 @@ public class IntList implements Mutable, Sinkable {
         return pos;
     }
 
+    /**
+     * Sorts groups of N elements. The size of the group is specified by {@code groupSize}.
+     * Comparison between groups is done by comparing the first element of each group, then
+     * if the first elements are equial the second elements are compared and so on.
+     *
+     * @param groupSize size of the group
+     */
+    public void sortGroups(int groupSize) {
+        if (groupSize > 0 && pos % groupSize == 0) {
+            IntGroupSort.quickSort(groupSize, data, 0, pos / groupSize);
+            return;
+        }
+        throw new IllegalStateException("sorting not supported for group size: " + groupSize + ", length: " + pos);
+    }
+
     @Override
     public void toSink(@NotNull CharSink<?> sink) {
         sink.putAscii('[');
@@ -285,16 +311,6 @@ public class IntList implements Mutable, Sinkable {
 
     public void zero(int value) {
         Arrays.fill(data, 0, pos, value);
-    }
-
-    private void checkCapacity(int capacity) {
-        int l = data.length;
-        if (capacity > l) {
-            int newCap = Math.max(l << 1, capacity);
-            int[] buf = new int[newCap];
-            System.arraycopy(data, 0, buf, 0, l);
-            this.data = buf;
-        }
     }
 
     private boolean equals(IntList that) {

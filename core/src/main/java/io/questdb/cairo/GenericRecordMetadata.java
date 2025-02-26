@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -112,14 +112,24 @@ public class GenericRecordMetadata extends AbstractRecordMetadata {
     }
 
     public GenericRecordMetadata add(int i, TableColumnMetadata meta) {
-        int index = columnNameIndexMap.keyIndex(meta.getName());
+        int index = columnNameIndexMap.keyIndex(meta.getColumnName());
         if (index > -1) {
-            columnNameIndexMap.putAt(index, meta.getName(), i);
+            columnNameIndexMap.putAt(index, meta.getColumnName(), i);
             columnMetadata.extendAndSet(i, meta);
             columnCount++;
             return this;
         }
-        throw CairoException.duplicateColumn(meta.getName());
+        throw CairoException.duplicateColumn(meta.getColumnName());
+    }
+
+    public GenericRecordMetadata addIfNotExists(int i, TableColumnMetadata meta) {
+        int index = columnNameIndexMap.keyIndex(meta.getColumnName());
+        if (index > -1) {
+            columnNameIndexMap.putAt(index, meta.getColumnName(), i);
+            columnMetadata.extendAndSet(i, meta);
+            columnCount++;
+        }
+        return this;
     }
 
     public void setTimestampIndex(int index) {

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -90,8 +90,8 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
             final RecordCursorFactory factory = op.getFactory();
 
             purgingOperator.clear();
-
             if (tableWriter.inTransaction()) {
+                assert !tableWriter.getTableToken().isWal();
                 LOG.info().$("committing current transaction before UPDATE execution [table=").$(tableToken).$(" instance=").$(op.getCorrelationId()).I$();
                 tableWriter.commit();
             }
@@ -243,7 +243,6 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
                             tableWriter.getTableToken(),
                             tableWriter.getPartitionBy(),
                             tableWriter.checkScoreboardHasReadersBeforeLastCommittedTxn(),
-                            tableWriter.getMetadata(),
                             tableWriter.getTruncateVersion(),
                             tableWriter.getTxn()
                     );
@@ -305,7 +304,7 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
         if (ColumnType.isVarSize(columnTag)) {
             final ColumnTypeDriver columnTypeDriver = ColumnType.getDriver(columnTag);
             for (long row = fromRow; row < toRow; row++) {
-                columnTypeDriver.appendNull(dstDataMem, dstAuxMem);
+                columnTypeDriver.appendNull(dstAuxMem, dstDataMem);
             }
         } else {
             final long rowCount = toRow - fromRow;
@@ -353,11 +352,11 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
             MemoryCMARW dstVarMem = dstColumns.get(2 * i + 1);
 
             final int columnIndex = updateColumnIndexes.get(i);
-            final long oldColumnTop = tableWriter.getColumnTop(partitionTimestamp, columnIndex, -1);
-            final long newColumnTop = calculatedEffectiveColumnTop(firstUpdatedRowId, oldColumnTop);
             final int toType = tableMetadata.getColumnType(columnIndex);
 
             if (currentRow > prevRow) {
+                final long oldColumnTop = tableWriter.getColumnTop(partitionTimestamp, columnIndex, -1);
+                final long newColumnTop = calculatedEffectiveColumnTop(firstUpdatedRowId, oldColumnTop);
                 copyColumn(
                         prevRow,
                         currentRow,
@@ -429,7 +428,7 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
                     dstFixMem.putLong(dstVarMem.putStr(masterRecord.getStrA(i)));
                     break;
                 case ColumnType.VARCHAR:
-                    VarcharTypeDriver.appendValue(dstVarMem, dstFixMem, masterRecord.getVarcharA(i));
+                    VarcharTypeDriver.appendValue(dstFixMem, dstVarMem, masterRecord.getVarcharA(i));
                     break;
                 case ColumnType.BINARY:
                     dstFixMem.putLong(dstVarMem.putBin(masterRecord.getBin(i)));
@@ -599,14 +598,19 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
             long srcDataAddr = srcDataMem.addressOf(dataOffsetLo);
             long copyToOffset = dstDataMem.getAppendOffset();
             dstDataMem.putBlockOfBytes(srcDataAddr, srcDataSize);
-            dstFixMem.extend(columnTypeDriver.getAuxVectorSize(rowHi));
+            dstFixMem.jumpTo(columnTypeDriver.getAuxVectorSize(rowHi));
+            long dstAddrLimit = dstFixMem.getAppendAddress();
             dstFixMem.jumpTo(columnTypeDriver.getAuxVectorOffset(rowLo));
+            long dstAddr = dstFixMem.getAppendAddress();
+            long dstAddrSize = dstAddrLimit - dstAddr;
+
             columnTypeDriver.shiftCopyAuxVector(
                     dataOffsetLo - copyToOffset,
                     srcFixMem.addressOf(columnTypeDriver.getAuxVectorOffset(rowLo)),
                     0,
                     rowHi - rowLo - 1, // inclusive
-                    dstFixMem.getAppendAddress()
+                    dstAddr,
+                    dstAddrSize
             );
             dstFixMem.jumpTo(columnTypeDriver.getAuxVectorSize(rowHi));
         } else {
@@ -620,24 +624,27 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
     private void openColumns(ObjList<? extends MemoryCM> columns, int partitionIndex, boolean forWrite) {
         long partitionTimestamp = tableWriter.getPartitionTimestamp(partitionIndex);
         long partitionNameTxn = tableWriter.getPartitionNameTxn(partitionIndex);
+        long partitionSize = tableWriter.getPartitionSize(partitionIndex);
         RecordMetadata metadata = tableWriter.getMetadata();
         try {
             path.trimTo(rootLen);
-            TableUtils.setPathForPartition(path, tableWriter.getPartitionBy(), partitionTimestamp, partitionNameTxn);
+            TableUtils.setPathForNativePartition(path, tableWriter.getPartitionBy(), partitionTimestamp, partitionNameTxn);
             int pathTrimToLen = path.size();
             for (int i = 0, n = updateColumnIndexes.size(); i < n; i++) {
                 int columnIndex = updateColumnIndexes.get(i);
-                CharSequence name = metadata.getColumnName(columnIndex);
+                String columnName = metadata.getColumnName(columnIndex);
                 int columnType = metadata.getColumnType(columnIndex);
+                boolean isIndexed = ColumnType.isSymbol(columnType) && metadata.isColumnIndexed(columnIndex);
 
                 final long columnTop = tableWriter.getColumnTop(partitionTimestamp, columnIndex, -1L);
+                long rowCount = columnTop > -1 ? partitionSize - columnTop : 0;
 
                 if (forWrite) {
                     long existingVersion = tableWriter.getColumnNameTxn(partitionTimestamp, columnIndex);
                     tableWriter.upsertColumnVersion(partitionTimestamp, columnIndex, columnTop);
-                    if (columnTop > -1) {
+                    if (rowCount > 0) {
                         // columnTop == -1 means column did not exist at the partition
-                        purgingOperator.add(columnIndex, existingVersion, partitionTimestamp, partitionNameTxn);
+                        purgingOperator.add(columnIndex, columnName, columnType, isIndexed, existingVersion, partitionTimestamp, partitionNameTxn);
                     }
                 }
 
@@ -650,10 +657,10 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
                     colMemVar.close();
                     assert !colMemVar.isOpen();
 
-                    if (forWrite || columnTop != -1) {
+                    if (forWrite || rowCount > 0) {
                         colMemIndex.of(
                                 ff,
-                                iFile(path.trimTo(pathTrimToLen), name, columnNameTxn),
+                                iFile(path.trimTo(pathTrimToLen), columnName, columnNameTxn),
                                 dataAppendPageSize,
                                 -1,
                                 MemoryTag.MMAP_UPDATE,
@@ -661,7 +668,7 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
                         );
                         colMemVar.of(
                                 ff,
-                                dFile(path.trimTo(pathTrimToLen), name, columnNameTxn),
+                                dFile(path.trimTo(pathTrimToLen), columnName, columnNameTxn),
                                 dataAppendPageSize,
                                 -1,
                                 MemoryTag.MMAP_UPDATE,
@@ -673,10 +680,10 @@ public class UpdateOperatorImpl implements QuietCloseable, UpdateOperator {
                     colMem.close();
                     assert !colMem.isOpen();
 
-                    if (forWrite || columnTop != -1) {
+                    if (forWrite || rowCount > 0) {
                         colMem.of(
                                 ff,
-                                dFile(path.trimTo(pathTrimToLen), name, columnNameTxn),
+                                dFile(path.trimTo(pathTrimToLen), columnName, columnNameTxn),
                                 dataAppendPageSize,
                                 -1,
                                 MemoryTag.MMAP_UPDATE,

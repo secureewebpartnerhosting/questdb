@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,7 +38,6 @@ public class FunctionFactoryDescriptor {
     private final FunctionFactory factory;
     private final int openBraceIndex;
     private final int sigArgCount;
-
 
     public FunctionFactoryDescriptor(FunctionFactory factory) throws SqlException {
         this.factory = factory;
@@ -172,6 +171,9 @@ public class FunctionFactoryDescriptor {
                 break;
             case 'ø':
                 sigArgType = ColumnType.VARCHAR;
+                break;
+            case 'δ':
+                sigArgType = ColumnType.INTERVAL;
                 break;
             default:
                 sigArgType = -1;
@@ -336,6 +338,7 @@ public class FunctionFactoryDescriptor {
         typeNameMap.put('z', "uuid");
         typeNameMap.put('x', "ipv4");
         typeNameMap.put('ø', "varchar");
+        typeNameMap.put('δ', "interval");
         typeNameMap.put('[' | 32, "[]");
     }
 }

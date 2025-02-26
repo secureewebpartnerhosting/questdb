@@ -37,7 +37,6 @@ import io.questdb.std.Misc;
 import io.questdb.std.ObjList;
 import io.questdb.std.str.DirectUtf8Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 import org.jetbrains.annotations.Nullable;
 
 class StringAggVarcharGroupByFunction extends VarcharFunction implements UnaryFunction, GroupByFunction {
@@ -119,6 +118,11 @@ class StringAggVarcharGroupByFunction extends VarcharFunction implements UnaryFu
     }
 
     @Override
+    public int getValueIndex() {
+        return valueIndex;
+    }
+
+    @Override
     public @Nullable Utf8Sequence getVarcharA(Record rec) {
         final boolean nullValue = rec.getBool(valueIndex + 1);
         if (nullValue) {
@@ -128,18 +132,20 @@ class StringAggVarcharGroupByFunction extends VarcharFunction implements UnaryFu
     }
 
     @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        utf8Sink.put(getVarcharA(rec));
-    }
-
-    @Override
     public @Nullable Utf8Sequence getVarcharB(Record rec) {
         return getVarcharA(rec);
     }
 
     @Override
-    public int getValueIndex() {
-        return valueIndex;
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        columnTypes.add(ColumnType.INT); // sink index
+        columnTypes.add(ColumnType.BOOLEAN); // null flag
     }
 
     @Override
@@ -153,20 +159,8 @@ class StringAggVarcharGroupByFunction extends VarcharFunction implements UnaryFu
     }
 
     @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        columnTypes.add(ColumnType.INT); // sink index
-        columnTypes.add(ColumnType.BOOLEAN); // null flag
-    }
-
-    @Override
     public void setNull(MapValue mapValue) {
         mapValue.putBool(valueIndex + 1, true);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override

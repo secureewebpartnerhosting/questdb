@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -95,8 +95,26 @@ public class VwapDoubleGroupByFunction extends DoubleFunction implements GroupBy
     }
 
     @Override
+    public int getSampleByFlags() {
+        return GroupByFunction.SAMPLE_BY_FILL_ALL;
+    }
+
+    @Override
     public int getValueIndex() {
         return valueIndex;
+    }
+
+    @Override
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        columnTypes.add(ColumnType.DOUBLE);
+        columnTypes.add(ColumnType.DOUBLE);
+        columnTypes.add(ColumnType.DOUBLE);
     }
 
     @Override
@@ -105,8 +123,8 @@ public class VwapDoubleGroupByFunction extends DoubleFunction implements GroupBy
     }
 
     @Override
-    public boolean isReadThreadSafe() {
-        return BinaryFunction.super.isReadThreadSafe();
+    public boolean isThreadSafe() {
+        return BinaryFunction.super.isThreadSafe();
     }
 
     @Override
@@ -121,14 +139,6 @@ public class VwapDoubleGroupByFunction extends DoubleFunction implements GroupBy
     }
 
     @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        columnTypes.add(ColumnType.DOUBLE);
-        columnTypes.add(ColumnType.DOUBLE);
-        columnTypes.add(ColumnType.DOUBLE);
-    }
-
-    @Override
     public void setDouble(MapValue mapValue, double value) {
         mapValue.putDouble(valueIndex, value);
         mapValue.putDouble(valueIndex + 1, value);
@@ -140,11 +150,6 @@ public class VwapDoubleGroupByFunction extends DoubleFunction implements GroupBy
         mapValue.putDouble(valueIndex, Double.NaN);
         mapValue.putDouble(valueIndex + 1, 0);
         mapValue.putDouble(valueIndex + 2, 0);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override

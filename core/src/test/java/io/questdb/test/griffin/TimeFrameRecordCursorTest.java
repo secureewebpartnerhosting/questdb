@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
     @Test
     public void testEmptyTable() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table x (" +
                             " i int," +
                             " t timestamp" +
@@ -70,7 +70,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
         for (int i = 0; i < N; i++) {
             final int nRows = nRowsBase * (i + 1);
             assertMemoryLeak(() -> {
-                ddl(
+                execute(
                         "create table x as (select" +
                                 " rnd_int() a," +
                                 " rnd_str() b," +
@@ -105,7 +105,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                             Assert.assertEquals(-1, frame.getRowHi());
                             timeFrameCursor.open();
                             for (long row = frame.getRowHi() - 1; row >= frame.getRowLo(); row--) {
-                                timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), row));
+                                timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), row));
                                 actualSink.put(record.getInt(0));
                                 actualSink.put('\t');
                                 actualSink.put(record.getStrA(1));
@@ -118,7 +118,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                     }
                 }
 
-                drop("drop table x");
+                execute("drop table x");
             });
         }
     }
@@ -130,7 +130,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
         for (int i = 0; i < N; i++) {
             final int nRows = nRowsBase * (i + 1);
             assertMemoryLeak(() -> {
-                ddl(
+                execute(
                         "create table x as (select" +
                                 " rnd_int() a," +
                                 " rnd_str() b," +
@@ -161,7 +161,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                             Assert.assertEquals(-1, frame.getRowHi());
                             timeFrameCursor.open();
                             for (long row = frame.getRowLo(); row < frame.getRowHi(); row++) {
-                                timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), row));
+                                timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), row));
                                 actualSink.put(record.getInt(0));
                                 actualSink.put('\t');
                                 actualSink.put(record.getStrA(1));
@@ -176,7 +176,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                             Assert.assertEquals(-1, frame.getRowHi());
                             timeFrameCursor.open();
                             for (long row = frame.getRowHi() - 1; row >= frame.getRowLo(); row--) {
-                                timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), row));
+                                timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), row));
                                 actualSink.put(record.getInt(0));
                                 actualSink.put('\t');
                                 actualSink.put(record.getStrA(1));
@@ -189,7 +189,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                     }
                 }
 
-                drop("drop table x");
+                execute("drop table x");
             });
         }
     }
@@ -201,7 +201,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
         for (int i = 0; i < N; i++) {
             final int nRows = nRowsBase * (i + 1);
             assertMemoryLeak(() -> {
-                ddl(
+                execute(
                         "create table x as (select" +
                                 " rnd_int() a," +
                                 " rnd_str() b," +
@@ -232,7 +232,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                             Assert.assertEquals(-1, frame.getRowHi());
                             timeFrameCursor.open();
                             for (long row = frame.getRowLo(); row < frame.getRowHi(); row++) {
-                                timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), row));
+                                timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), row));
                                 actualSink.put(record.getInt(0));
                                 actualSink.put('\t');
                                 actualSink.put(record.getStrA(1));
@@ -245,7 +245,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                     }
                 }
 
-                drop("drop table x");
+                execute("drop table x");
             });
         }
     }
@@ -253,7 +253,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
     @Test
     public void testNavigateForwardNoPartitionBy() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table x as (select" +
                             " rnd_long() a," +
                             " rnd_boolean() b," +
@@ -284,7 +284,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                         Assert.assertEquals(-1, frame.getRowHi());
                         timeFrameCursor.open();
                         for (long row = frame.getRowLo(); row < frame.getRowHi(); row++) {
-                            timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), row));
+                            timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), row));
                             actualSink.put(record.getLong(0));
                             actualSink.put('\t');
                             actualSink.put(record.getBool(1));
@@ -297,7 +297,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                 }
             }
 
-            drop("drop table x");
+            execute("drop table x");
         });
     }
 
@@ -340,7 +340,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
 
         for (TestCase tc : testCases) {
             assertMemoryLeak(() -> {
-                ddl(tc.ddl);
+                execute(tc.ddl);
                 try (RecordCursorFactory factory = select(tc.query)) {
                     Assert.assertFalse("time frame cursor shouldn't be supported for " + tc.table, factory.supportsTimeFrameCursor());
                 }
@@ -361,7 +361,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
 
         for (int partitionBy : partitionBys) {
             assertMemoryLeak(() -> {
-                ddl(
+                execute(
                         "create table x as (select" +
                                 " timestamp_sequence(100000000, " + 365 * Timestamps.DAY_MICROS + ") t" +
                                 " from long_sequence(3)" +
@@ -378,7 +378,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                             Assert.assertEquals(-1, frame.getRowLo());
                             Assert.assertEquals(-1, frame.getRowHi());
                             timeFrameCursor.open();
-                            timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), frame.getRowLo()));
+                            timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), frame.getRowLo()));
                             long tsLo = record.getTimestamp(0);
 
                             PartitionBy.PartitionFloorMethod floorMethod = PartitionBy.getPartitionFloorMethod(partitionBy);
@@ -391,14 +391,14 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                             Assert.assertEquals(expectedEstimateTsHi, frame.getTimestampEstimateHi());
 
                             Assert.assertEquals(tsLo, frame.getTimestampLo());
-                            timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), frame.getRowHi() - 1));
+                            timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), frame.getRowHi() - 1));
                             long tsHi = record.getTimestamp(0);
                             Assert.assertEquals(tsHi + 1, frame.getTimestampHi());
                         }
                     }
                 }
 
-                drop("drop table x");
+                execute("drop table x");
             });
         }
     }
@@ -407,21 +407,24 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
     public void testTimeFrameBoundariesSplitPartitions() throws Exception {
         executeWithPool((engine, compiler, executionContext) -> {
             // produce split partition
-            compiler.compile(
+            execute(
+                    compiler,
                     "create table x as (" +
                             "  select timestamp_sequence('2020-02-03T13', 60*1000000L) ts " +
                             "  from long_sequence(60*24*2+300)" +
                             ") timestamp (ts) partition by DAY",
                     executionContext
             );
-            compiler.compile(
+            execute(
+                    compiler,
                     "create table z as (" +
                             "  select timestamp_sequence('2020-02-05T17:01', 60*1000000L) ts " +
                             "  from long_sequence(50)" +
                             ")",
                     executionContext
             );
-            compiler.compile(
+            execute(
+                    compiler,
                     "create table y as (select * from x union all select * from z)",
                     executionContext
             );
@@ -438,7 +441,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                         Assert.assertEquals(-1, frame.getRowLo());
                         Assert.assertEquals(-1, frame.getRowHi());
                         timeFrameCursor.open();
-                        timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), frame.getRowLo()));
+                        timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), frame.getRowLo()));
                         long tsLo = record.getTimestamp(0);
 
                         PartitionBy.PartitionFloorMethod floorMethod = PartitionBy.getPartitionFloorMethod(PartitionBy.DAY);
@@ -461,7 +464,7 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
                         }
 
                         Assert.assertEquals(tsLo, frame.getTimestampLo());
-                        timeFrameCursor.recordAt(record, Rows.toRowID(frame.getIndex(), frame.getRowHi() - 1));
+                        timeFrameCursor.recordAt(record, Rows.toRowID(frame.getFrameIndex(), frame.getRowHi() - 1));
                         long tsHi = record.getTimestamp(0);
                         Assert.assertEquals(tsHi + 1, frame.getTimestampHi());
                     }
@@ -472,13 +475,13 @@ public class TimeFrameRecordCursorTest extends AbstractCairoTest {
 
     private static void executeWithPool(CustomisableRunnable runnable) throws Exception {
         TestUtils.assertMemoryLeak(() -> {
-            WorkerPool pool = new WorkerPool(() -> 2);
             final CairoConfiguration configuration = new DefaultTestCairoConfiguration(root) {
                 @Override
                 public long getPartitionO3SplitMinSize() {
                     return 1000;
                 }
             };
+            WorkerPool pool = new WorkerPool(() -> 2);
             TestUtils.execute(pool, runnable, configuration, LOG);
         });
     }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,15 @@
 package io.questdb.test.cairo;
 
 import io.questdb.PropertyKey;
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.DefaultCairoConfiguration;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.TableWriter;
 import io.questdb.cairo.pool.PoolListener;
 import io.questdb.cairo.sql.TableReferenceOutOfDateException;
 import io.questdb.cairo.vm.Vm;
@@ -119,7 +127,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                     private boolean failNextAlloc = false;
 
                     @Override
-                    public boolean allocate(int fd, long size) {
+                    public boolean allocate(long fd, long size) {
                         if (failNextAlloc) {
                             failNextAlloc = false;
                             return false;
@@ -128,7 +136,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                     }
 
                     @Override
-                    public long length(int fd) {
+                    public long length(long fd) {
                         if (this.fd == fd) {
                             failNextAlloc = true;
                             this.fd = -1;
@@ -138,8 +146,8 @@ public class CairoEngineTest extends AbstractCairoTest {
                     }
 
                     @Override
-                    public int openRW(LPSZ name, long opts) {
-                        int fd = super.openRW(name, opts);
+                    public long openRW(LPSZ name, long opts) {
+                        long fd = super.openRW(name, opts);
                         if (Utf8s.endsWithAscii(name, TableUtils.TAB_INDEX_FILE_NAME)) {
                             this.fd = fd;
                         }
@@ -156,7 +164,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                 } finally {
                     ff = null;
                 }
-                TableUtils.clearThreadLocals();
+                Path.clearThreadLocals();
             }
         });
     }
@@ -167,11 +175,12 @@ public class CairoEngineTest extends AbstractCairoTest {
             TableModel model = new TableModel(configuration, "x", PartitionBy.NONE).col("a", ColumnType.INT);
             AbstractCairoTest.create(model);
             try (
-                    Path path = new Path();
-                    MemoryMARW mem = Vm.getMARWInstance()
+                    Path path = new Path()
             ) {
-                engine.createTable(securityContext, mem, path, false, model, false);
-                fail("duplicated tables should not be permitted!");
+                try (MemoryMARW mem = Vm.getCMARWInstance()) {
+                    engine.createTable(securityContext, mem, path, false, model, false);
+                    fail("duplicated tables should not be permitted!");
+                }
             } catch (CairoException e) {
                 TestUtils.assertContains(e.getFlyweightMessage(), "table exists");
             }
@@ -195,7 +204,7 @@ public class CairoEngineTest extends AbstractCairoTest {
             MyListener listener = new MyListener();
 
             try (CairoEngine engine = new CairoEngine(
-                    new DefaultCairoConfiguration(configuration.getRoot()) {
+                    new DefaultCairoConfiguration(configuration.getDbRoot()) {
                         @Override
                         public boolean getAllowTableRegistrySharedWrite() {
                             return true;
@@ -247,7 +256,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                     LOG.error().$("Error in thread").$(th).$();
                     ref.set(th);
                 } finally {
-                    TableUtils.clearThreadLocals();
+                    Path.clearThreadLocals();
                 }
             });
             createTableThread.start();
@@ -289,7 +298,7 @@ public class CairoEngineTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             try (CairoEngine engine = new CairoEngine(configuration)) {
                 createX(engine);
-                try (MemoryMARW mem = Vm.getMARWInstance()) {
+                try (MemoryMARW mem = Vm.getCMARWInstance()) {
                     TableToken y = engine.rename(securityContext, path, mem, "x", otherPath, "y");
                     assertWriter(engine, y);
                     assertReader(engine, y);
@@ -302,11 +311,12 @@ public class CairoEngineTest extends AbstractCairoTest {
     public void testRemoveExisting() throws Exception {
         assertMemoryLeak(() -> {
             node1.setProperty(PropertyKey.CAIRO_SPIN_LOCK_TIMEOUT, 1);
+            spinLockTimeout = 1;
             try (CairoEngine engine = new CairoEngine(configuration)) {
                 TableToken x = createX(engine);
                 assertReader(engine, x);
                 assertWriter(engine, x);
-                engine.drop(path, x);
+                engine.dropTableOrMatView(path, x);
                 Assert.assertEquals(TableUtils.TABLE_DOES_NOT_EXIST, engine.getTableStatus(path, x));
 
                 try {
@@ -328,7 +338,7 @@ public class CairoEngineTest extends AbstractCairoTest {
     public void testRemoveNewTable() {
         try (CairoEngine engine = new CairoEngine(configuration)) {
             TableToken x = createX(engine);
-            engine.drop(path, x);
+            engine.dropTableOrMatView(path, x);
             Assert.assertEquals(TableUtils.TABLE_DOES_NOT_EXIST, engine.getTableStatus(path, x));
         }
     }
@@ -339,7 +349,7 @@ public class CairoEngineTest extends AbstractCairoTest {
             try (CairoEngine engine = new CairoEngine(configuration)) {
                 createY(engine);
                 try {
-                    engine.drop(path, engine.verifyTableName("x"));
+                    engine.dropTableOrMatView(path, engine.verifyTableName("x"));
                     Assert.fail();
                 } catch (CairoException e) {
                     TestUtils.assertContains(e.getFlyweightMessage(), "table does not exist");
@@ -356,7 +366,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                 try (TableReader reader = engine.getReader(x)) {
                     Assert.assertNotNull(reader);
                     try {
-                        engine.drop(path, x);
+                        engine.dropTableOrMatView(path, x);
                         Assert.fail();
                     } catch (CairoException ignored) {
                     }
@@ -373,7 +383,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                 try (TableWriter writer = getWriter(engine, x.getTableName())) {
                     Assert.assertNotNull(writer);
                     try {
-                        engine.drop(path, x);
+                        engine.dropTableOrMatView(path, x);
                         Assert.fail();
                     } catch (CairoException ignored) {
                     }
@@ -391,7 +401,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                 assertReader(engine, x);
 
 
-                try (MemoryMARW mem = Vm.getMARWInstance()) {
+                try (MemoryMARW mem = Vm.getCMARWInstance()) {
                     TableToken y = engine.rename(securityContext, path, mem, "x", otherPath, "y");
 
                     assertWriter(engine, y);
@@ -407,7 +417,7 @@ public class CairoEngineTest extends AbstractCairoTest {
     public void testRenameExternallyLockedTable() throws Exception {
         assertMemoryLeak(() -> {
             TableToken x = createX(engine);
-            try (TableWriter ignored1 = newOffPoolWriter(configuration, "x", metrics)) {
+            try (TableWriter ignored1 = newOffPoolWriter(configuration, "x")) {
 
                 try (CairoEngine engine = new CairoEngine(configuration)) {
                     try {
@@ -416,7 +426,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                     } catch (CairoException ignored) {
                     }
 
-                    try (MemoryMARW mem = Vm.getMARWInstance()) {
+                    try (MemoryMARW mem = Vm.getCMARWInstance()) {
                         engine.rename(securityContext, path, mem, "x", otherPath, "y");
                         Assert.fail();
                     } catch (CairoException e) {
@@ -446,7 +456,10 @@ public class CairoEngineTest extends AbstractCairoTest {
             };
             AbstractCairoTest.ff = ff;
 
-            try (CairoEngine engine = new CairoEngine(configuration); MemoryMARW mem = Vm.getMARWInstance()) {
+            try (
+                    CairoEngine engine = new CairoEngine(configuration);
+                    MemoryMARW mem = Vm.getCMARWInstance()
+            ) {
                 TableToken x = createX(engine);
 
                 assertReader(engine, x);
@@ -473,11 +486,13 @@ public class CairoEngineTest extends AbstractCairoTest {
     @Test
     public void testRenameNonExisting() throws Exception {
         assertMemoryLeak(() -> {
-
             TableModel model = new TableModel(configuration, "z", PartitionBy.NONE).col("a", ColumnType.INT);
             AbstractCairoTest.create(model);
 
-            try (CairoEngine engine = new CairoEngine(configuration); MemoryMARW mem = Vm.getMARWInstance()) {
+            try (
+                    CairoEngine engine = new CairoEngine(configuration);
+                    MemoryMARW mem = Vm.getCMARWInstance()
+            ) {
                 engine.rename(securityContext, path, mem, "x", otherPath, "y");
                 Assert.fail();
             } catch (CairoException e) {
@@ -496,7 +511,7 @@ public class CairoEngineTest extends AbstractCairoTest {
 
                 assertWriter(engine, x);
                 assertReader(engine, x);
-                try (MemoryMARW mem = Vm.getMARWInstance()) {
+                try (MemoryMARW mem = Vm.getCMARWInstance()) {
                     engine.rename(securityContext, path, mem, "x", otherPath, "y");
                     Assert.fail();
                 } catch (CairoException e) {
@@ -518,7 +533,7 @@ public class CairoEngineTest extends AbstractCairoTest {
             // the test relies on negative inactive writer TTL - we want the maintenance job to always close idle writers
             assert engine.getConfiguration().getInactiveWriterTTL() < 0;
 
-            try (WorkerPool workerPool = new TestWorkerPool(1, metrics)) {
+            try (WorkerPool workerPool = new TestWorkerPool(1, configuration.getMetrics())) {
                 TableModel model = new TableModel(configuration, tableName, PartitionBy.HOUR)
                         .col("a", ColumnType.BYTE)
                         .col("b", ColumnType.STRING)
@@ -531,7 +546,7 @@ public class CairoEngineTest extends AbstractCairoTest {
                 for (int i = 0; i < 50; i++) {
                     createTable(model);// create a table eligible for maintenance
                     Os.sleep(rnd.nextInt(10)); // give the maintenance job a chance to run
-                    drop("drop table " + tableName); // drop the table. this should always pass. regardless of the maintenance job.
+                    execute("drop table " + tableName); // drop the table. this should always pass. regardless of the maintenance job.
                 }
             }
         });
@@ -575,11 +590,11 @@ public class CairoEngineTest extends AbstractCairoTest {
 
     private TableToken createX(CairoEngine engine) {
         TableModel model = new TableModel(configuration, "x", PartitionBy.NONE).col("a", ColumnType.INT);
-        return TestUtils.create(model, engine);
+        return TestUtils.createTable(engine, model);
     }
 
     private TableToken createY(CairoEngine engine) {
         TableModel model = new TableModel(configuration, "y", PartitionBy.NONE).col("b", ColumnType.INT);
-        return TestUtils.create(model, engine);
+        return TestUtils.createTable(engine, model);
     }
 }

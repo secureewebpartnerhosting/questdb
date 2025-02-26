@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,22 +25,35 @@
 package io.questdb.test.cutlass.line.tcp;
 
 import io.questdb.PropertyKey;
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableReaderMetadata;
 import io.questdb.cairo.pool.PoolListener;
 import io.questdb.cairo.sql.RecordCursor;
 import io.questdb.cairo.sql.RecordCursorFactory;
 import io.questdb.griffin.SqlException;
 import io.questdb.log.Log;
+import io.questdb.log.LogFactory;
 import io.questdb.mp.SOCountDownLatch;
-import io.questdb.std.*;
+import io.questdb.std.ConcurrentHashMap;
+import io.questdb.std.LowerCaseCharSequenceObjHashMap;
+import io.questdb.std.ObjList;
+import io.questdb.std.Os;
+import io.questdb.std.Rnd;
+import io.questdb.test.cairo.TestTableReaderRecordCursor;
 import io.questdb.test.cutlass.line.tcp.load.LineData;
 import io.questdb.test.cutlass.line.tcp.load.TableData;
+import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -49,6 +62,7 @@ import static io.questdb.cairo.ColumnType.*;
 @RunWith(Parameterized.class)
 abstract class AbstractLineTcpReceiverFuzzTest extends AbstractLineTcpReceiverTest {
 
+    protected static final Log LOG = LogFactory.getLog(AbstractLineTcpReceiverTest.class);
     static final int UPPERCASE_TABLE_RANDOMIZE_FACTOR = 2;
     private static final int MAX_NUM_OF_SKIPPED_COLS = 2;
     private static final int NEW_COLUMN_RANDOMIZE_FACTOR = 2;
@@ -88,7 +102,6 @@ abstract class AbstractLineTcpReceiverFuzzTest extends AbstractLineTcpReceiverTe
     private boolean exerciseTags = true;
     private int newColumnFactor = -1;
     private int nonAsciiValueFactor = -1;
-    private boolean sendStringsAsSymbols = false;
     private boolean sendSymbolsWithSpace = false;
     private SOCountDownLatch threadPushFinished;
     private long timestampMark = -1;
@@ -135,14 +148,7 @@ abstract class AbstractLineTcpReceiverFuzzTest extends AbstractLineTcpReceiverTe
     public void setUp() {
         super.setUp();
         node1.setProperty(PropertyKey.CAIRO_WAL_ENABLED_DEFAULT, walEnabled);
-    }
-
-    @Before
-    public void setUp2() {
-        long s0 = System.currentTimeMillis();
-        long s1 = System.nanoTime();
-        random = new Rnd(s0, s1);
-        getLog().info().$("random seed : ").$(random.getSeed0()).$(", ").$(random.getSeed1()).$();
+        random = TestUtils.generateRandom(getLog());
     }
 
     private CharSequence addColumn(LineData line, int colIndex) {
@@ -207,20 +213,21 @@ abstract class AbstractLineTcpReceiverFuzzTest extends AbstractLineTcpReceiverTe
             getLog().info().$(table.getName()).$(" expected:\n").utf8(expected).$();
 
             if (timestampMark < 0L) {
-                final TableReaderRecordCursor cursor = reader.getCursor();
-                // Assert reader min timestamp
-                long txnMinTs = reader.getMinTimestamp();
-                int timestampIndex = reader.getMetadata().getTimestampIndex();
-                if (cursor.hasNext()) {
-                    long dataMinTs = cursor.getRecord().getLong(timestampIndex);
-                    Assert.assertEquals(dataMinTs, txnMinTs);
-                    cursor.toTop();
-                }
+                try (TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)) {
+                    // Assert reader min timestamp
+                    long txnMinTs = reader.getMinTimestamp();
+                    int timestampIndex = reader.getMetadata().getTimestampIndex();
+                    if (cursor.hasNext()) {
+                        long dataMinTs = cursor.getRecord().getLong(timestampIndex);
+                        Assert.assertEquals(dataMinTs, txnMinTs);
+                        cursor.toTop();
+                    }
 
-                try {
-                    assertCursorTwoPass(expected, cursor, metadata);
-                } catch (AssertionError e) {
-                    throw new AssertionError("Table: " + table.getName(), e);
+                    try {
+                        assertCursorTwoPass(expected, cursor, metadata);
+                    } catch (AssertionError e) {
+                        throw new AssertionError("Table: " + table.getName(), e);
+                    }
                 }
             } else {
                 final String sql = tableName + " where timestamp > " + timestampMark;
@@ -291,7 +298,7 @@ abstract class AbstractLineTcpReceiverFuzzTest extends AbstractLineTcpReceiverTe
                 return valueBase + postfix;
             case STRING:
                 postfix = Character.toString(shouldFuzz(nonAsciiValueFactor) ? nonAsciiChars[random.nextInt(nonAsciiChars.length)] : random.nextChar());
-                return sendStringsAsSymbols ? valueBase + postfix : "\"" + valueBase + postfix + "\"";
+                return "\"" + valueBase + postfix + "\"";
             default:
                 return valueBase;
         }
@@ -449,7 +456,7 @@ abstract class AbstractLineTcpReceiverFuzzTest extends AbstractLineTcpReceiverTe
 
     void initFuzzParameters(
             int duplicatesFactor, int columnReorderingFactor, int columnSkipFactor, int newColumnFactor, int nonAsciiValueFactor,
-            boolean diffCasesInColNames, boolean exerciseTags, boolean sendStringsAsSymbols, boolean sendSymbolsWithSpace
+            boolean diffCasesInColNames, boolean exerciseTags, boolean sendSymbolsWithSpace
     ) {
         this.duplicatesFactor = duplicatesFactor;
         this.columnReorderingFactor = columnReorderingFactor;
@@ -458,10 +465,7 @@ abstract class AbstractLineTcpReceiverFuzzTest extends AbstractLineTcpReceiverTe
         this.newColumnFactor = newColumnFactor;
         this.diffCasesInColNames = diffCasesInColNames;
         this.exerciseTags = exerciseTags;
-        this.sendStringsAsSymbols = sendStringsAsSymbols;
         this.sendSymbolsWithSpace = sendSymbolsWithSpace;
-
-        symbolAsFieldSupported = sendStringsAsSymbols;
     }
 
     void initLoadParameters(int numOfLines, int numOfIterations, int numOfThreads, int numOfTables, long waitBetweenIterationsMillis) {
@@ -525,7 +529,7 @@ abstract class AbstractLineTcpReceiverFuzzTest extends AbstractLineTcpReceiverTe
                 getLog().error().$(e).$();
                 setError(e.getMessage());
             } finally {
-                for (int i = 0; i < numOfThreads; i++) {
+                for (int i = 0; i < sockets.size(); i++) {
                     final Socket socket = sockets.get(i);
                     socket.close();
                 }

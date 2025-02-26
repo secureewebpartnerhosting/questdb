@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 package io.questdb.griffin.engine.functions.groupby;
 
 import io.questdb.cairo.ArrayColumnTypes;
+import io.questdb.cairo.CairoException;
 import io.questdb.cairo.ColumnType;
 import io.questdb.cairo.map.MapValue;
 import io.questdb.cairo.sql.Function;
@@ -43,18 +44,24 @@ class StringAggGroupByFunction extends StrFunction implements UnaryFunction, Gro
     private static final int LIST_CLEAR_THRESHOLD = 64;
     private final Function arg;
     private final char delimiter;
+    private final int functionPosition;
+    private final int maxBytes;
     private final ObjList<DirectUtf16Sink> sinks = new ObjList<>();
     private int sinkIndex = 0;
+    private int touchedMemorySize;
     private int valueIndex;
 
-    public StringAggGroupByFunction(Function arg, char delimiter) {
+    public StringAggGroupByFunction(Function arg, int functionPosition, char delimiter, int maxBytes) {
         this.arg = arg;
         this.delimiter = delimiter;
+        this.maxBytes = maxBytes;
+        this.functionPosition = functionPosition;
     }
 
     @Override
     public void clear() {
         // Free extra sinks.
+        touchedMemorySize = 0;
         if (sinks.size() > LIST_CLEAR_THRESHOLD) {
             for (int i = sinks.size() - 1; i > LIST_CLEAR_THRESHOLD - 1; i--) {
                 Misc.free(sinks.getQuick(i));
@@ -66,6 +73,7 @@ class StringAggGroupByFunction extends StrFunction implements UnaryFunction, Gro
             DirectUtf16Sink sink = sinks.getQuick(i);
             if (sink != null) {
                 sink.resetCapacity();
+                touchedMemorySize += sink.size();
             }
         }
         sinkIndex = 0;
@@ -94,6 +102,8 @@ class StringAggGroupByFunction extends StrFunction implements UnaryFunction, Gro
             mapValue.putBool(valueIndex + 1, true);
         }
         mapValue.putInt(valueIndex, sinkIndex++);
+        touchedMemorySize += sink.size();
+        assertTouchedMemoryCompliance();
     }
 
     @Override
@@ -101,12 +111,22 @@ class StringAggGroupByFunction extends StrFunction implements UnaryFunction, Gro
         final DirectUtf16Sink sink = sinks.getQuick(mapValue.getInt(valueIndex));
         final CharSequence str = arg.getStrA(record);
         if (str != null) {
+            final int hi = sink.size();
             final boolean nullValue = mapValue.getBool(valueIndex + 1);
             if (!nullValue) {
                 sink.putAscii(delimiter);
             }
             sink.put(str);
             mapValue.putBool(valueIndex + 1, false);
+            touchedMemorySize += sink.size() - hi;
+            assertTouchedMemoryCompliance();
+        }
+    }
+
+    private void assertTouchedMemoryCompliance() {
+        if (touchedMemorySize > maxBytes) {
+            throw CairoException.nonCritical().position(functionPosition)
+                    .put("string_agg() result exceeds max size of ").put(maxBytes).put(" bytes");
         }
     }
 
@@ -135,6 +155,18 @@ class StringAggGroupByFunction extends StrFunction implements UnaryFunction, Gro
     }
 
     @Override
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        columnTypes.add(ColumnType.INT); // sink index
+        columnTypes.add(ColumnType.BOOLEAN); // null flag
+    }
+
+    @Override
     public boolean isConstant() {
         return false;
     }
@@ -145,20 +177,8 @@ class StringAggGroupByFunction extends StrFunction implements UnaryFunction, Gro
     }
 
     @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        columnTypes.add(ColumnType.INT); // sink index
-        columnTypes.add(ColumnType.BOOLEAN); // null flag
-    }
-
-    @Override
     public void setNull(MapValue mapValue) {
         mapValue.putBool(valueIndex + 1, true);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -44,20 +44,20 @@ public class DoubleReloadTest extends AbstractCairoTest {
 
         try (
                 TableReader reader = newOffPoolReader(configuration, "int_test");
-                TableWriter w = newOffPoolWriter(configuration, "int_test", metrics)
+                TableWriter writer = newOffPoolWriter(configuration, "int_test")
         ) {
             reader.reload();
 
-            TableWriter.Row r = w.newRow();
+            TableWriter.Row r = writer.newRow();
             r.putInt(0, 10);
             r.append();
-            w.commit();
+            writer.commit();
             reader.reload();
 
-            r = w.newRow();
+            r = writer.newRow();
             r.putInt(0, 10);
             r.append();
-            w.commit();
+            writer.commit();
 
             reader.reload();
             Assert.assertEquals(2, reader.size());

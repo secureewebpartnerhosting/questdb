@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,6 +29,14 @@ import io.questdb.std.FilesFacade;
 import io.questdb.std.str.LPSZ;
 
 public interface ColumnTypeDriver {
+
+    /**
+     * Appends null encoding to the memory.
+     *
+     * @param auxMem  the aux memory (fixed part)
+     * @param dataMem the data memory
+     */
+    void appendNull(MemoryA auxMem, MemoryA dataMem);
 
     /**
      * Returns bytes count for the given row count. This method is similar to {@link #getAuxVectorSize(long)}
@@ -59,9 +67,11 @@ public interface ColumnTypeDriver {
      * @param memoryTag the memory tag to help identify sources of memory leaks
      * @param opts      mapping options
      */
-    void configureAuxMemOM(FilesFacade ff, MemoryOM auxMem, int fd, LPSZ fileName, long rowLo, long rowHi, int memoryTag, long opts);
+    void configureAuxMemOM(FilesFacade ff, MemoryOM auxMem, long fd, LPSZ fileName, long rowLo, long rowHi, int memoryTag, long opts);
 
-    void configureDataMemOM(FilesFacade ff, MemoryR auxMem, MemoryOM dataMem, int dataFd, LPSZ fileName, long rowLo, long rowHi, int memoryTag, long opts);
+    void configureDataMemOM(FilesFacade ff, MemoryR auxMem, MemoryOM dataMem, long dataFd, LPSZ fileName, long rowLo, long rowHi, int memoryTag, long opts);
+
+    long dedupMergeVarColumnSize(long mergeIndexAddr, long mergeIndexCount, long srcDataFixAddr, long srcOooFixAddr);
 
     /**
      * Returns offset in bytes of the aux entry that describes the provided row number.
@@ -102,7 +112,7 @@ public interface ColumnTypeDriver {
 
     long getDataVectorSizeAt(long auxMemAddr, long row);
 
-    long getDataVectorSizeAtFromFd(FilesFacade ff, int auxFd, long row);
+    long getDataVectorSizeAtFromFd(FilesFacade ff, long auxFd, long row);
 
     long getMinAuxVectorSize();
 
@@ -137,7 +147,7 @@ public interface ColumnTypeDriver {
             long srcHi,
             long dstAddr,
             long dstFileOffset,
-            int dstFd,
+            long dstFd,
             boolean mixedIOFlag
     );
 
@@ -168,18 +178,37 @@ public interface ColumnTypeDriver {
      */
     long setAppendAuxMemAppendPosition(MemoryMA auxMem, long rowCount);
 
+    /**
+     * Sets the append position in both the auxiliary and data vectors.
+     *
+     * @param pos     the position to set, starting from 0
+     * @param auxMem  the auxiliary memory
+     * @param dataMem the data memory
+     * @return the sum of bytes used by entries up to the specified position (excluding the position itself)
+     */
     long setAppendPosition(long pos, MemoryMA auxMem, MemoryMA dataMem);
-
-    void setColumnRefs(long address, long initialOffset, long count);
 
     void setDataVectorEntriesToNull(long dataMemAddr, long rowCount);
 
-    void shiftCopyAuxVector(long shift, long src, long srcLo, long srcHi, long dstAddr);
+    /**
+     * Materializes nulls in the entire column, typically happens after
+     * new column is added to WAL file. This is because WAL does not have
+     * column tops yet.
+     *
+     * @param auxMemAddr aux vector address
+     * @param rowCount   the number of rows
+     */
+    void setFullAuxVectorNull(long auxMemAddr, long rowCount);
 
     /**
-     * Appends null encoding to the memory.
-     * @param dataMem the data memory
-     * @param auxMem the aux memory (fixed part)
+     * Materializes column top in the aux vector. This is typically required if there
+     * is some data to be written after the nulls.
+     *
+     * @param auxMemAddr    the aux memory address
+     * @param initialOffset the offset we begin writing nulls with, e.g. the offset that would begin locating our nulls
+     * @param columnTop     the column top
      */
-    void appendNull(MemoryA dataMem, MemoryA auxMem);
+    void setPartAuxVectorNull(long auxMemAddr, long initialOffset, long columnTop);
+
+    void shiftCopyAuxVector(long shift, long src, long srcLo, long srcHi, long dstAddr, long dstAddrSize);
 }

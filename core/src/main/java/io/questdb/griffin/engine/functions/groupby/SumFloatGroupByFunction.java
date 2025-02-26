@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -83,8 +83,25 @@ public class SumFloatGroupByFunction extends FloatFunction implements GroupByFun
     }
 
     @Override
+    public int getSampleByFlags() {
+        return GroupByFunction.SAMPLE_BY_FILL_ALL;
+    }
+
+    @Override
     public int getValueIndex() {
         return valueIndex;
+    }
+
+    @Override
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        columnTypes.add(ColumnType.FLOAT);
+        columnTypes.add(ColumnType.LONG);
     }
 
     @Override
@@ -93,8 +110,8 @@ public class SumFloatGroupByFunction extends FloatFunction implements GroupByFun
     }
 
     @Override
-    public boolean isReadThreadSafe() {
-        return UnaryFunction.super.isReadThreadSafe();
+    public boolean isThreadSafe() {
+        return UnaryFunction.super.isThreadSafe();
     }
 
     @Override
@@ -103,13 +120,6 @@ public class SumFloatGroupByFunction extends FloatFunction implements GroupByFun
         long srcCount = srcValue.getLong(valueIndex + 1);
         destValue.addFloat(valueIndex, srcSum);
         destValue.addLong(valueIndex + 1, srcCount);
-    }
-
-    @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        columnTypes.add(ColumnType.FLOAT);
-        columnTypes.add(ColumnType.LONG);
     }
 
     @Override
@@ -122,11 +132,6 @@ public class SumFloatGroupByFunction extends FloatFunction implements GroupByFun
     public void setNull(MapValue mapValue) {
         mapValue.putFloat(valueIndex, Float.NaN);
         mapValue.putLong(valueIndex + 1, 0);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@ import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.StrArrayFunction;
 import io.questdb.std.IntList;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.Utf16Sink;
 
 public class CurrentSchemasFunctionFactory implements FunctionFactory {
 
@@ -60,18 +59,8 @@ public class CurrentSchemasFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            utf16Sink.put(getStrA(rec));
-        }
-
-        @Override
         public CharSequence getStrA(Record rec, int arrayIndex) {
-            return "public";
-        }
-
-        @Override
-        public void getStr(Record rec, Utf16Sink sink, int arrayIndex) {
-            sink.put(getStrA(rec, arrayIndex));
+            return Constants.PUBLIC_SCHEMA;
         }
 
         @Override
@@ -100,7 +89,7 @@ public class CurrentSchemasFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return true;
         }
 

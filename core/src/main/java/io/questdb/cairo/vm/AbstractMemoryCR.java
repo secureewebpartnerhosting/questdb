@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,13 +26,15 @@ package io.questdb.cairo.vm;
 
 import io.questdb.cairo.CairoException;
 import io.questdb.cairo.vm.api.MemoryCR;
-import io.questdb.std.*;
-import io.questdb.std.str.DirectCharSequence;
+import io.questdb.std.BinarySequence;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.Long256;
+import io.questdb.std.Long256Impl;
+import io.questdb.std.Mutable;
 import io.questdb.std.str.DirectString;
+import io.questdb.std.str.DirectUtf8Sequence;
 import io.questdb.std.str.DirectUtf8String;
-import io.questdb.std.str.Utf8Sequence;
 import io.questdb.std.str.Utf8SplitString;
-import org.jetbrains.annotations.NotNull;
 
 // contiguous readable
 public abstract class AbstractMemoryCR implements MemoryCR, Mutable {
@@ -44,9 +46,8 @@ public abstract class AbstractMemoryCR implements MemoryCR, Mutable {
     private final Long256Impl long256B = new Long256Impl();
     private final Utf8SplitString utf8SplitViewA = new Utf8SplitString();
     private final Utf8SplitString utf8SplitViewB = new Utf8SplitString();
-    private final DirectUtf8String utf8viewA = new DirectUtf8String();
-    private final DirectUtf8String utf8viewB = new DirectUtf8String();
-    protected int fd = -1;
+    private final DirectUtf8String utf8ViewA = new DirectUtf8String();
+    private final DirectUtf8String utf8ViewB = new DirectUtf8String();
     protected FilesFacade ff;
     protected long lim;
     protected long pageAddress = 0;
@@ -55,7 +56,7 @@ public abstract class AbstractMemoryCR implements MemoryCR, Mutable {
 
     public long addressOf(long offset) {
         offset -= shiftAddressRight;
-        assert offset <= size : "offset=" + offset + ", size=" + size + ", fd=" + fd;
+        assert checkOffsetMapped(offset);
         return pageAddress + offset;
     }
 
@@ -71,12 +72,13 @@ public abstract class AbstractMemoryCR implements MemoryCR, Mutable {
     }
 
     @Override
-    public DirectCharSequence getDirectStr(long offset) {
-        return getStr(offset, csviewA);
+    public DirectUtf8Sequence getDirectVarcharA(long offset, int size, boolean ascii) {
+        return getDirectVarchar(offset, size, utf8ViewA, ascii);
     }
 
-    public int getFd() {
-        return fd;
+    @Override
+    public DirectUtf8Sequence getDirectVarcharB(long offset, int size, boolean ascii) {
+        return getDirectVarchar(offset, size, utf8ViewB, ascii);
     }
 
     public FilesFacade getFilesFacade() {
@@ -94,16 +96,6 @@ public abstract class AbstractMemoryCR implements MemoryCR, Mutable {
     }
 
     @Override
-    public Utf8SplitString borrowUtf8SplitStringA() {
-        return utf8SplitViewA;
-    }
-
-    @Override
-    public Utf8SplitString borrowUtf8SplitStringB() {
-        return utf8SplitViewB;
-    }
-
-    @Override
     public long getPageAddress(int pageIndex) {
         return pageAddress;
     }
@@ -113,22 +105,22 @@ public abstract class AbstractMemoryCR implements MemoryCR, Mutable {
         return pageAddress == 0 ? 0 : 1;
     }
 
+    @Override
+    public Utf8SplitString getSplitVarcharA(long auxLo, long dataLo, long dataLim, int size, boolean ascii) {
+        return utf8SplitViewA.of(auxLo, dataLo, dataLim, size, ascii);
+    }
+
+    @Override
+    public Utf8SplitString getSplitVarcharB(long auxLo, long dataLo, long dataLim, int size, boolean ascii) {
+        return utf8SplitViewB.of(auxLo, dataLo, dataLim, size, ascii);
+    }
+
     public final CharSequence getStrA(long offset) {
         return getStr(offset, csviewA);
     }
 
     public final CharSequence getStrB(long offset) {
         return getStr(offset, csviewB);
-    }
-
-    @Override @NotNull
-    public Utf8Sequence getVarcharA(long offset, int size, boolean ascii) {
-        return getVarchar(offset, size, utf8viewA, ascii);
-    }
-
-    @Override @NotNull
-    public Utf8Sequence getVarcharB(long offset, int size, boolean ascii) {
-        return getVarchar(offset, size, utf8viewB, ascii);
     }
 
     @Override
@@ -156,14 +148,14 @@ public abstract class AbstractMemoryCR implements MemoryCR, Mutable {
         return size;
     }
 
-    private DirectUtf8String getVarchar(long offset, int size, DirectUtf8String u8view, boolean ascii) {
+    private DirectUtf8String getDirectVarchar(long offset, int size, DirectUtf8String u8view, boolean ascii) {
         long addr = addressOf(offset);
         assert addr > 0;
-        if (size + offset <= size()) {
+        if (checkOffsetMapped(size + offset)) {
             return u8view.of(addr, addr + size, ascii);
         }
         throw CairoException.critical(0)
-                .put("String is outside of file boundary [offset=")
+                .put("varchar is outside of file boundary [offset=")
                 .put(offset)
                 .put(", size=")
                 .put(size)

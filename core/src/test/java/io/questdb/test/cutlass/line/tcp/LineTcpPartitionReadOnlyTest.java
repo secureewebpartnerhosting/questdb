@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -207,8 +207,9 @@ public class LineTcpPartitionReadOnlyTest extends AbstractLinePartitionReadOnlyT
                         .col("i", ColumnType.INT)
                         .col("s", ColumnType.SYMBOL).symbolCapacity(32)
                         .timestamp("ts");
-                engine.ddl("create table " + tableName + " (l long, i int, s symbol, ts timestamp) timestamp(ts) partition by day bypass wal", context);
-                engine.insert(insertFromSelectPopulateTableStmt(tableModel, 1111, firstPartitionName, 4), context);
+                engine.execute("create table " + tableName + " (l long, i int, s symbol, ts timestamp) timestamp(ts) partition by day bypass wal", context);
+                CharSequence insertSql = insertFromSelectPopulateTableStmt(tableModel, 1111, firstPartitionName, 4);
+                engine.execute(insertSql, context);
 
                 // set partition read-only state
                 TableToken tableToken = engine.getTableTokenIfExists(tableName);

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,13 +24,28 @@
 
 package io.questdb.test.cairo.pool;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.EntryUnavailableException;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.TableWriter;
 import io.questdb.cairo.pool.PoolListener;
 import io.questdb.cairo.pool.ReaderPool;
 import io.questdb.cairo.pool.ex.EntryLockedException;
 import io.questdb.cairo.pool.ex.PoolClosedException;
 import io.questdb.mp.SOCountDownLatch;
-import io.questdb.std.*;
+import io.questdb.std.CharSequenceObjHashMap;
+import io.questdb.std.Chars;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.IntList;
+import io.questdb.std.ObjHashSet;
+import io.questdb.std.ObjList;
+import io.questdb.std.Os;
+import io.questdb.std.Rnd;
 import io.questdb.std.str.LPSZ;
 import io.questdb.std.str.StringSink;
 import io.questdb.std.str.Utf8s;
@@ -38,6 +53,7 @@ import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.DefaultTestCairoConfiguration;
 import io.questdb.test.cairo.TableModel;
 import io.questdb.test.cairo.TestFilesFacade;
+import io.questdb.test.cairo.TestTableReaderRecordCursor;
 import io.questdb.test.tools.TestUtils;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Assert;
@@ -45,8 +61,11 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Map;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -313,17 +332,20 @@ public class ReaderPoolTest extends AbstractCairoTest {
             TableModel model = new TableModel(configuration, name, PartitionBy.NONE).col("ts", ColumnType.DATE);
             AbstractCairoTest.create(model);
 
-            try (TableWriter w = newOffPoolWriter(configuration, name, metrics)) {
+            try (TableWriter writer = newOffPoolWriter(configuration, name)) {
                 for (int k = 0; k < 10; k++) {
-                    TableWriter.Row r = w.newRow();
+                    TableWriter.Row r = writer.newRow();
                     r.putDate(0, dataRnd.nextLong());
                     r.append();
                 }
-                w.commit();
+                writer.commit();
             }
 
-            try (TableReader r = newOffPoolReader(configuration, name)) {
-                println(r.getMetadata(), r.getCursor());
+            try (
+                    TableReader reader = newOffPoolReader(configuration, name);
+                    TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+            ) {
+                println(reader.getMetadata(), cursor);
             }
             expectedRows[i] = sink.toString();
             expectedRowsMap.put(name, expectedRows[i]);
@@ -511,7 +533,7 @@ public class ReaderPoolTest extends AbstractCairoTest {
             int count = N;
 
             @Override
-            public int openRO(LPSZ name) {
+            public long openRO(LPSZ name) {
                 count--;
                 if (Utf8s.endsWithAscii(name, TableUtils.META_FILE_NAME) && locked.get() == 1) {
                     return -1;
@@ -677,7 +699,7 @@ public class ReaderPoolTest extends AbstractCairoTest {
                 pool.unlock(uTableToken);
             } finally {
                 // Release readers on failure
-                // In OSX the number of shared memory system wide can be quite small
+                // In OSX the number of shared memory system-wide can be quite small
                 // close readers to release shared memory
                 for (int i = 0, n = readers.size(); i < n; i++) {
                     TableReader reader = readers.get(i);

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ public class FuzzInsertOperation implements FuzzTransactionOperation {
     private final double nullSet;
     private final long s0;
     private final long s1;
-    private final int strLen;
+    private final double strLen;
     private final String[] symbols;
     private final long timestamp;
 
@@ -136,7 +136,7 @@ public class FuzzInsertOperation implements FuzzTransactionOperation {
                                 break;
 
                             case ColumnType.INT:
-                                row.putInt(index, isNull ? Numbers.INT_NaN : rnd.nextInt());
+                                row.putInt(index, isNull ? Numbers.INT_NULL : rnd.nextInt());
                                 break;
 
                             case ColumnType.IPv4:
@@ -144,15 +144,15 @@ public class FuzzInsertOperation implements FuzzTransactionOperation {
                                 break;
 
                             case ColumnType.LONG:
-                                row.putLong(index, isNull ? Numbers.LONG_NaN : rnd.nextLong());
+                                row.putLong(index, isNull ? Numbers.LONG_NULL : rnd.nextLong());
                                 break;
 
                             case ColumnType.TIMESTAMP:
-                                row.putTimestamp(index, isNull ? Numbers.LONG_NaN : rnd.nextLong());
+                                row.putTimestamp(index, isNull ? Numbers.LONG_NULL : rnd.nextLong());
                                 break;
 
                             case ColumnType.DATE:
-                                row.putDate(index, isNull ? Numbers.LONG_NaN : rnd.nextLong());
+                                row.putDate(index, isNull ? Numbers.LONG_NULL : rnd.nextLong());
                                 break;
 
                             case ColumnType.SYMBOL:
@@ -179,7 +179,7 @@ public class FuzzInsertOperation implements FuzzTransactionOperation {
                                 if (!isNull) {
                                     row.putLong128(index, rnd.nextLong(), rnd.nextLong());
                                 } else {
-                                    row.putLong128(index, Numbers.LONG_NaN, Numbers.LONG_NaN);
+                                    row.putLong128(index, Numbers.LONG_NULL, Numbers.LONG_NULL);
                                 }
                                 break;
 
@@ -196,17 +196,22 @@ public class FuzzInsertOperation implements FuzzTransactionOperation {
                                 break;
 
                             case ColumnType.VARCHAR:
+                                if (isNull) {
+                                    row.putVarchar(index, null);
+                                    break;
+                                }
                                 utf8StringSink.clear();
-                                rnd.nextUtf8Str(strLen, utf8StringSink);
-                                row.putVarchar(index, isNull ? null : utf8StringSink);
+                                int varcharLen = strLen > 0 ? nextVariableColumnLen(rnd) : 0;
+                                rnd.nextUtf8Str(varcharLen, utf8StringSink);
+                                row.putVarchar(index, utf8StringSink);
                                 break;
 
                             case ColumnType.STRING:
-                                row.putStr(index, isNull ? null : strLen == 0 ? "" : rnd.nextString(rnd.nextInt(strLen)));
+                                row.putStr(index, isNull ? null : strLen == 0 ? "" : rnd.nextString(nextVariableColumnLen(rnd)));
                                 break;
 
                             case ColumnType.BINARY:
-                                int len = strLen > 0 ? rnd.nextInt(strLen) : 0;
+                                int len = strLen > 0 ? nextVariableColumnLen(rnd) : 0;
                                 row.putBin(index, isNull ? null : binarySequence.of(len == 0 ? new byte[0] : rnd.nextBytes(len)));
                                 break;
 
@@ -236,7 +241,7 @@ public class FuzzInsertOperation implements FuzzTransactionOperation {
     }
 
     public int getStrLen() {
-        return strLen;
+        return (int) strLen;
     }
 
     public String[] getSymbols() {
@@ -245,5 +250,9 @@ public class FuzzInsertOperation implements FuzzTransactionOperation {
 
     public long getTimestamp() {
         return timestamp;
+    }
+
+    private int nextVariableColumnLen(Rnd rnd) {
+        return (int) Math.pow(strLen, rnd.nextDouble());
     }
 }

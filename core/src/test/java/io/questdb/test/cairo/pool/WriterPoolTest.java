@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,15 @@
 
 package io.questdb.test.cairo.pool;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.DefaultCairoConfiguration;
+import io.questdb.cairo.DefaultLifecycleManager;
+import io.questdb.cairo.EntryUnavailableException;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableWriter;
 import io.questdb.cairo.pool.PoolListener;
 import io.questdb.cairo.pool.WriterPool;
 import io.questdb.cairo.pool.ex.EntryLockedException;
@@ -33,6 +41,7 @@ import io.questdb.mp.SOCountDownLatch;
 import io.questdb.std.FilesFacade;
 import io.questdb.std.Os;
 import io.questdb.std.str.LPSZ;
+import io.questdb.std.str.Path;
 import io.questdb.std.str.Utf8s;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.DefaultTestCairoConfiguration;
@@ -150,7 +159,7 @@ public class WriterPoolTest extends AbstractCairoTest {
             int count = 1;
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, zTableToken.getDirName() + ".lock") && count-- > 0) {
                     return -1;
                 }
@@ -194,7 +203,7 @@ public class WriterPoolTest extends AbstractCairoTest {
 
             // check that we can't create standalone writer either
             try {
-                newOffPoolWriter(configuration, "z", metrics);
+                newOffPoolWriter(configuration, "z").close();
                 Assert.fail();
             } catch (CairoException ignored) {
             }
@@ -202,7 +211,7 @@ public class WriterPoolTest extends AbstractCairoTest {
             pool.unlock(zTableToken);
 
             // check if we can create standalone writer after pool unlocked it
-            writer = newOffPoolWriter(configuration, "z", metrics);
+            writer = newOffPoolWriter(configuration, "z");
             Assert.assertNotNull(writer);
             writer.close();
 
@@ -500,7 +509,7 @@ public class WriterPoolTest extends AbstractCairoTest {
                         exceptionCount.incrementAndGet();
                         e.printStackTrace();
                     } finally {
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                         stopLatch.countDown();
                     }
                 }).start();
@@ -552,7 +561,7 @@ public class WriterPoolTest extends AbstractCairoTest {
                             e.printStackTrace();
                             errors.incrementAndGet();
                         } finally {
-                            TableUtils.clearThreadLocals();
+                            Path.clearThreadLocals();
                             halt.countDown();
                         }
                     }).start();
@@ -650,16 +659,16 @@ public class WriterPoolTest extends AbstractCairoTest {
             Assert.assertEquals(WriterPool.OWNERSHIP_REASON_NONE, pool.lock(tableToken, "testing"));
 
             TableWriter writer = new TableWriter(
-                    configuration,
+                    engine.getConfiguration(),
                     tableToken,
-                    messageBus,
+                    engine.getMessageBus(),
                     null,
                     false,
                     DefaultLifecycleManager.INSTANCE,
-                    configuration.getRoot(),
+                    engine.getConfiguration().getDbRoot(),
                     engine.getDdlListener(tableToken),
-                    () -> false,
-                    metrics
+                    engine.getCheckpointStatus(),
+                    engine
             );
             for (int i = 0; i < 100; i++) {
                 TableWriter.Row row = writer.newRow();
@@ -764,7 +773,7 @@ public class WriterPoolTest extends AbstractCairoTest {
                             e.printStackTrace();
                             errors.incrementAndGet();
                         } finally {
-                            TableUtils.clearThreadLocals();
+                            Path.clearThreadLocals();
                             halt.countDown();
                         }
                     }).start();
@@ -845,7 +854,7 @@ public class WriterPoolTest extends AbstractCairoTest {
 
             pool.close();
 
-            TableWriter writer = newOffPoolWriter(configuration, "z", metrics);
+            TableWriter writer = newOffPoolWriter(configuration, "z");
             Assert.assertNotNull(writer);
             writer.close();
         });
@@ -884,7 +893,7 @@ public class WriterPoolTest extends AbstractCairoTest {
             int count = 1;
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, zTableToken.getDirName() + ".lock") && count-- > 0) {
                     return -1;
                 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,6 +33,11 @@ import org.junit.Test;
 public class ExpDoubleFunctionFactoryTest extends AbstractFunctionFactoryTest {
 
     @Test
+    public void testNaN() throws SqlException {
+        call(Double.NaN).andAssert(Double.NaN, 0.0);
+    }
+
+    @Test
     public void testNegative() throws SqlException {
         call(-2.0).andAssert(0.1353352832366127, 0.0000000001);
     }
@@ -45,11 +50,6 @@ public class ExpDoubleFunctionFactoryTest extends AbstractFunctionFactoryTest {
     @Test
     public void testZero() throws SqlException {
         call(0.0).andAssert(1.0, 0.0000000001);
-    }
-
-    @Test
-    public void testNaN() throws SqlException {
-        call(Double.NaN).andAssert(Double.NaN, 0.0);
     }
 
     @Override

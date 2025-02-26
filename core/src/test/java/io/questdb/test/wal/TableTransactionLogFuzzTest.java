@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -51,12 +51,12 @@ public class TableTransactionLogFuzzTest extends AbstractCairoTest {
         }
 
         @Override
-        public void toSink(Object obj, MemoryA sink) {
+        public short getCommandType(Object instance) {
+            return 0;
         }
 
         @Override
-        public short getCommandType(Object instance) {
-            return 0;
+        public void toSink(Object obj, MemoryA sink) {
         }
     };
 
@@ -71,15 +71,15 @@ public class TableTransactionLogFuzzTest extends AbstractCairoTest {
             try (Path path = new Path()) {
                 path.of(root);
 
-                path.of(root).concat("v1").$();
-                ff.mkdir(path, configuration.getMkDirMode());
-                TableTransactionLogV1 v1 = new TableTransactionLogV1(ff);
+                path.of(root).concat("v1");
+                ff.mkdir(path.$(), configuration.getMkDirMode());
+                TableTransactionLogV1 v1 = new TableTransactionLogV1(configuration);
                 v1.create(path.of(root).concat("v1"), 65897);
                 v1.open(path);
 
-                path.of(root).concat("v2").$();
-                ff.mkdir(path, configuration.getMkDirMode());
-                TableTransactionLogV2 v2 = new TableTransactionLogV2(ff, chunkTransactionCount, configuration.getMkDirMode());
+                path.of(root).concat("v2");
+                ff.mkdir(path.$(), configuration.getMkDirMode());
+                TableTransactionLogV2 v2 = new TableTransactionLogV2(configuration, chunkTransactionCount);
                 v2.create(path, 65897);
                 v2.open(path);
 
@@ -117,14 +117,12 @@ public class TableTransactionLogFuzzTest extends AbstractCairoTest {
                 int iterations = rnd.nextInt(50) + 1;
                 for (int i = 0; i < iterations; i++) {
                     int txnLo = rnd.nextInt(txnCount - 1) + 1;
-                    assertTxns(transactionIds, txnLo, path.of(root).concat("v1").$(), v1);
-                    assertTxns(transactionIds, txnLo, path.of(root).concat("v2").$(), v2);
+                    assertTxns(transactionIds, txnLo, path.of(root).concat("v1"), v1);
+                    assertTxns(transactionIds, txnLo, path.of(root).concat("v2"), v2);
                 }
 
                 v1.close();
                 v2.close();
-
-                TableTransactionLogV2.clearThreadLocals();
             }
         });
     }

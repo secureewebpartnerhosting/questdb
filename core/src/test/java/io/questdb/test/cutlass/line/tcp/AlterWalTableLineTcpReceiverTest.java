@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import io.questdb.mp.SOCountDownLatch;
 import io.questdb.network.Net;
 import io.questdb.std.*;
 import io.questdb.std.datetime.microtime.Timestamps;
+import io.questdb.std.str.Path;
 import io.questdb.std.str.StringSink;
 import io.questdb.test.cairo.TableModel;
 import io.questdb.test.tools.TestUtils;
@@ -84,12 +85,12 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
             drainWalQueue();
 
             String expected = "room\twatts\ttimestamp\tlabel2\tlabel\n" +
-                    "6C\t333\t1970-01-01T00:25:31.817902Z\tNaN\t\n" +
-                    "6C\t666\t1970-01-01T00:25:31.817902Z\tNaN\tLine\n" +
-                    "6B\t22\t1970-01-01T00:27:11.817902Z\tNaN\t\n" +
-                    "6B\t55\t1970-01-01T00:27:11.817902Z\tNaN\tPower\n" +
-                    "6A\t1\t1970-01-01T00:43:51.819999Z\tNaN\t\n" +
-                    "6A\t4\t1970-01-01T00:43:51.819999Z\tNaN\tPower\n";
+                    "6C\t333\t1970-01-01T00:25:31.817902Z\tnull\t\n" +
+                    "6C\t666\t1970-01-01T00:25:31.817902Z\tnull\tLine\n" +
+                    "6B\t22\t1970-01-01T00:27:11.817902Z\tnull\t\n" +
+                    "6B\t55\t1970-01-01T00:27:11.817902Z\tnull\tPower\n" +
+                    "6A\t1\t1970-01-01T00:43:51.819999Z\tnull\t\n" +
+                    "6A\t4\t1970-01-01T00:43:51.819999Z\tnull\tPower\n";
             assertTable(expected);
         });
     }
@@ -122,7 +123,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                     }
                 } finally {
                     LOG.info().$("sender finished").$();
-                    TableUtils.clearThreadLocals();
+                    Path.clearThreadLocals();
                     ilpProducerHalted.countDown();
                 }
             }, "ilp-producer");
@@ -136,11 +137,11 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                 }
                 LOG.info().$("ABOUT TO DROP PARTITIONS").$();
                 try (SqlExecutionContext sqlExecutionContext = TestUtils.createSqlExecutionCtx(engine)) {
-                    engine.ddl("ALTER TABLE plug DROP PARTITION WHERE timestamp > 0", sqlExecutionContext, scSequence);
+                    engine.execute("ALTER TABLE plug DROP PARTITION WHERE timestamp > 0", sqlExecutionContext, scSequence);
                 } catch (SqlException e) {
                     partitionDropperProblem.set(e);
                 } finally {
-                    TableUtils.clearThreadLocals();
+                    Path.clearThreadLocals();
                     // a few rows may have made it into the active partition,
                     // as dropping it is concurrent with inserting
                     keepSending.set(false);
@@ -168,7 +169,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
             tm.col("watts", ColumnType.LONG);
             tm.timestamp();
             tm.wal();
-            TableToken ignored = TestUtils.create(tm, engine);
+            TableToken ignored = TestUtils.createTable(engine, tm);
 
             try (TableWriterAPI writer = getTableWriterAPI("plug")) {
                 TableWriter.Row row = writer.newRow(day1 / 1000);
@@ -249,11 +250,11 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
             drainWalQueue();
 
             String expected = "label2\troom\twatts\ttimestamp\tlabel\n" +
-                    "Line\t6C\t333\t1970-01-01T00:25:31.817902Z\tNaN\n" +
+                    "Line\t6C\t333\t1970-01-01T00:25:31.817902Z\tnull\n" +
                     "\t6C\t666\t1970-01-01T00:25:31.817902Z\t1\n" +
-                    "Power\t6B\t22\t1970-01-01T00:27:11.817902Z\tNaN\n" +
+                    "Power\t6B\t22\t1970-01-01T00:27:11.817902Z\tnull\n" +
                     "\t6B\t55\t1970-01-01T00:27:11.817902Z\t0\n" +
-                    "Power\t6A\t1\t1970-01-01T00:43:51.819999Z\tNaN\n" +
+                    "Power\t6A\t1\t1970-01-01T00:43:51.819999Z\tnull\n" +
                     "\t6A\t4\t1970-01-01T00:43:51.819999Z\t0\n";
             assertTable(expected);
         }, false, 1000);
@@ -310,17 +311,17 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
             drainWalQueue();
 
             String expected = "room\twatts\ttimestamp\tcol0\tcol1\tcol2\tcol3\tcol4\tcol5\tcol6\tcol7\tcol8\tcol9\n" +
-                    "6A\t1\t1970-01-01T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n" +
-                    "6B\t22\t1970-02-02T00:00:00.000000Z\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\tNaN\n";
+                    "6A\t1\t1970-01-01T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n" +
+                    "6B\t22\t1970-02-02T00:00:00.000000Z\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\n";
             assertTable(expected);
         }, true, 250);
     }
@@ -386,7 +387,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
             final AtomicReference<SqlException> partitionDropperProblem = new AtomicReference<>();
             try (SqlExecutionContext sqlExecutionContext = TestUtils.createSqlExecutionCtx(engine)) {
 
-                engine.ddl("CREATE TABLE plug as " +
+                engine.execute("CREATE TABLE plug as " +
                         " (select cast(x as symbol) room, rnd_long() as watts, timestamp_sequence('2023-02-27', 1000) timestamp from long_sequence(100)) " +
                         "timestamp(timestamp) partition by DAY WAL ", sqlExecutionContext);
 
@@ -412,7 +413,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                         }
                     } finally {
                         LOG.info().$("sender finished").$();
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                         ilpProducerHalted.countDown();
                     }
                 }, "ilp-producer");
@@ -425,12 +426,12 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                     }
                     LOG.info().$("ABOUT TO TRUNCATE TABLE").$();
                     try {
-                        engine.ddl("TRUNCATE TABLE plug", sqlExecutionContext, scSequence);
+                        engine.execute("TRUNCATE TABLE plug", sqlExecutionContext, scSequence);
                         Os.sleep(100);
                     } catch (SqlException e) {
                         partitionDropperProblem.set(e);
                     } finally {
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                         // a few rows may have made it into the active partition,
                         // as dropping it is concurrent with inserting
                         keepSending.set(false);
@@ -494,13 +495,13 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                             "plug,room=6C watts=\"333\",power=220 1531817902842\n"
             );
 
-            ddl("ALTER TABLE plug DROP COLUMN watts");
+            execute("ALTER TABLE plug DROP COLUMN watts");
             send("plug,room=6A watts=\"1\",watts=2,power=220 2631819999000\n");
             drainWalQueue();
 
             String expected = "room\tpower\ttimestamp\twatts\n" +
                     "6C\t220.0\t1970-01-01T00:25:31.817902Z\t\n" +
-                    "6B\tNaN\t1970-01-01T00:27:11.817902Z\t\n" +
+                    "6B\tnull\t1970-01-01T00:27:11.817902Z\t\n" +
                     "6A\t220.0\t1970-01-01T00:43:51.819999Z\t\n" +
                     "6A\t220.0\t1970-01-01T00:43:51.819999Z\t1\n";
             assertTable(expected);
@@ -575,7 +576,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                     "plug,room=6C watts=\"333\",power=220 1531817902842\n";
             send(lineData);
 
-            ddl("ALTER TABLE plug DROP COLUMN watts");
+            execute("ALTER TABLE plug DROP COLUMN watts");
 
             // Send same data again
             send(lineData);
@@ -584,8 +585,8 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
             String expected = "room\tpower\ttimestamp\twatts\n" +
                     "6C\t220.0\t1970-01-01T00:25:31.817902Z\t\n" +
                     "6C\t220.0\t1970-01-01T00:25:31.817902Z\t333\n" +
-                    "6B\tNaN\t1970-01-01T00:27:11.817902Z\t\n" +
-                    "6B\tNaN\t1970-01-01T00:27:11.817902Z\t22\n" +
+                    "6B\tnull\t1970-01-01T00:27:11.817902Z\t\n" +
+                    "6B\tnull\t1970-01-01T00:27:11.817902Z\t22\n" +
                     "6A\t220.0\t1970-01-01T00:43:51.819999Z\t\n" +
                     "6A\t220.0\t1970-01-01T00:43:51.819999Z\t1\n";
             assertTable(expected);
@@ -635,7 +636,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                     columnsAdded.add(isSymbol ? i : -i);
                 } else {
                     int dropCol = columnsAdded.get(rnd.nextPositiveInt() % columnsAdded.size());
-                    ddl("ALTER TABLE plug DROP COLUMN column_" + Math.abs(dropCol));
+                    execute("ALTER TABLE plug DROP COLUMN column_" + Math.abs(dropCol));
                     columnsAdded.remove(dropCol);
                 }
             }
@@ -701,7 +702,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                             "plug,room=6C watts=\"333\",power=220 1531817902842\n"
             );
 
-            ddl("ALTER TABLE plug DROP COLUMN room");
+            execute("ALTER TABLE plug DROP COLUMN room");
 
             // Send same data again
             send(
@@ -714,8 +715,8 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
             String expected = "watts\tpower\ttimestamp\troom\n" +
                     "333\t220.0\t1970-01-01T00:25:31.817902Z\t\n" +
                     "333\t220.0\t1970-01-01T00:25:31.817902Z\t6C\n" +
-                    "22\tNaN\t1970-01-01T00:27:11.817902Z\t\n" +
-                    "22\tNaN\t1970-01-01T00:27:11.817902Z\t6BB\n" +
+                    "22\tnull\t1970-01-01T00:27:11.817902Z\t\n" +
+                    "22\tnull\t1970-01-01T00:27:11.817902Z\t6BB\n" +
                     "1\t220.0\t1970-01-01T00:43:51.819999Z\t\n" +
                     "1\t220.0\t1970-01-01T00:43:51.819999Z\t\n";
             assertTable(expected);
@@ -774,7 +775,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                         Os.pause();
                     }
 
-                    ddl(alterTableCommand);
+                    execute(alterTableCommand);
                 } catch (Throwable e) {
                     if (alterAttempts == 1) {
                         if (e instanceof SqlException) {
@@ -784,7 +785,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
                     }
                 } finally {
                     LOG.info().$("Stopped waiting for txn notification event").$();
-                    TableUtils.clearThreadLocals();
+                    Path.clearThreadLocals();
                     // If subscribed to global writer event queue, unsubscribe here
                     // exit this method if alter executed
                     releaseAllLatch.countDown();
@@ -795,7 +796,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
         try {
             int ipv4address = Net.parseIPv4("127.0.0.1");
             long sockaddr = Net.sockaddr(ipv4address, bindPort);
-            int fd = Net.socketTcp(true);
+            long fd = Net.socketTcp(true);
             try {
                 TestUtils.assertConnect(fd, sockaddr);
                 byte[] lineDataBytes = lineData.getBytes(StandardCharsets.UTF_8);
@@ -843,7 +844,7 @@ public class AlterWalTableLineTcpReceiverTest extends AbstractLineTcpReceiverTes
         try {
             int ipv4address = Net.parseIPv4("127.0.0.1");
             long sockaddr = Net.sockaddr(ipv4address, bindPort);
-            int fd = Net.socketTcp(true);
+            long fd = Net.socketTcp(true);
             try {
                 TestUtils.assertConnect(fd, sockaddr);
                 byte[] lineDataBytes = lineData.getBytes(StandardCharsets.UTF_8);

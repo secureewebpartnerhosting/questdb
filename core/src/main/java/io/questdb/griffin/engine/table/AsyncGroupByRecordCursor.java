@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,21 +25,24 @@
 package io.questdb.griffin.engine.table;
 
 import io.questdb.MessageBus;
-import io.questdb.cairo.CairoConfiguration;
 import io.questdb.cairo.CairoException;
 import io.questdb.cairo.map.Map;
 import io.questdb.cairo.map.MapRecordCursor;
 import io.questdb.cairo.map.ShardedMapCursor;
+import io.questdb.cairo.sql.AtomicBooleanCircuitBreaker;
+import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
-import io.questdb.cairo.sql.*;
+import io.questdb.cairo.sql.RecordCursor;
+import io.questdb.cairo.sql.SqlExecutionCircuitBreaker;
+import io.questdb.cairo.sql.SymbolTable;
+import io.questdb.cairo.sql.VirtualRecord;
 import io.questdb.cairo.sql.async.PageFrameReduceTask;
 import io.questdb.cairo.sql.async.PageFrameSequence;
+import io.questdb.cairo.sql.async.WorkStealingStrategy;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.GroupByFunction;
 import io.questdb.griffin.engine.functions.SymbolFunction;
-import io.questdb.griffin.engine.groupby.GroupByAllocator;
-import io.questdb.griffin.engine.groupby.GroupByAllocatorFactory;
 import io.questdb.griffin.engine.groupby.GroupByMergeShardJob;
 import io.questdb.griffin.engine.groupby.GroupByUtils;
 import io.questdb.log.Log;
@@ -48,22 +51,25 @@ import io.questdb.mp.MCSequence;
 import io.questdb.mp.MPSequence;
 import io.questdb.mp.RingQueue;
 import io.questdb.mp.SOUnboundedCountDownLatch;
+import io.questdb.std.DirectLongLongHeap;
 import io.questdb.std.Misc;
 import io.questdb.std.ObjList;
 import io.questdb.std.Os;
 import io.questdb.tasks.GroupByMergeShardTask;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 class AsyncGroupByRecordCursor implements RecordCursor {
     private static final Log LOG = LogFactory.getLog(AsyncGroupByRecordCursor.class);
-    private final GroupByAllocator allocator;
-    private final SOUnboundedCountDownLatch doneLatch = new SOUnboundedCountDownLatch(); // used for merge shard workers
     private final ObjList<GroupByFunction> groupByFunctions;
+    private final AtomicBooleanCircuitBreaker mergeCircuitBreaker; // used to signal cancellation to merge shard workers
+    private final SOUnboundedCountDownLatch mergeDoneLatch = new SOUnboundedCountDownLatch(); // used for merge shard workers
+    private final AtomicInteger mergeStartedCounter = new AtomicInteger();
     private final MessageBus messageBus;
     private final VirtualRecord recordA;
     private final VirtualRecord recordB;
     private final ObjList<Function> recordFunctions;
     private final ShardedMapCursor shardedCursor = new ShardedMapCursor();
-    private final AtomicBooleanCircuitBreaker sharedCircuitBreaker; // used to signal cancellation to merge shard workers
     private SqlExecutionCircuitBreaker circuitBreaker;
     private int frameLimit;
     private PageFrameSequence<AsyncGroupByAtom> frameSequence;
@@ -72,19 +78,16 @@ class AsyncGroupByRecordCursor implements RecordCursor {
     private MapRecordCursor mapCursor;
 
     public AsyncGroupByRecordCursor(
-            CairoConfiguration configuration,
             ObjList<GroupByFunction> groupByFunctions,
             ObjList<Function> recordFunctions,
             MessageBus messageBus
     ) {
-        this.allocator = GroupByAllocatorFactory.createThreadSafeAllocator(configuration);
         this.groupByFunctions = groupByFunctions;
-        GroupByUtils.setAllocator(groupByFunctions, allocator);
         this.recordFunctions = recordFunctions;
         this.messageBus = messageBus;
         recordA = new VirtualRecord(recordFunctions);
         recordB = new VirtualRecord(recordFunctions);
-        sharedCircuitBreaker = new AtomicBooleanCircuitBreaker();
+        mergeCircuitBreaker = new AtomicBooleanCircuitBreaker();
         isOpen = true;
     }
 
@@ -100,7 +103,6 @@ class AsyncGroupByRecordCursor implements RecordCursor {
     public void close() {
         if (isOpen) {
             isOpen = false;
-            Misc.free(allocator);
             Misc.clearObjList(groupByFunctions);
             mapCursor = Misc.free(mapCursor);
 
@@ -139,6 +141,14 @@ class AsyncGroupByRecordCursor implements RecordCursor {
             buildMap();
         }
         return mapCursor.hasNext();
+    }
+
+    @Override
+    public void longTopK(DirectLongLongHeap heap, int columnIndex) {
+        if (!isDataMapBuilt) {
+            buildMap();
+        }
+        mapCursor.longTopK(heap, recordFunctions.getQuick(columnIndex));
     }
 
     @Override
@@ -191,7 +201,9 @@ class AsyncGroupByRecordCursor implements RecordCursor {
                             .$(", cursor=").$(cursor)
                             .I$();
                     if (task.hasError()) {
-                        throw CairoException.nonCritical().put(task.getErrorMsg());
+                        throw CairoException.nonCritical()
+                                .position(task.getErrorMessagePosition())
+                                .put(task.getErrorMsg());
                     }
 
                     allFramesActive &= frameSequence.isActive();
@@ -204,17 +216,12 @@ class AsyncGroupByRecordCursor implements RecordCursor {
                     Os.pause();
                 }
             } while (frameIndex < frameLimit);
-        } catch (Throwable e) {
-            LOG.error().$("group by error [ex=").$(e).I$();
-            if (e instanceof CairoException) {
-                CairoException ce = (CairoException) e;
-                if (ce.isInterruption()) {
-                    throwTimeoutException();
-                } else {
-                    throw ce;
-                }
+        } catch (CairoException e) {
+            if (e.isInterruption()) {
+                throwTimeoutException();
+            } else {
+                throw e;
             }
-            throw CairoException.nonCritical().put(e.getMessage());
         }
 
         if (!allFramesActive) {
@@ -225,7 +232,7 @@ class AsyncGroupByRecordCursor implements RecordCursor {
 
         if (!atom.isSharded()) {
             // No sharding was necessary, so the maps are small, and we merge them ourselves.
-            final Map dataMap = mergeNonShardedMap(atom);
+            final Map dataMap = atom.mergeOwnerMap();
             mapCursor = dataMap.getCursor();
         } else {
             // We had to shard the maps, so they must be big.
@@ -240,33 +247,10 @@ class AsyncGroupByRecordCursor implements RecordCursor {
         isDataMapBuilt = true;
     }
 
-    private Map mergeNonShardedMap(AsyncGroupByAtom atom) {
-        final Map destMap = atom.getOwnerParticle().getMap();
-        final int perWorkerMapCount = atom.getPerWorkerParticles().size();
-
-        long sizeEstimate = destMap.size();
-        for (int i = 0; i < perWorkerMapCount; i++) {
-            final Map srcMap = atom.getPerWorkerParticles().getQuick(i).getMap();
-            sizeEstimate += srcMap.size();
-        }
-
-        if (sizeEstimate > 0) {
-            // Pre-size the destination map, so that we don't have to resize it later.
-            destMap.setKeyCapacity((int) sizeEstimate);
-        }
-
-        for (int i = 0; i < perWorkerMapCount; i++) {
-            final Map srcMap = atom.getPerWorkerParticles().getQuick(i).getMap();
-            destMap.merge(srcMap, atom.getFunctionUpdater(-1));
-            srcMap.close();
-        }
-
-        return destMap;
-    }
-
     private ObjList<Map> mergeShards(AsyncGroupByAtom atom) {
-        sharedCircuitBreaker.reset();
-        doneLatch.reset();
+        mergeCircuitBreaker.reset();
+        mergeStartedCounter.set(0);
+        mergeDoneLatch.reset();
 
         // First, make sure to shard all non-sharded maps, if any.
         atom.shardAll();
@@ -276,61 +260,80 @@ class AsyncGroupByRecordCursor implements RecordCursor {
         final RingQueue<GroupByMergeShardTask> queue = messageBus.getGroupByMergeShardQueue();
         final MPSequence pubSeq = messageBus.getGroupByMergeShardPubSeq();
         final MCSequence subSeq = messageBus.getGroupByMergeShardSubSeq();
+        final WorkStealingStrategy workStealingStrategy = frameSequence.getWorkStealingStrategy().of(mergeStartedCounter);
 
         int queuedCount = 0;
         int ownCount = 0;
         int reclaimed = 0;
         int total = 0;
+        int mergedCount = 0; // used for work stealing decisions
 
         try {
             for (int i = 0; i < shardCount; i++) {
-                long cursor = pubSeq.next();
-                if (cursor < 0) {
-                    circuitBreaker.statefulThrowExceptionIfTrippedNoThrottle();
-                    atom.mergeShard(-1, i);
-                    ownCount++;
-                } else {
-                    queue.get(cursor).of(sharedCircuitBreaker, doneLatch, atom, i);
-                    pubSeq.done(cursor);
-                    queuedCount++;
+                while (true) {
+                    long cursor = pubSeq.next();
+                    if (cursor < 0) {
+                        circuitBreaker.statefulThrowExceptionIfTrippedNoThrottle();
+
+                        if (workStealingStrategy.shouldSteal(mergedCount)) {
+                            atom.mergeShard(-1, i);
+                            ownCount++;
+                            total++;
+                            mergedCount = mergeDoneLatch.getCount();
+                            break;
+                        }
+                        mergedCount = mergeDoneLatch.getCount();
+                    } else {
+                        queue.get(cursor).of(mergeCircuitBreaker, mergeStartedCounter, mergeDoneLatch, atom, i);
+                        pubSeq.done(cursor);
+                        queuedCount++;
+                        total++;
+                        break;
+                    }
                 }
-                total++;
             }
-        } catch (Throwable e) {
-            sharedCircuitBreaker.cancel();
-            throw e;
+        } catch (Throwable th) {
+            mergeCircuitBreaker.cancel();
+            throw th;
         } finally {
             // All done? Great, start consuming the queue we just published.
             // How do we get to the end? If we consume our own queue there is chance we will be consuming
             // aggregation tasks not related to this execution (we work in concurrent environment).
             // To deal with that we need to check our latch.
 
-            while (!doneLatch.done(queuedCount)) {
+            while (!mergeDoneLatch.done(queuedCount)) {
                 if (circuitBreaker.checkIfTripped()) {
-                    sharedCircuitBreaker.cancel();
+                    mergeCircuitBreaker.cancel();
                 }
 
-                long cursor = subSeq.next();
-                if (cursor > -1) {
-                    GroupByMergeShardTask task = queue.get(cursor);
-                    GroupByMergeShardJob.run(-1, task, subSeq, cursor);
-                    reclaimed++;
+                if (workStealingStrategy.shouldSteal(mergedCount)) {
+                    long cursor = subSeq.next();
+                    if (cursor > -1) {
+                        GroupByMergeShardTask task = queue.get(cursor);
+                        GroupByMergeShardJob.run(-1, task, subSeq, cursor, atom);
+                        reclaimed++;
+                    } else {
+                        Os.pause();
+                    }
                 } else {
                     Os.pause();
                 }
+                mergedCount = mergeDoneLatch.getCount();
             }
         }
 
-        if (sharedCircuitBreaker.checkIfTripped()) {
+        if (mergeCircuitBreaker.checkIfTripped()) {
             throwTimeoutException();
         }
+
+        atom.finalizeShardStats();
 
         LOG.debug().$("merge shards done [total=").$(total)
                 .$(", ownCount=").$(ownCount)
                 .$(", reclaimed=").$(reclaimed)
                 .$(", queuedCount=").$(queuedCount).I$();
 
-        return atom.getOwnerParticle().getShardMaps();
+        return atom.getDestShards();
     }
 
     private void throwTimeoutException() {
@@ -343,7 +346,6 @@ class AsyncGroupByRecordCursor implements RecordCursor {
 
     void of(PageFrameSequence<AsyncGroupByAtom> frameSequence, SqlExecutionContext executionContext) throws SqlException {
         final AsyncGroupByAtom atom = frameSequence.getAtom();
-        atom.setAllocator(allocator);
         if (!isOpen) {
             isOpen = true;
             atom.reopen();

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import io.questdb.cairo.TableToken;
 import io.questdb.cairo.wal.WalDirectoryPolicy;
 import io.questdb.cairo.wal.WalWriter;
 import io.questdb.cairo.wal.seq.TableSequencerAPI;
+import org.jetbrains.annotations.Nullable;
 
 public class WalWriterPool extends AbstractMultiTenantPool<WalWriterPool.WalWriterTenant> {
 
@@ -48,7 +49,12 @@ public class WalWriterPool extends AbstractMultiTenantPool<WalWriterPool.WalWrit
     }
 
     @Override
-    protected WalWriterTenant newTenant(TableToken tableToken, Entry<WalWriterTenant> entry, int index) {
+    protected WalWriterTenant newTenant(
+            TableToken tableToken,
+            Entry<WalWriterTenant> entry,
+            int index,
+            @Nullable ResourcePoolSupervisor<WalWriterTenant> supervisor
+    ) {
         return new WalWriterTenant(
                 this,
                 entry,
@@ -76,7 +82,7 @@ public class WalWriterPool extends AbstractMultiTenantPool<WalWriterPool.WalWrit
                 WalDirectoryPolicy walDirectoryPolicy,
                 Metrics metrics
         ) {
-            super(pool.getConfiguration(), tableToken, tableSequencerAPI, ddlListener, walDirectoryPolicy, metrics);
+            super(pool.getConfiguration(), tableToken, tableSequencerAPI, ddlListener, walDirectoryPolicy);
             this.pool = pool;
             this.entry = entry;
             this.index = index;
@@ -121,7 +127,7 @@ public class WalWriterPool extends AbstractMultiTenantPool<WalWriterPool.WalWrit
         }
 
         @Override
-        public void refresh() {
+        public void refresh(@Nullable ResourcePoolSupervisor<WalWriterTenant> supervisor) {
             try {
                 goActive();
             } catch (Throwable ex) {

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@
 package io.questdb.griffin.engine.functions.str;
 
 import io.questdb.cairo.CairoConfiguration;
-import io.questdb.cairo.TableUtils;
 import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.FunctionFactory;
@@ -34,7 +33,6 @@ import io.questdb.griffin.engine.functions.IntFunction;
 import io.questdb.griffin.engine.functions.UnaryFunction;
 import io.questdb.std.IntList;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.Utf8Sequence;
 import io.questdb.std.str.Utf8s;
 
 public class LengthVarcharFunctionFactory implements FunctionFactory {
@@ -69,11 +67,7 @@ public class LengthVarcharFunctionFactory implements FunctionFactory {
 
         @Override
         public int getInt(Record rec) {
-            final Utf8Sequence value = arg.getVarcharA(rec);
-            if (value == null) {
-                return TableUtils.NULL_LEN;
-            }
-            return Utf8s.validateUtf8(value);
+            return Utf8s.length(arg.getVarcharA(rec));
         }
 
         @Override
@@ -81,4 +75,5 @@ public class LengthVarcharFunctionFactory implements FunctionFactory {
             return "length";
         }
     }
+
 }

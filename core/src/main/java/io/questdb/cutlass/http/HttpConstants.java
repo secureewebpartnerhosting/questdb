@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ public final class HttpConstants {
     public static final String CONTENT_TYPE_TEXT = "text/plain; charset=utf-8";
 
     public static final char COOKIE_VALUE_SEPARATOR = '=';
+    public static final Utf8String HEADER_AUTHORIZATION = new Utf8String("Authorization");
     public static final Utf8String HEADER_CONNECTION = new Utf8String("Connection");
     public static final Utf8String HEADER_CONTENT_ACCEPT_ENCODING = new Utf8String("Accept-Encoding");
     public static final Utf8String HEADER_CONTENT_DISPOSITION = new Utf8String("Content-Disposition");
@@ -69,6 +70,7 @@ public final class HttpConstants {
     public static final Utf8String URL_PARAM_STATUS_TABLE_NAME = new Utf8String("j");
     public static final Utf8String URL_PARAM_TIMESTAMP = new Utf8String("timestamp");
     public static final Utf8String URL_PARAM_TIMINGS = new Utf8String("timings");
+    public static final Utf8String URL_PARAM_VERSION = new Utf8String("version");
 
     private HttpConstants() {
     }

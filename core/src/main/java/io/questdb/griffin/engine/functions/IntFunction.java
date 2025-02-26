@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,9 +32,7 @@ import io.questdb.std.BinarySequence;
 import io.questdb.std.Long256;
 import io.questdb.std.Numbers;
 import io.questdb.std.str.CharSink;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 public abstract class IntFunction implements ScalarFunction {
     @Override
@@ -148,11 +146,6 @@ public abstract class IntFunction implements ScalarFunction {
     }
 
     @Override
-    public final void getStr(Record rec, Utf16Sink utf16Sink) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public final CharSequence getStrB(Record rec) {
         throw new UnsupportedOperationException();
     }
@@ -174,17 +167,12 @@ public abstract class IntFunction implements ScalarFunction {
 
     @Override
     public long getTimestamp(Record rec) {
-        return Numbers.intToLong(getInt(rec));
+        return getLong(rec);
     }
 
     @Override
     public final int getType() {
         return ColumnType.INT;
-    }
-
-    @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -194,6 +182,11 @@ public abstract class IntFunction implements ScalarFunction {
 
     @Override
     public Utf8Sequence getVarcharB(Record rec) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public final int getVarcharSize(Record rec) {
         throw new UnsupportedOperationException();
     }
 }

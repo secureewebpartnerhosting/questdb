@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -66,15 +66,14 @@ import java.io.Closeable;
  * or in multiple files with N records per file.
  * <p>
  * See different implementations of the interface for the storage details.
- * <p>
  */
 public interface TableTransactionLogFile extends Closeable {
     int HEADER_RESERVED = 6 * Long.BYTES + Integer.BYTES;
     long MAX_TXN_OFFSET_64 = Integer.BYTES;
     int STRUCTURAL_CHANGE_WAL_ID = -1;
     long TABLE_CREATE_TIMESTAMP_OFFSET_64 = MAX_TXN_OFFSET_64 + Long.BYTES;
-    long SEQ_PART_SIZE_32 = TABLE_CREATE_TIMESTAMP_OFFSET_64 + Long.BYTES;
-    long HEADER_SIZE = SEQ_PART_SIZE_32 + Integer.BYTES + HEADER_RESERVED;
+    long HEADER_SEQ_PART_SIZE_32 = TABLE_CREATE_TIMESTAMP_OFFSET_64 + Long.BYTES;
+    long HEADER_SIZE = HEADER_SEQ_PART_SIZE_32 + Integer.BYTES + HEADER_RESERVED;
     long TX_LOG_STRUCTURE_VERSION_OFFSET = 0L;
     long TX_LOG_WAL_ID_OFFSET = TX_LOG_STRUCTURE_VERSION_OFFSET + Long.BYTES;
     long TX_LOG_SEGMENT_OFFSET = TX_LOG_WAL_ID_OFFSET + Integer.BYTES;
@@ -124,6 +123,11 @@ public interface TableTransactionLogFile extends Closeable {
     long endMetadataChangeEntry();
 
     /**
+     * Syncs/flushes the log files to the disk unconditionally.
+     */
+    void fullSync();
+
+    /**
      * Returns the cursor to read transactions from the log
      *
      * @param txnLo transaction id to start reading from
@@ -149,9 +153,4 @@ public interface TableTransactionLogFile extends Closeable {
      * @return transaction id of the last committed transaction
      */
     long open(Path path);
-
-    /**
-     * Syncs/flushes the log files to the disk
-     */
-    void sync();
 }

@@ -45,9 +45,8 @@ public class LastVarcharGroupByFunction extends FirstVarcharGroupByFunction {
             mapValue.putBool(valueIndex + 2, true);
         } else {
             long ptr = mapValue.getLong(valueIndex + 1);
-            sink.of(ptr).clear();
-            sink.put(val);
-            mapValue.putLong(valueIndex + 1, sink.ptr());
+            sink.of(ptr).clearAndSet(val);
+            mapValue.putLong(valueIndex + 1, sink.colouredPtr());
             mapValue.putBool(valueIndex + 2, false);
         }
     }

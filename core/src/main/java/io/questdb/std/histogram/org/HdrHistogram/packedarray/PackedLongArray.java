@@ -1,3 +1,27 @@
+/*******************************************************************************
+ *     ___                  _   ____  ____
+ *    / _ \ _   _  ___  ___| |_|  _ \| __ )
+ *   | | | | | | |/ _ \/ __| __| | | |  _ \
+ *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
+ *    \__\_\\__,_|\___||___/\__|____/|____/
+ *
+ *  Copyright (c) 2014-2019 Appsicle
+ *  Copyright (c) 2019-2024 QuestDB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+
 package io.questdb.std.histogram.org.HdrHistogram.packedarray;
 
 /**
@@ -5,9 +29,6 @@ package io.questdb.std.histogram.org.HdrHistogram.packedarray;
  * {@link #add add()} and {@link #increment increment()} operations on the logical contents of the array.
  */
 public class PackedLongArray extends AbstractPackedLongArray {
-
-    PackedLongArray() {
-    }
 
     public PackedLongArray(final int virtualLength) {
         this(virtualLength, AbstractPackedArrayContext.MINIMUM_INITIAL_PACKED_ARRAY_CAPACITY);
@@ -39,9 +60,8 @@ public class PackedLongArray extends AbstractPackedLongArray {
             currentArrayContext.setVirtualLength(newVirtualArrayLength);
             return;
         }
-        AbstractPackedArrayContext oldArrayContext = currentArrayContext;
-        setArrayContext(new PackedArrayContext(newVirtualArrayLength, oldArrayContext, oldArrayContext.length()));
-        for (IterationValue v : oldArrayContext.nonZeroValues()) {
+        setArrayContext(new PackedArrayContext(newVirtualArrayLength, currentArrayContext, currentArrayContext.length()));
+        for (IterationValue v : currentArrayContext.nonZeroValues()) {
             set(v.getIndex(), v.getValue());
         }
     }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,7 +33,8 @@ import io.questdb.std.Rnd;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-import static io.questdb.cairo.ColumnType.*;
+import static io.questdb.cairo.ColumnType.DOUBLE;
+import static io.questdb.cairo.ColumnType.FLOAT;
 
 public class TableData {
     private final IntLongPriorityQueue index = new IntLongPriorityQueue();
@@ -56,15 +57,21 @@ public class TableData {
         }
     }
 
+    public synchronized void clear() {
+        rows.clear();
+        index.clear();
+        writePermits.set(0);
+    }
+
     public synchronized CharSequence generateRows(TableReaderMetadata metadata) {
         final StringBuilder sb = new StringBuilder();
         final ObjList<CharSequence> columns = new ObjList<>();
         final ObjList<CharSequence> defaults = new ObjList<>();
         for (int i = 0, n = metadata.getColumnCount(); i < n; i++) {
             TableColumnMetadata colMetaData = metadata.getColumnMetadata(i);
-            CharSequence column = colMetaData.getName();
+            CharSequence column = colMetaData.getColumnName();
             columns.add(column);
-            defaults.add(getDefaultValue((short) colMetaData.getType()));
+            defaults.add(getDefaultValue((short) colMetaData.getColumnType()));
             sb.append(column).append(i == n - 1 ? "\n" : "\t");
         }
         for (int i = 0, n = rows.size(); i < n; i++) {
@@ -103,12 +110,6 @@ public class TableData {
         writePermits.decrementAndGet();
     }
 
-    public synchronized void clear() {
-        rows.clear();
-        index.clear();
-        writePermits.set(0);
-    }
-
     public synchronized int size() {
         int count = 0;
         for (int i = 0, n = rows.size(); i < n; i++) {
@@ -127,13 +128,10 @@ public class TableData {
     private String getDefaultValue(short colType) {
         switch (colType) {
             case DOUBLE:
-                return "NaN";
-            case STRING:
-            case SYMBOL:
-            case TIMESTAMP:
-                return "";
+            case FLOAT:
+                return "null";
             default:
-                throw new RuntimeException("Unexpected column type");
+                return "";
         }
     }
 }

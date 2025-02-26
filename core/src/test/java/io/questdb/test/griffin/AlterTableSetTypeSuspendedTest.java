@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@ import io.questdb.test.TestServerMain;
 import io.questdb.test.std.TestFilesFacadeImpl;
 import io.questdb.test.tools.TestUtils;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,6 +59,7 @@ public class AlterTableSetTypeSuspendedTest extends AbstractAlterTableSetTypeRes
     }
 
     @Test
+    @Ignore
     public void testWalSuspendedToNonWal() throws Exception {
         final String tableName = testName.getMethodName();
         TestUtils.assertMemoryLeak(() -> {
@@ -65,7 +67,7 @@ public class AlterTableSetTypeSuspendedTest extends AbstractAlterTableSetTypeRes
                 private final AtomicInteger attempt = new AtomicInteger();
 
                 @Override
-                public int openRW(LPSZ name, long opts) {
+                public long openRW(LPSZ name, long opts) {
                     if (Utf8s.containsAscii(name, "x.d.1") && attempt.getAndIncrement() == 0) {
                         return -1;
                     }

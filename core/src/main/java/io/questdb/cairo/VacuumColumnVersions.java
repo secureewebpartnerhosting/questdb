@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -61,10 +61,15 @@ public class VacuumColumnVersions implements Closeable {
     private final FindVisitor visitTablePartition = this::visitTablePartition;
 
     public VacuumColumnVersions(CairoEngine engine) {
-        this.engine = engine;
-        this.purgeExecution = new ColumnPurgeOperator(engine.getConfiguration());
-        this.tableFiles = new DirectLongList(COLUMN_VERSION_LIST_CAPACITY, MemoryTag.NATIVE_SQL_COMPILER);
-        this.ff = engine.getConfiguration().getFilesFacade();
+        try {
+            this.engine = engine;
+            this.purgeExecution = new ColumnPurgeOperator(engine.getConfiguration());
+            this.tableFiles = new DirectLongList(COLUMN_VERSION_LIST_CAPACITY, MemoryTag.NATIVE_SQL_COMPILER);
+            this.ff = engine.getConfiguration().getFilesFacade();
+        } catch (Throwable th) {
+            close();
+            throw th;
+        }
     }
 
     @Override
@@ -81,10 +86,10 @@ public class VacuumColumnVersions implements Closeable {
         CairoConfiguration configuration = engine.getConfiguration();
 
         TableToken tableToken = reader.getTableToken();
-        Path path = Path.getThreadLocal(configuration.getRoot());
+        Path path = Path.getThreadLocal(configuration.getDbRoot());
         path.concat(tableToken);
         tablePathLen = path.size();
-        path2 = Path.getThreadLocal2(configuration.getRoot()).concat(tableToken);
+        path2 = Path.getThreadLocal2(configuration.getDbRoot()).concat(tableToken);
 
         this.tableReader = reader;
         partitionBy = reader.getPartitionedBy();
@@ -125,7 +130,7 @@ public class VacuumColumnVersions implements Closeable {
                     }
 
                     writerIndex = metadata.getWriterIndex(newReaderIndex);
-                    CharSequence columnName = metadata.getColumnName(newReaderIndex);
+                    String columnName = metadata.getColumnName(newReaderIndex);
                     int columnType = metadata.getColumnType(newReaderIndex);
                     purgeTask.of(reader.getTableToken(), columnName, tableId, truncateVersion, columnType, partitionBy, updateTxn);
                 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,6 +36,20 @@ public class ExpFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testExpDoubleNaN() throws Exception {
+        assertSql("exp\n" +
+                        "null\n",
+                "select exp(NaN)");
+    }
+
+    @Test
+    public void testExpDoubleNull() throws Exception {
+        assertSql("exp\n" +
+                        "null\n",
+                "select exp(null)");
+    }
+
+    @Test
     public void testExpFloat() throws Exception {
         assertSql("exp\n" +
                         "7.38905609893065\n",
@@ -47,19 +61,5 @@ public class ExpFunctionFactoryTest extends AbstractCairoTest {
         assertSql("exp\n" +
                         "0.1353352832366127\n",
                 "select exp(-2)");
-    }
-
-    @Test
-    public void testExpDoubleNaN() throws Exception {
-        assertSql("exp\n" +
-                        "NaN\n",
-                "select exp(NaN)");
-    }
-
-    @Test
-    public void testExpDoubleNull() throws Exception {
-        assertSql("exp\n" +
-                        "NaN\n",
-                "select exp(null)");
     }
 }

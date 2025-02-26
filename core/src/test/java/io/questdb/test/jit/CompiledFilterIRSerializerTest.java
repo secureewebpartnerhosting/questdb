@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -43,16 +43,20 @@ import io.questdb.std.ObjList;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.TableModel;
 import io.questdb.test.griffin.BaseFunctionFactoryTest;
-import org.junit.*;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static io.questdb.cairo.sql.DataFrameCursorFactory.ORDER_ASC;
+import static io.questdb.cairo.sql.PartitionFrameCursorFactory.ORDER_ASC;
 import static io.questdb.jit.CompiledFilterIRSerializer.*;
 
 public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
-
     private static final String KNOWN_SYMBOL_1 = "ABC";
     private static final String KNOWN_SYMBOL_2 = "DEF";
     private static final String UNKNOWN_SYMBOL = "XYZ";
@@ -98,16 +102,16 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
                 .col("astring", ColumnType.STRING)
                 .col("astring2", ColumnType.STRING)
                 .col("avarchar", ColumnType.VARCHAR)
-                    .col("avarchar2", ColumnType.VARCHAR)
-                    .col("abinary", ColumnType.BINARY)
+                .col("avarchar2", ColumnType.VARCHAR)
+                .col("abinary", ColumnType.BINARY)
                 .col("abinary2", ColumnType.BINARY)
                 .col("auuid", ColumnType.UUID)
                 .col("along128", ColumnType.LONG128)
-                    .col("along256", ColumnType.LONG256)
+                .col("along256", ColumnType.LONG256)
                 .timestamp();
         AbstractCairoTest.create(model);
 
-        try (TableWriter writer = newOffPoolWriter(configuration, "x", metrics)) {
+        try (TableWriter writer = newOffPoolWriter(configuration, "x")) {
             TableWriter.Row row = writer.newRow();
             row.putSym(writer.getColumnIndex("asymbol"), KNOWN_SYMBOL_1);
             row.putSym(writer.getColumnIndex("anothersymbol"), KNOWN_SYMBOL_2);
@@ -220,7 +224,7 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
         Map<String, String[]> typeToColumn = new HashMap<>();
         typeToColumn.put("i8", new String[]{"aboolean", "abyte", "ageobyte"});
         typeToColumn.put("i16", new String[]{"ashort", "ageoshort", "achar"});
-        typeToColumn.put("i32", new String[]{"anint", "ageoint"/*, "asymbol"*/});
+        typeToColumn.put("i32", new String[]{"anint", "ageoint", "asymbol"});
         typeToColumn.put("i64", new String[]{"along", "ageolong", "adate", "atimestamp"});
         typeToColumn.put("i128", new String[]{"auuid", "along128"});
         typeToColumn.put("f32", new String[]{"afloat"});
@@ -228,8 +232,8 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
 
         for (String type : typeToColumn.keySet()) {
             for (String col : typeToColumn.get(type)) {
-                serialize(col + " < " + col);
-                assertIR("different results for " + type, "(" + type + " " + col + ")(" + type + " " + col + ")(<)(ret)");
+                serialize(col + " = " + col);
+                assertIR("different results for " + type, "(" + type + " " + col + ")(" + type + " " + col + ")(=)(ret)");
             }
         }
     }
@@ -276,6 +280,27 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
     }
 
     @Test
+    public void testDateLiteral() throws Exception {
+        serialize("adate = '2023-02-11T11:12:22'");
+        assertIR("(i64 1676113942000L)(i64 adate)(=)(ret)");
+        serialize("adate >= '2023-02-11T11:12:22'");
+        assertIR("(i64 1676113942000L)(i64 adate)(>=)(ret)");
+        serialize("adate <= '2023-02-11T11'");
+        assertIR("(i64 1676113200000L)(i64 adate)(<=)(ret)");
+        serialize("adate > '2023-02-11'");
+        assertIR("(i64 1676073600000L)(i64 adate)(>)(ret)");
+        serialize("adate < '2023-02'");
+        assertIR("(i64 1675209600000L)(i64 adate)(<)(ret)");
+        serialize("adate != '2023'");
+        assertIR("(i64 1672531200000L)(i64 adate)(<>)(ret)");
+    }
+
+    @Test(expected = SqlException.class)
+    public void testEmptyIn() throws Exception {
+        serialize("anint IN ()");
+    }
+
+    @Test
     public void testGeoHashConstant() throws Exception {
         String[][] columns = new String[][]{
                 {"ageobyte", "i8", "##1", "1L"},
@@ -296,6 +321,48 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
             serialize(name + " = " + constant);
             assertIR("different results for " + name, "(" + type + " " + value + ")(" + type + " " + name + ")(=)(ret)");
         }
+    }
+
+    @Test
+    public void testIn() throws Exception {
+        serialize("anint IN (1, 2, 3)");
+        assertIR("(i32 3L)(i32 anint)(=)(i32 2L)(i32 anint)(=)(i32 1L)(i32 anint)(=)(||)(||)(ret)");
+        serialize("anint IN (1)");
+        assertIR("(i32 1L)(i32 anint)(=)(ret)");
+        serialize("anint IN (-1, 0, 1)");
+        assertIR("(i32 1L)(i32 anint)(=)(i32 0L)(i32 anint)(=)(i32 -1L)(i32 anint)(=)(||)(||)(ret)");
+        serialize("anint <> NULL AND anint IN (4, 5)");
+        assertIR("(i32 5L)(i32 anint)(=)(i32 4L)(i32 anint)(=)(||)(i32 -2147483648L)(i32 anint)(<>)(&&)(ret)");
+        serialize("-anint IN (-1)");
+        assertIR("(i32 -1L)(i32 anint)(neg)(=)(ret)");
+        serialize("anint NOT IN (1, 2, 3)");
+        assertIR("(i32 3L)(i32 anint)(=)(i32 2L)(i32 anint)(=)(i32 1L)(i32 anint)(=)(||)(||)(!)(ret)");
+        serialize("atimestamp IN ('2020-01-01')");
+        assertIR("(i64 1577836800000000L)(i64 atimestamp)(=)(ret)");
+    }
+
+    @Test(expected = SqlException.class)
+    public void testInSubSelect() throws Exception {
+        serialize("asymbol in (select asymbol from tab limit 1)");
+    }
+
+    @Test
+    public void testInVariableBinding() throws Exception {
+        bindVariableService.clear();
+        bindVariableService.setInt("anint", 1);
+        bindVariableService.setLong(0, 2);
+
+        serialize("anint IN (:anint, $1)");
+        assertIR("(i64 :0)(i32 anint)(=)(i32 :1)(i32 anint)(=)(||)(ret)");
+
+        Assert.assertEquals(2, bindVarFunctions.size());
+        Assert.assertEquals(ColumnType.LONG, bindVarFunctions.get(0).getType());
+        Assert.assertEquals(ColumnType.INT, bindVarFunctions.get(1).getType());
+    }
+
+    @Test(expected = SqlException.class)
+    public void testInvalidTimestampLiteral() throws Exception {
+        serialize("atimestamp > ''");
     }
 
     @Test(expected = SqlException.class)
@@ -356,8 +423,8 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
     @Test
     public void testNullConstantMixedIntegerColumns() throws Exception {
         serialize("anint + along <> null or null <> along + anint");
-        assertIR("(i32 anint)(i64 along)(+)(i64 " + Numbers.LONG_NaN + "L)(<>)" +
-                "(i64 " + Numbers.LONG_NaN + "L)(i64 along)(i32 anint)(+)(<>)" +
+        assertIR("(i32 anint)(i64 along)(+)(i64 " + Numbers.LONG_NULL + "L)(<>)" +
+                "(i64 " + Numbers.LONG_NULL + "L)(i64 along)(i32 anint)(+)(<>)" +
                 "(||)(ret)");
     }
 
@@ -370,8 +437,8 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
     @Test
     public void testNullConstantValues() throws Exception {
         String[][] columns = new String[][]{
-                {"anint", "i32", Numbers.INT_NaN + "L"},
-                {"along", "i64", Numbers.LONG_NaN + "L"},
+                {"anint", "i32", Numbers.INT_NULL + "L"},
+                {"along", "i64", Numbers.LONG_NULL + "L"},
                 {"ageobyte", "i8", GeoHashes.BYTE_NULL + "L"},
                 {"ageoshort", "i16", GeoHashes.SHORT_NULL + "L"},
                 {"ageoint", "i32", GeoHashes.INT_NULL + "L"},
@@ -484,6 +551,7 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
         filterToOptions.put("adouble = 0 and along = 0", 8);
         filterToOptions.put("astring = null", 8);
         filterToOptions.put("abinary = null", 8);
+        filterToOptions.put("avarchar = null", 8);
         // 16B
         filterToOptions.put("auuid = '11111111-1111-1111-1111-111111111111'", 16);
         filterToOptions.put("auuid = null", 16);
@@ -505,8 +573,62 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
     public void testStringNullConstant() throws Exception {
         serialize("astring <> null");
         assertIR("(i32 -1L)(string_header astring)(<>)(ret)");
+        serialize("astring is not null");
+        assertIR("(i32 -1L)(string_header astring)(<>)(ret)");
         serialize("astring = null");
         assertIR("(i32 -1L)(string_header astring)(=)(ret)");
+        serialize("astring is null");
+        assertIR("(i32 -1L)(string_header astring)(=)(ret)");
+        serialize("null <> astring");
+        assertIR("(string_header astring)(i32 -1L)(<>)(ret)");
+        serialize("null = astring");
+        assertIR("(string_header astring)(i32 -1L)(=)(ret)");
+    }
+
+    @Test
+    public void testTimestampInLiteral() throws Exception {
+        serialize("atimestamp in '2020-01-01'");
+        assertIR("(i64 1577836800000000L)(i64 atimestamp)(>=)(i64 1577923199999999L)(i64 atimestamp)(<=)(&&)(ret)");
+        serialize("atimestamp in '2020-01-01;15s'");
+        assertIR("(i64 1577836800000000L)(i64 atimestamp)(>=)(i64 1577923214999999L)(i64 atimestamp)(<=)(&&)(ret)");
+        serialize("atimestamp in '2020-01-01T23:59:58;4s;-1d;3'");
+        assertIR("(i64 1577750398000000L)(i64 atimestamp)(>=)(i64 1577750402999999L)(i64 atimestamp)(<=)(&&)" +
+                "(i64 1577836798000000L)(i64 atimestamp)(>=)(i64 1577836802999999L)(i64 atimestamp)(<=)(&&)" +
+                "(i64 1577923198000000L)(i64 atimestamp)(>=)(i64 1577923202999999L)(i64 atimestamp)(<=)(&&)(||)(||)(ret)");
+        serialize("along = 42 and atimestamp in '2020-01-01T23:59:58;4s;-1d;3'");
+        assertIR("(i64 1577750398000000L)(i64 atimestamp)(>=)(i64 1577750402999999L)(i64 atimestamp)(<=)(&&)" +
+                "(i64 1577836798000000L)(i64 atimestamp)(>=)(i64 1577836802999999L)(i64 atimestamp)(<=)(&&)" +
+                "(i64 1577923198000000L)(i64 atimestamp)(>=)(i64 1577923202999999L)(i64 atimestamp)(<=)(&&)" +
+                "(||)(||)(i64 42L)(i64 along)(=)(&&)(ret)");
+    }
+
+    @Test(expected = SqlException.class)
+    public void testTimestampInLiteralBindVariables() throws Exception {
+        bindVariableService.clear();
+        bindVariableService.setStr("str", "2020");
+        serialize("atimestamp in :str");
+    }
+
+    @Test
+    public void testTimestampInLiteralNull() throws Exception {
+        serialize("atimestamp in null");
+        assertIR("(i64 -9223372036854775808L)(i64 atimestamp)(>=)(i64 -9223372036854775808L)(i64 atimestamp)(<=)(&&)(ret)");
+    }
+
+    @Test
+    public void testTimestampLiteral() throws Exception {
+        serialize("atimestamp = '2023-02-11T11:12:22.116234Z'");
+        assertIR("(i64 1676113942116234L)(i64 atimestamp)(=)(ret)");
+        serialize("atimestamp >= '2023-02-11T11:12:22'");
+        assertIR("(i64 1676113942000000L)(i64 atimestamp)(>=)(ret)");
+        serialize("atimestamp <= '2023-02-11T11'");
+        assertIR("(i64 1676113200000000L)(i64 atimestamp)(<=)(ret)");
+        serialize("atimestamp > '2023-02-11'");
+        assertIR("(i64 1676073600000000L)(i64 atimestamp)(>)(ret)");
+        serialize("atimestamp < '2023-02'");
+        assertIR("(i64 1675209600000000L)(i64 atimestamp)(<)(ret)");
+        serialize("atimestamp != '2023'");
+        assertIR("(i64 1672531200000000L)(i64 atimestamp)(<>)(ret)");
     }
 
     @Test
@@ -649,6 +771,16 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
     }
 
     @Test(expected = SqlException.class)
+    public void testUnsupportedMixedStringAndCharColumns() throws Exception {
+        serialize("astring = achar");
+    }
+
+    @Test(expected = SqlException.class)
+    public void testUnsupportedMixedStringAndVarcharColumns() throws Exception {
+        serialize("astring = avarchar");
+    }
+
+    @Test(expected = SqlException.class)
     public void testUnsupportedMixedSymbolAndNumericColumns() throws Exception {
         serialize("asymbol = anint");
     }
@@ -666,6 +798,16 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
     @Test(expected = SqlException.class)
     public void testUnsupportedMixedUuidAndVarcharColumns() throws Exception {
         serialize("auuid = avarchar");
+    }
+
+    @Test(expected = SqlException.class)
+    public void testUnsupportedMixedVarcharAndCharColumns() throws Exception {
+        serialize("avarchar = achar");
+    }
+
+    @Test(expected = SqlException.class)
+    public void testUnsupportedMixedVarcharAndStringColumns() throws Exception {
+        serialize("avarchar = astring");
     }
 
     @Test(expected = SqlException.class)
@@ -704,6 +846,16 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
     }
 
     @Test(expected = SqlException.class)
+    public void testUnsupportedStringIntComparison() throws Exception {
+        serialize("astring >= anint");
+    }
+
+    @Test(expected = SqlException.class)
+    public void testUnsupportedSymbolIntComparison() throws Exception {
+        serialize("asymbol >= anint");
+    }
+
+    @Test(expected = SqlException.class)
     public void testUnsupportedTrueConstantInNumericContext() throws Exception {
         serialize("along = true");
     }
@@ -733,10 +885,31 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
         serialize("avarchar <> avarchar2");
     }
 
+    @Test(expected = SqlException.class)
+    public void testUnsupportedVarcharIntComparison() throws Exception {
+        serialize("avarchar >= anint");
+    }
+
     @Test
     public void testUuidConstant() throws Exception {
         serialize("auuid = '00000000-0000-0000-0000-000000000000'");
         assertIR("(i128 0 0L)(i128 auuid)(=)(ret)");
+    }
+
+    @Test
+    public void testVarcharNullConstant() throws Exception {
+        serialize("avarchar <> null");
+        assertIR("(i64 4L)(varchar_header avarchar)(<>)(ret)");
+        serialize("avarchar is not null");
+        assertIR("(i64 4L)(varchar_header avarchar)(<>)(ret)");
+        serialize("avarchar = null");
+        assertIR("(i64 4L)(varchar_header avarchar)(=)(ret)");
+        serialize("avarchar is null");
+        assertIR("(i64 4L)(varchar_header avarchar)(=)(ret)");
+        serialize("null = avarchar");
+        assertIR("(varchar_header avarchar)(i64 4L)(=)(ret)");
+        serialize("null <> avarchar");
+        assertIR("(varchar_header avarchar)(i64 4L)(<>)(ret)");
     }
 
     private void assertIR(String message, String expectedIR) {
@@ -800,7 +973,6 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
     }
 
     private static class TestIRSerializer {
-
         private final MemoryCARW irMem;
         private final RecordMetadata metadata;
         private long offset;
@@ -972,6 +1144,8 @@ public class CompiledFilterIRSerializerTest extends BaseFunctionFactoryTest {
                     return "string_header";
                 case BINARY_HEADER_TYPE:
                     return "binary_header";
+                case VARCHAR_HEADER_TYPE:
+                    return "varchar_header";
                 default:
                     return "unknown: " + type;
             }

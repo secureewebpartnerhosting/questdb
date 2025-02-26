@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -45,6 +45,11 @@ public class DirectUtf8StringZ implements LPSZ {
     @Override
     public byte byteAt(int index) {
         return Unsafe.getUnsafe().getByte(ptr + index);
+    }
+
+    @Override
+    public boolean isAscii() {
+        return ascii;
     }
 
     public DirectUtf8StringZ of(long address) {

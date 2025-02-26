@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,12 @@
 
 package io.questdb.cutlass.line.tcp;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableStructure;
+import io.questdb.cairo.TableUtils;
 import io.questdb.std.Chars;
 import io.questdb.std.LowerCaseCharSequenceHashSet;
 import io.questdb.std.ObjList;
@@ -45,7 +50,12 @@ public class TableStructureAdapter implements TableStructure {
     private CharSequence tableName;
     private int timestampIndex = -1;
 
-    public TableStructureAdapter(CairoConfiguration configuration, DefaultColumnTypes defaultColumnTypes, int defaultPartitionBy, boolean walEnabledDefault) {
+    public TableStructureAdapter(
+            CairoConfiguration configuration,
+            DefaultColumnTypes defaultColumnTypes,
+            int defaultPartitionBy,
+            boolean walEnabledDefault
+    ) {
         this.cairoConfiguration = configuration;
         this.defaultColumnTypes = defaultColumnTypes;
         this.defaultPartitionBy = defaultPartitionBy;
@@ -98,6 +108,12 @@ public class TableStructureAdapter implements TableStructure {
     }
 
     @Override
+    public long getMetadataVersion() {
+        // new table only
+        return 0;
+    }
+
+    @Override
     public long getO3MaxLag() {
         return cairoConfiguration.getO3MaxLag();
     }
@@ -138,11 +154,6 @@ public class TableStructureAdapter implements TableStructure {
     }
 
     @Override
-    public boolean isSequential(int columnIndex) {
-        return false;
-    }
-
-    @Override
     public boolean isWalEnabled() {
         return walEnabledDefault && PartitionBy.isPartitioned(getPartitionBy());
     }
@@ -152,11 +163,10 @@ public class TableStructureAdapter implements TableStructure {
         entityNamesUtf16.clear();
         entities.clear();
         timestampIndex = -1;
-        final boolean hasNonAsciiChars = parser.hasNonAsciiChars();
         for (int i = 0; i < parser.getEntityCount(); i++) {
             final LineTcpParser.ProtoEntity entity = parser.getEntity(i);
             final DirectUtf8Sequence colNameUtf8 = entity.getName();
-            final CharSequence colNameUtf16 = Utf8s.utf8ToUtf16(colNameUtf8, tempSink.get(), hasNonAsciiChars);
+            final CharSequence colNameUtf16 = Utf8s.directUtf8ToUtf16(colNameUtf8, tempSink.get());
             int index = entityNamesUtf16.keyIndex(colNameUtf16);
             if (index > -1) {
                 entityNamesUtf16.addAt(index, colNameUtf16.toString());

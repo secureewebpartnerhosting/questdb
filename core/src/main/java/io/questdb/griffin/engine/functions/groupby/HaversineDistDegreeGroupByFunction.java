@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -68,8 +68,8 @@ public class HaversineDistDegreeGroupByFunction extends DoubleFunction implement
         double lat2Degrees = latDegree.getDouble(record);
         double lon2Degrees = lonDegree.getDouble(record);
         long timestamp2 = timestamp.getTimestamp(record);
-        if (!Double.isNaN(lat1Degrees) && !Double.isNaN(lon1Degrees) && timestamp1 != Numbers.LONG_NaN) {
-            if (!Double.isNaN(lat2Degrees) && !Double.isNaN(lon2Degrees) && timestamp2 != Numbers.LONG_NaN) {
+        if (Numbers.isFinite(lat1Degrees) && Numbers.isFinite(lon1Degrees) && timestamp1 != Numbers.LONG_NULL) {
+            if (Numbers.isFinite(lat2Degrees) && Numbers.isFinite(lon2Degrees) && timestamp2 != Numbers.LONG_NULL) {
                 double currentTotalDistance = getDistance(mapValue);
                 double distance = calculateHaversineDistanceFromDegrees(lat1Degrees, lon1Degrees, lat2Degrees, lon2Degrees, currentTotalDistance);
                 saveLastItem(mapValue, lat2Degrees, lon2Degrees, timestamp2);
@@ -106,8 +106,33 @@ public class HaversineDistDegreeGroupByFunction extends DoubleFunction implement
     }
 
     @Override
+    public int getSampleByFlags() {
+        return GroupByFunction.SAMPLE_BY_FILL_ALL;
+    }
+
+    @Override
     public int getValueIndex() {
         return valueIndex;
+    }
+
+    @Override
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        //first item
+        columnTypes.add(ColumnType.DOUBLE);
+        columnTypes.add(ColumnType.DOUBLE);
+        columnTypes.add(ColumnType.LONG);
+        //last item
+        columnTypes.add(ColumnType.DOUBLE);
+        columnTypes.add(ColumnType.DOUBLE);
+        columnTypes.add(ColumnType.LONG);
+        //result
+        columnTypes.add(ColumnType.DOUBLE);
     }
 
     @Override
@@ -155,33 +180,13 @@ public class HaversineDistDegreeGroupByFunction extends DoubleFunction implement
     }
 
     @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        //first item
-        columnTypes.add(ColumnType.DOUBLE);
-        columnTypes.add(ColumnType.DOUBLE);
-        columnTypes.add(ColumnType.LONG);
-        //last item
-        columnTypes.add(ColumnType.DOUBLE);
-        columnTypes.add(ColumnType.DOUBLE);
-        columnTypes.add(ColumnType.LONG);
-        //result
-        columnTypes.add(ColumnType.DOUBLE);
-    }
-
-    @Override
     public void setNull(MapValue mapValue) {
         //set null to first item
-        saveFirstItem(mapValue, Double.NaN, Double.NaN, Numbers.LONG_NaN);
+        saveFirstItem(mapValue, Double.NaN, Double.NaN, Numbers.LONG_NULL);
         //set null to last item
-        saveLastItem(mapValue, Double.NaN, Double.NaN, Numbers.LONG_NaN);
+        saveLastItem(mapValue, Double.NaN, Double.NaN, Numbers.LONG_NULL);
         //
         saveDistance(mapValue, 0.0);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override

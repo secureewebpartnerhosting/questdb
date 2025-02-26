@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -41,8 +41,31 @@ public class SequencerMetadataService implements MetadataServiceStub {
 
     @Override
     public void addColumn(
-            CharSequence name,
-            int type,
+            CharSequence columnName,
+            int columnType,
+            int symbolCapacity,
+            boolean symbolCacheFlag,
+            boolean isIndexed,
+            int indexValueBlockCapacity,
+            boolean isSequential,
+            boolean isDedupKey,
+            SecurityContext securityContext
+    ) {
+        metadata.addColumn(
+                columnName,
+                columnType,
+                symbolCapacity,
+                symbolCacheFlag,
+                isIndexed,
+                indexValueBlockCapacity,
+                isDedupKey
+        );
+    }
+
+    @Override
+    public void changeColumnType(
+            CharSequence columnName,
+            int columnType,
             int symbolCapacity,
             boolean symbolCacheFlag,
             boolean isIndexed,
@@ -50,7 +73,24 @@ public class SequencerMetadataService implements MetadataServiceStub {
             boolean isSequential,
             SecurityContext securityContext
     ) {
-        metadata.addColumn(name, type);
+        metadata.changeColumnType(
+                columnName,
+                columnType,
+                symbolCapacity,
+                symbolCacheFlag,
+                isIndexed,
+                indexValueBlockCapacity
+        );
+    }
+
+    @Override
+    public boolean convertPartitionNativeToParquet(long partitionTimestamp) {
+        return false;
+    }
+
+    @Override
+    public boolean convertPartitionParquetToNative(long partitionTimestamp) {
+        return false;
     }
 
     @Override
@@ -59,8 +99,8 @@ public class SequencerMetadataService implements MetadataServiceStub {
     }
 
     @Override
-    public void enableDeduplicationWithUpsertKeys(LongList columnsIndexes) {
-        metadata.enableDeduplicationWithUpsertKeys();
+    public boolean enableDeduplicationWithUpsertKeys(LongList columnsIndexes) {
+        return metadata.enableDeduplicationWithUpsertKeys();
     }
 
     public TableRecordMetadata getMetadata() {

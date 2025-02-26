@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,11 @@
 
 package io.questdb.test.griffin.engine.functions.conditional;
 
-import io.questdb.griffin.SqlException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.griffin.CompiledQuery;
+import io.questdb.griffin.SqlCompiler;
 import io.questdb.test.AbstractCairoTest;
+import org.junit.Assert;
 import org.junit.Test;
 
 public class CaseFunctionFactoryTest extends AbstractCairoTest {
@@ -147,6 +150,38 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
                 null,
                 true,
                 true
+        );
+    }
+
+    @Test
+    public void testBindVar() throws Exception {
+        assertException(
+                "select \n" +
+                        "    a,\n" +
+                        "    case\n" +
+                        "        when a > 10 then $1\n" +
+                        "        else $2\n" +
+                        "    end k\n" +
+                        "from test",
+                "create table test as (select cast(x as long) a, timestamp_sequence(0, 1000000) ts from long_sequence(5))",
+                49,
+                "CASE values cannot be bind variables"
+        );
+    }
+
+    @Test
+    public void testBindVarInElse() throws Exception {
+        assertException(
+                "select \n" +
+                        "    a,\n" +
+                        "    case\n" +
+                        "        when a > 10 then '>10'\n" +
+                        "        else $2\n" +
+                        "    end k\n" +
+                        "from test",
+                "create table test as (select cast(x as long) a, timestamp_sequence(0, 1000000) ts from long_sequence(5))",
+                68,
+                "CASE values cannot be bind variables"
         );
     }
 
@@ -329,6 +364,31 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testByteToVarcharCast() throws Exception {
+        execute(
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a," +
+                        " rnd_varchar() b," +
+                        " rnd_varchar() c" +
+                        " from long_sequence(5)" +
+                        ")"
+        );
+        assertException(
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x < 0 then a\n" +
+                        "        when x > 100 and x < 200 then b\n" +
+                        "        else 3::byte" +
+                        "    end \n" +
+                        "from tanc",
+                104,
+                "inconvertible types: BYTE -> VARCHAR [from=BYTE, to=VARCHAR]"
+        );
+    }
+
+    @Test
     public void testCaseErrors() throws Exception {
         assertException("select case from long_sequence(1)", 7, "unbalanced 'case'");
         assertException("select case end from long_sequence(1)", 12, "'when' expected");
@@ -359,24 +419,30 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testCaseWithNoElseInSelectClause() throws SqlException {
-        assertQuery("c\n0\nNaN\nNaN\n",
-                "select case x when 1 then 0 end c from long_sequence(3)", null, true, true);
+    public void testCaseWithNoElseInSelectClause() throws Exception {
+        assertQuery("c\n0\nnull\nnull\n",
+                "select case x when 1 then 0 end c from long_sequence(3)", null, true, true
+        );
 
-        assertQuery("c\nNaN\nNaN\nNaN\n",
-                "select case x when -1 then 0 end c from long_sequence(3)", null, true, true);
+        assertQuery("c\nnull\nnull\nnull\n",
+                "select case x when -1 then 0 end c from long_sequence(3)", null, true, true
+        );
 
         assertQuery("c\n0\n0\n0\n",
-                "select case when x<5 then 0 end c from long_sequence(3)", null, true, true);
+                "select case when x<5 then 0 end c from long_sequence(3)", null, true, true
+        );
 
-        assertQuery("c\n0\nNaN\nNaN\n",
-                "select case when x<2 then 0 end c from long_sequence(3)", null, true, true);
+        assertQuery("c\n0\nnull\nnull\n",
+                "select case when x<2 then 0 end c from long_sequence(3)", null, true, true
+        );
 
         assertQuery("c\n1\n",
-                "select case when true then 1 end c", null, true, true);
+                "select case when true then 1 end c", null, true, true
+        );
 
-        assertQuery("c\nNaN\n",
-                "select case when false then 2 end c", null, true, true);
+        assertQuery("c\nnull\n",
+                "select case when false then 2 end c", null, true, true
+        );
     }
 
     @Test
@@ -384,16 +450,20 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
         assertException("select x from long_sequence(3) where case x when 1 then 0 end", 37, "boolean expression expected");
 
         assertQuery("x\n1\n",
-                "select x from long_sequence(3) where case when x<2 then true end", null, true, false);
+                "select x from long_sequence(3) where case when x<2 then true end", null, true, false
+        );
 
         assertQuery("x\n1\n2\n",
-                "select x from long_sequence(3) where case when x<3 then true else false end", null, true, false);
+                "select x from long_sequence(3) where case when x<3 then true else false end", null, true, false
+        );
 
         assertQuery("x\n1\n",
-                "select x from long_sequence(3) where case when x<2 then true when x<3 then false end", null, true, false);
+                "select x from long_sequence(3) where case when x<2 then true when x<3 then false end", null, true, false
+        );
 
         assertQuery("x\n",
-                "select x from long_sequence(3) where case when false then true end", null, false, false);
+                "select x from long_sequence(3) where case when false then true end", null, false, false
+        );
     }
 
     @Test
@@ -478,6 +548,36 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
                         " rnd_char() b," +
                         " rnd_char() c" +
                         " from long_sequence(20)" +
+                        ")",
+                null,
+                true,
+                true
+        );
+    }
+
+    @Test
+    public void testCharToVarcharCast() throws Exception {
+        assertQuery(
+                "x\tcase\n" +
+                        "-920\t&BT+\n" +
+                        "363\tf\n" +
+                        "367\tf\n" +
+                        "895\tf\n" +
+                        "-6\t1W씌䒙\uD8F2\uDE8E>\n",
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x < 0 then a\n" +
+                        "        when x > 100 and x < 200 then b\n" +
+                        "        else 'f'::char" +
+                        "    end \n" +
+                        "from tanc",
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a," +
+                        " rnd_varchar() b," +
+                        " rnd_varchar() c" +
+                        " from long_sequence(5)" +
                         ")",
                 null,
                 true,
@@ -579,8 +679,8 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
         assertQuery(
                 "x\tcase\n" +
                         "-920\t0.8043224099968393\n" +
-                        "671\tNaN\n" +
-                        "481\tNaN\n" +
+                        "671\tnull\n" +
+                        "481\tnull\n" +
                         "147\t0.5243722859289777\n" +
                         "-55\t0.7261136209823622\n" +
                         "-769\t0.3100545983862456\n" +
@@ -590,14 +690,14 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
                         "-194\t0.6761934857077543\n" +
                         "-835\t0.7883065830055033\n" +
                         "-933\t0.5522494170511608\n" +
-                        "416\tNaN\n" +
-                        "380\tNaN\n" +
+                        "416\tnull\n" +
+                        "380\tnull\n" +
                         "-574\t0.7997733229967019\n" +
                         "-722\t0.40455469747939254\n" +
                         "-128\t0.8828228366697741\n" +
                         "-842\t0.9566236549439661\n" +
                         "-123\t0.9269068519549879\n" +
-                        "535\tNaN\n",
+                        "535\tnull\n",
                 "select \n" +
                         "    x,\n" +
                         "    case\n" +
@@ -664,27 +764,63 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testDoubleToVarcharCast() throws Exception {
+        execute(
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a," +
+                        " rnd_varchar() b," +
+                        " rnd_varchar() c" +
+                        " from long_sequence(5)" +
+                        ")"
+        );
+        assertException(
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x < 0 then a\n" +
+                        "        when x > 100 and x < 200 then b\n" +
+                        "        else 3.5::double" +
+                        "    end \n" +
+                        "from tanc",
+                106,
+                "inconvertible types: DOUBLE -> VARCHAR [from=DOUBLE, to=VARCHAR]"
+        );
+    }
+
+    @Test
+    public void testEverythingIsNull() throws Exception {
+        assertQuery(
+                "case\n" +
+                        "null\n",
+                "select case when null is null then null else null end",
+                true,
+                true
+        );
+    }
+
+    @Test
     public void testFloat() throws Exception {
         assertQuery(
                 "x\tcase\n" +
                         "-920\t0.8043\n" +
-                        "701\tNaN\n" +
-                        "706\tNaN\n" +
+                        "701\tnull\n" +
+                        "706\tnull\n" +
                         "-714\t0.7906\n" +
                         "116\t0.5094\n" +
-                        "67\tNaN\n" +
-                        "207\tNaN\n" +
+                        "67\tnull\n" +
+                        "207\tnull\n" +
                         "-55\t0.7261\n" +
                         "-104\t0.6694\n" +
                         "-127\t0.8757\n" +
-                        "790\tNaN\n" +
-                        "881\tNaN\n" +
+                        "790\tnull\n" +
+                        "881\tnull\n" +
                         "-535\t0.2158\n" +
                         "-973\t0.8147\n" +
                         "-463\t0.1250\n" +
                         "-667\t0.9687\n" +
-                        "578\tNaN\n" +
-                        "940\tNaN\n" +
+                        "578\tnull\n" +
+                        "940\tnull\n" +
                         "-54\t0.8102\n" +
                         "-393\t0.3763\n",
                 "select \n" +
@@ -753,27 +889,100 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testFloatToVarcharCast() throws Exception {
+        execute(
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a," +
+                        " rnd_varchar() b," +
+                        " rnd_varchar() c" +
+                        " from long_sequence(5)" +
+                        ")"
+        );
+
+        assertException(
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x < 0 then a\n" +
+                        "        when x > 100 and x < 200 then b\n" +
+                        "        else 3.5::float" +
+                        "    end \n" +
+                        "from tanc",
+                106,
+                "inconvertible types: DOUBLE -> VARCHAR [from=DOUBLE, to=VARCHAR]"
+        );
+    }
+
+    @Test
+    public void testIPv4ToVarcharCast() throws Exception {
+        assertMemoryLeak(() -> {
+            execute(
+                    "create table tanc as (" +
+                            "select rnd_int() % 1000 x," +
+                            " rnd_varchar() a," +
+                            " rnd_varchar() b," +
+                            " rnd_varchar() c" +
+                            " from long_sequence(20)" +
+                            ")"
+            );
+
+            assertSql(
+                    "x\tcase\n" +
+                            "-920\t\n" +
+                            "363\t127.0.0.1\n" +
+                            "367\t127.0.0.1\n" +
+                            "895\t127.0.0.1\n" +
+                            "-6\t\n" +
+                            "-440\t\n" +
+                            "905\t127.0.0.1\n" +
+                            "-212\t\n" +
+                            "569\t127.0.0.1\n" +
+                            "204\t127.0.0.1\n" +
+                            "-845\t\n" +
+                            "768\t127.0.0.1\n" +
+                            "343\t127.0.0.1\n" +
+                            "797\t127.0.0.1\n" +
+                            "34\t127.0.0.1\n" +
+                            "-365\t\n" +
+                            "895\t127.0.0.1\n" +
+                            "416\t127.0.0.1\n" +
+                            "-765\t\n" +
+                            "754\t127.0.0.1\n",
+                    "select \n" +
+                            "    x,\n" +
+                            "    case\n" +
+                            "        when x < 0 then a\n" +
+                            "        when x > 100 and x < 200 then b\n" +
+                            "        else '127.0.0.1'::ipv4" +
+                            "    end \n" +
+                            "from tanc"
+            );
+        });
+    }
+
+    @Test
     public void testInt() throws Exception {
         assertQuery(
                 "x\tcase\n" +
                         "-920\t315515118\n" +
-                        "701\tNaN\n" +
-                        "706\tNaN\n" +
+                        "701\tnull\n" +
+                        "706\tnull\n" +
                         "-714\t-1575378703\n" +
                         "116\t339631474\n" +
-                        "67\tNaN\n" +
-                        "207\tNaN\n" +
+                        "67\tnull\n" +
+                        "207\tnull\n" +
                         "-55\t-1792928964\n" +
                         "-104\t-1153445279\n" +
                         "-127\t1631244228\n" +
-                        "790\tNaN\n" +
-                        "881\tNaN\n" +
+                        "790\tnull\n" +
+                        "881\tnull\n" +
                         "-535\t-938514914\n" +
                         "-973\t-342047842\n" +
                         "-463\t-27395319\n" +
                         "-667\t2137969456\n" +
-                        "578\tNaN\n" +
-                        "940\tNaN\n" +
+                        "578\tnull\n" +
+                        "940\tnull\n" +
                         "-54\t-1162267908\n" +
                         "-393\t-296610933\n",
                 "select \n" +
@@ -910,44 +1119,67 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testLongToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\t3\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\t3\n",
+    public void testIntToStringCast() throws Exception {
+        execute(
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_str() a," +
+                        " rnd_str() b," +
+                        " rnd_str() c" +
+                        " from long_sequence(20)" +
+                        ")"
+        );
+        assertException(
                 "select \n" +
                         "    x,\n" +
                         "    case\n" +
                         "        when x < 0 then a\n" +
                         "        when x > 100 and x < 200 then b\n" +
-                        "        else 3::long" +
+                        "        else 5" +
                         "    end \n" +
                         "from tanc",
+                103,
+                "inconvertible types: INT -> STRING [from=INT, to=STRING]"
+        );
+    }
+
+    @Test
+    public void testIntToStringCastOnBranch() throws Exception {
+        execute(
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_str() a," +
+                        " rnd_str() b," +
+                        " rnd_str() c" +
+                        " from long_sequence(20)" +
+                        ")"
+        );
+        assertException(
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x < 0 then a\n" +
+                        "        when x > 100 and x < 500 then 10\n" +
+                        "    end \n" +
+                        "from tanc",
+                88,
+                "inconvertible types: INT -> STRING [from=INT, to=STRING]"
+        );
+    }
+
+    @Test
+    public void testIntToVarcharCast() throws Exception {
+        execute(
                 "create table tanc as (" +
                         "select rnd_int() % 1000 x," +
                         " rnd_varchar() a," +
                         " rnd_varchar() b," +
                         " rnd_varchar() c" +
                         " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
+                        ")"
         );
-    }
 
-    @Test
-    public void testIntToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\t3\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\t3\n",
+        assertException(
                 "select \n" +
                         "    x,\n" +
                         "    case\n" +
@@ -956,417 +1188,24 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
                         "        else 3" +
                         "    end \n" +
                         "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testFloatToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\t3.5\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\t3.5\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else 3.5::float" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testDoubleToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\t3.5\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\t3.5\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else 3.5::double" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testByteToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\t3\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\t3\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else 3::byte" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testIpv4ToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\t127.0.0.1\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\t127.0.0.1\n" +
-                        "927\t127.0.0.1\n" +
-                        "-537\tꋯɟ\uF6BE腠\n" +
-                        "71\t127.0.0.1\n" +
-                        "121\t雑\uDB9C\uDCE1\uD9F6\uDF3D횝\uDB9A\uDF230pጙ锿\n" +
-                        "195\t\uE76C\uDBE3\uDCF2\uD981\uDF09۾芊,\uD931\uDF48ҽ\uDA01\uDE60E\n" +
-                        "432\t127.0.0.1\n" +
-                        "674\t127.0.0.1\n" +
-                        "211\t127.0.0.1\n" +
-                        "478\t127.0.0.1\n" +
-                        "-294\tEǄZ҄+W!\uD9FE\uDC46Jz\n" +
-                        "-544\t\uDBD6\uDC55ﭙ@\n" +
-                        "-426\tm[<\n" +
-                        "935\t127.0.0.1\n" +
-                        "-676\t➘`ؾ\uD9F5\uDF1D楣DB\uDAAD\uDE0A\uE916G\n" +
-                        "766\t127.0.0.1\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else '127.0.0.1'::ipv4" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(20)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testStringToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\tfoo\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\tfoo\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else 'foo'::string" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testCharToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\tf\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\tf\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else 'f'::char" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testShortToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\t42\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\t42\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else '42'::short" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testUuidToVarcharCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t톬F\uD9E6\uDECD1Ѓَᯤ\\篸\n" +
-                        "468\ta0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\ta0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(5)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testIntToStringCast() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\tWCPS\n" +
-                        "474\t3.5\n" +
-                        "454\t3.5\n" +
-                        "-666\tULOFJGE\n" +
-                        "-574\tYICCXZOUIC\n" +
-                        "-303\tYCTGQO\n" +
-                        "355\t3.5\n" +
-                        "692\t3.5\n" +
-                        "-743\tLJU\n" +
-                        "36\t3.5\n" +
-                        "0\t3.5\n" +
-                        "799\t3.5\n" +
-                        "650\t3.5\n" +
-                        "-760\tGXHFVWSWSR\n" +
-                        "-605\tUKL\n" +
-                        "-554\tNPH\n" +
-                        "-201\tTNLE\n" +
-                        "623\t3.5\n" +
-                        "-341\tXBHYSBQYMI\n" +
-                        "386\t3.5\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 200 then b\n" +
-                        "        else 3.5" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_str() a," +
-                        " rnd_str() b," +
-                        " rnd_str() c" +
-                        " from long_sequence(20)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testSingleCharSymbol() throws Exception {
-        assertQuery(
-                "category\tres\n" +
-                        "V\tfalse\n" +
-                        "T\tfalse\n" +
-                        "J\tfalse\n" +
-                        "W\ttrue\n" +
-                        "C\tfalse\n" +
-                        "P\tfalse\n" +
-                        "S\tfalse\n" +
-                        "W\ttrue\n" +
-                        "H\tfalse\n" +
-                        "Y\tfalse\n",
-                "SELECT category, \n" +
-                        "  CASE\n" +
-                        "    WHEN category = 'W' THEN true\n" +
-                        "    ELSE false\n" +
-                        "  END AS res\n" +
-                        "FROM tab",
-                "create table tab as (" +
-                        "select rnd_char()::symbol as category" +
-                        " from long_sequence(10)" +
-                        ")",
-                null,
-                true,
-                true
-        );
-    }
-
-    @Test
-    public void testIntToStringCastOnBranch() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\tWCPS\n" +
-                        "474\t10\n" +
-                        "454\t10\n" +
-                        "-666\tULOFJGE\n" +
-                        "-574\tYICCXZOUIC\n" +
-                        "-303\tYCTGQO\n" +
-                        "355\t10\n" +
-                        "692\t\n" +
-                        "-743\tLJU\n" +
-                        "36\t\n" +
-                        "0\t\n" +
-                        "799\t\n" +
-                        "650\t\n" +
-                        "-760\tGXHFVWSWSR\n" +
-                        "-605\tUKL\n" +
-                        "-554\tNPH\n" +
-                        "-201\tTNLE\n" +
-                        "623\t\n" +
-                        "-341\tXBHYSBQYMI\n" +
-                        "386\t10\n",
-                "select \n" +
-                        "    x,\n" +
-                        "    case\n" +
-                        "        when x < 0 then a\n" +
-                        "        when x > 100 and x < 500 then 10\n" +
-                        "    end \n" +
-                        "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_str() a," +
-                        " rnd_str() b," +
-                        " rnd_str() c" +
-                        " from long_sequence(20)" +
-                        ")",
-                null,
-                true,
-                true
+                103,
+                "inconvertible types: INT -> VARCHAR [from=INT, to=VARCHAR]"
         );
     }
 
     @Test
     public void testIntToVarcharCastOnBranch() throws Exception {
-        assertQuery(
-                "x\tcase\n" +
-                        "-920\t&\uDA1F\uDE98|\uD924\uDE04\n" +
-                        "138\t10\n" +
-                        "468\t10\n" +
-                        "-352\t-\uDBED\uDC98\uDA30\uDEE01W씌\n" +
-                        "770\t\n" +
-                        "927\t\n" +
-                        "-537\tꋯɟ\uF6BE腠\n" +
-                        "71\t\n" +
-                        "121\t10\n" +
-                        "195\t10\n" +
-                        "432\t10\n" +
-                        "674\t\n" +
-                        "211\t10\n" +
-                        "478\t10\n" +
-                        "-294\tEǄZ҄+W!\uD9FE\uDC46Jz\n" +
-                        "-544\t\uDBD6\uDC55ﭙ@\n" +
-                        "-426\tm[<\n" +
-                        "935\t\n" +
-                        "-676\t➘`ؾ\uD9F5\uDF1D楣DB\uDAAD\uDE0A\uE916G\n" +
-                        "766\t\n",
+        execute(
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a," +
+                        " rnd_varchar() b," +
+                        " rnd_varchar() c" +
+                        " from long_sequence(20)" +
+                        ")"
+        );
+
+        assertException(
                 "select \n" +
                         "    x,\n" +
                         "    case\n" +
@@ -1374,37 +1213,31 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
                         "        when x > 100 and x < 500 then 10\n" +
                         "    end \n" +
                         "from tanc",
-                "create table tanc as (" +
-                        "select rnd_int() % 1000 x," +
-                        " rnd_varchar() a," +
-                        " rnd_varchar() b," +
-                        " rnd_varchar() c" +
-                        " from long_sequence(20)" +
-                        ")",
-                null,
-                true,
-                true
+                88,
+                "inconvertible types: INT -> VARCHAR [from=INT, to=VARCHAR]"
         );
     }
 
     @Test
     public void testKeyedFunctionVarArgumentNumeric() throws Exception {
-        String[] types = {"INT", "LONG", "SHORT", "STRING", "TIMESTAMP", "BOOLEAN"};
+        assertMemoryLeak(() -> {
+            String[] types = {"INT", "LONG", "SHORT", "STRING", "TIMESTAMP", "BOOLEAN"};
 
-        for (String type : types) {
-            ddl("create table tt as (" +
-                    "select cast(x as TIMESTAMP) as ts, cast(x as " + type + ") as x from long_sequence(10)" +
-                    ") timestamp(ts)");
+            for (String type : types) {
+                execute("create table tt as (" +
+                        "select cast(x as TIMESTAMP) as ts, cast(x as " + type + ") as x from long_sequence(10)" +
+                        ") timestamp(ts)");
 
-            // this is a bit confusing. for booleans, every value x != 0 will evaluate to 1
-            // however, for int etc, only the value 1 will evaluate to 1
-            assertSql("sum\n" +
-                    (type.equals("BOOLEAN") ? "10\n" : "1\n"), "select sum(case x when CAST(1 as " + type + ") then 1 else 0 end) " +
-                    "from tt"
-            );
+                // this is a bit confusing. for booleans, every value x != 0 will evaluate to 1
+                // however, for int etc, only the value 1 will evaluate to 1
+                assertSql("sum\n" +
+                        (type.equals("BOOLEAN") ? "10\n" : "1\n"), "select sum(case x when CAST(1 as " + type + ") then 1 else 0 end) " +
+                        "from tt"
+                );
 
-            drop("drop table tt");
-        }
+                execute("drop table tt");
+            }
+        });
     }
 
     @Test
@@ -1412,23 +1245,23 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
         assertQuery(
                 "x\tcase\n" +
                         "-920\t4729996258992366\n" +
-                        "701\tNaN\n" +
-                        "706\tNaN\n" +
+                        "701\tnull\n" +
+                        "706\tnull\n" +
                         "-714\t-7489826605295361807\n" +
                         "116\t3394168647660478011\n" +
-                        "67\tNaN\n" +
-                        "207\tNaN\n" +
+                        "67\tnull\n" +
+                        "207\tnull\n" +
                         "-55\t5539350449504785212\n" +
                         "-104\t-4100339045953973663\n" +
                         "-127\t2811900023577169860\n" +
-                        "790\tNaN\n" +
-                        "881\tNaN\n" +
+                        "790\tnull\n" +
+                        "881\tnull\n" +
                         "-535\t7199909180655756830\n" +
                         "-973\t6404066507400987550\n" +
                         "-463\t8573481508564499209\n" +
                         "-667\t-8480005421611953360\n" +
-                        "578\tNaN\n" +
-                        "940\tNaN\n" +
+                        "578\tnull\n" +
+                        "940\tnull\n" +
                         "-54\t3152466304308949756\n" +
                         "-393\t6179044593759294347\n",
                 "select \n" +
@@ -1586,6 +1419,31 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testLongToVarcharCast() throws Exception {
+        execute(
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a," +
+                        " rnd_varchar() b," +
+                        " rnd_varchar() c" +
+                        " from long_sequence(5)" +
+                        ")"
+        );
+        assertException(
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x < 0 then a\n" +
+                        "        when x > 100 and x < 200 then b\n" +
+                        "        else 3::long" +
+                        "    end \n" +
+                        "from tanc",
+                104,
+                "inconvertible types: LONG -> VARCHAR [from=LONG, to=VARCHAR]"
+        );
+    }
+
+    @Test
     public void testNonBooleanWhen() throws Exception {
         assertException(
                 "select \n" +
@@ -1697,6 +1555,61 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testShortToVarcharCast() throws Exception {
+        execute(
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a," +
+                        " rnd_varchar() b," +
+                        " rnd_varchar() c" +
+                        " from long_sequence(5)" +
+                        ")"
+        );
+        assertException(
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x < 0 then a\n" +
+                        "        when x > 100 and x < 200 then b\n" +
+                        "        else '42'::short" +
+                        "    end \n" +
+                        "from tanc",
+                107,
+                "inconvertible types: SHORT -> VARCHAR [from=SHORT, to=VARCHAR]"
+        );
+    }
+
+    @Test
+    public void testSingleCharSymbol() throws Exception {
+        assertQuery(
+                "category\tres\n" +
+                        "V\tfalse\n" +
+                        "T\tfalse\n" +
+                        "J\tfalse\n" +
+                        "W\ttrue\n" +
+                        "C\tfalse\n" +
+                        "P\tfalse\n" +
+                        "S\tfalse\n" +
+                        "W\ttrue\n" +
+                        "H\tfalse\n" +
+                        "Y\tfalse\n",
+                "SELECT category, \n" +
+                        "  CASE\n" +
+                        "    WHEN category = 'W' THEN true\n" +
+                        "    ELSE false\n" +
+                        "  END AS res\n" +
+                        "FROM tab",
+                "create table tab as (" +
+                        "select rnd_char()::symbol as category" +
+                        " from long_sequence(10)" +
+                        ")",
+                null,
+                true,
+                true
+        );
+    }
+
+    @Test
     public void testStr() throws Exception {
         assertQuery(
                 "x\tcase\n" +
@@ -1786,6 +1699,36 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testStringToVarcharCast() throws Exception {
+        assertQuery(
+                "x\tcase\n" +
+                        "-920\t&BT+\n" +
+                        "363\tfoo\n" +
+                        "367\tfoo\n" +
+                        "895\tfoo\n" +
+                        "-6\t1W씌䒙\uD8F2\uDE8E>\n",
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x < 0 then a\n" +
+                        "        when x > 100 and x < 200 then b\n" +
+                        "        else 'foo'::string" +
+                        "    end \n" +
+                        "from tanc",
+                "create table tanc as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a," +
+                        " rnd_varchar() b," +
+                        " rnd_varchar() c" +
+                        " from long_sequence(5)" +
+                        ")",
+                null,
+                true,
+                true
+        );
+    }
+
+    @Test
     public void testTimestamp() throws Exception {
         assertQuery(
                 "x\tcase\n" +
@@ -1867,6 +1810,65 @@ public class CaseFunctionFactoryTest extends AbstractCairoTest {
                         " timestamp_sequence(3, 100) b," +
                         " timestamp_sequence(6, 100) c" +
                         " from long_sequence(20)" +
+                        ")",
+                null,
+                true,
+                true
+        );
+    }
+
+    @Test
+    public void testUuidToVarcharCast() throws Exception {
+        assertMemoryLeak(() -> {
+            execute(
+                    "create table tanc as (" +
+                            "select rnd_int() % 1000 x," +
+                            " rnd_varchar() a," +
+                            " rnd_varchar() b," +
+                            " rnd_varchar() c" +
+                            " from long_sequence(5)" +
+                            ")"
+            );
+
+            assertSql(
+                    "x\tcase\n" +
+                            "-920\t\n" +
+                            "363\ta0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\n" +
+                            "367\ta0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\n" +
+                            "895\ta0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\n" +
+                            "-6\t\n",
+                    "select \n" +
+                            "    x,\n" +
+                            "    case\n" +
+                            "        when x < 0 then a\n" +
+                            "        when x > 100 and x < 200 then b\n" +
+                            "        else 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid" +
+                            "    end \n" +
+                            "from tanc"
+            );
+        });
+    }
+
+    @Test
+    public void testVarcharCast() throws Exception {
+        assertQuery(
+                "x\tswitch\n" +
+                        "-920\t\n" +
+                        "706\t\n" +
+                        "-104\t\n" +
+                        "940\t\n" +
+                        "841\t\n",
+                "select \n" +
+                        "    x,\n" +
+                        "    case\n" +
+                        "        when x = 97 then a\n" +
+                        "        else ''" +
+                        "    end \n" +
+                        "from x",
+                "create table x as (" +
+                        "select rnd_int() % 1000 x," +
+                        " rnd_varchar() a" +
+                        " from long_sequence(5)" +
                         ")",
                 null,
                 true,

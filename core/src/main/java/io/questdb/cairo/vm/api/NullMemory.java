@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import io.questdb.std.BinarySequence;
 import io.questdb.std.FilesFacade;
 import io.questdb.std.Long256;
 import io.questdb.std.Long256Acceptor;
-import io.questdb.std.str.DirectCharSequence;
 import io.questdb.std.str.LPSZ;
 import io.questdb.std.str.Utf8Sequence;
 import org.jetbrains.annotations.NotNull;
@@ -36,6 +35,11 @@ import org.jetbrains.annotations.NotNull;
 public class NullMemory implements MemoryMAR, MemoryCARW {
 
     public static final NullMemory INSTANCE = new NullMemory();
+
+    @Override
+    public long addressHi() {
+        throw new UnsupportedOperationException();
+    }
 
     @Override
     public long addressOf(long offset) {
@@ -61,6 +65,11 @@ public class NullMemory implements MemoryMAR, MemoryCARW {
     }
 
     @Override
+    public long detachFdClose() {
+        return -1;
+    }
+
+    @Override
     public void extend(long size) {
     }
 
@@ -75,17 +84,12 @@ public class NullMemory implements MemoryMAR, MemoryCARW {
     }
 
     @Override
-    public DirectCharSequence getDirectStr(long offset) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public long getExtendSegmentSize() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public int getFd() {
+    public long getFd() {
         throw new UnsupportedOperationException();
     }
 
@@ -121,16 +125,6 @@ public class NullMemory implements MemoryMAR, MemoryCARW {
 
     @Override
     public CharSequence getStrB(long offset) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Utf8Sequence getVarcharA(long offset, int size, boolean ascii) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Utf8Sequence getVarcharB(long offset, int size, boolean ascii) {
         throw new UnsupportedOperationException();
     }
 
@@ -362,7 +356,7 @@ public class NullMemory implements MemoryMAR, MemoryCARW {
     }
 
     @Override
-    public void switchTo(int fd, long offset, boolean truncate, byte truncateMode) {
+    public void switchTo(FilesFacade ff, long fd, long extendSegmentSize, long offset, boolean truncate, byte truncateMode) {
     }
 
     @Override

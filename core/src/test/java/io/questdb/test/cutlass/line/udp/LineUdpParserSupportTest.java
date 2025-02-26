@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -144,7 +144,8 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
                             .field(targetColumnName, 5)
                             .$(4000000000L);
                     sender.flush();
-                });
+                }
+        );
     }
 
     @Test
@@ -169,7 +170,8 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
                             .field(targetColumnName, 5)
                             .$(4000000000L);
                     sender.flush();
-                });
+                }
+        );
     }
 
     @Test
@@ -177,7 +179,7 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
         testColumnType(
                 ColumnType.FLOAT,
                 "column\tlocation\ttimestamp\n" +
-                        "NaN\tsp052w\t1970-01-01T00:00:01.000000Z\n" +
+                        "null\tsp052w\t1970-01-01T00:00:01.000000Z\n" +
                         "3.1416\t\t1970-01-01T00:00:02.000000Z\n" +
                         "5.0000\t\t1970-01-01T00:00:05.000000Z\n",
                 (sender) -> {
@@ -199,7 +201,8 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
                             .field(targetColumnName, 5.0)
                             .$(5000000000L);
                     sender.flush();
-                });
+                }
+        );
     }
 
     @Test
@@ -227,7 +230,8 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
                             .field(targetColumnName, "null")
                             .$(4000000000L);
                     sender.flush();
-                });
+                }
+        );
     }
 
     @Test
@@ -235,7 +239,7 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
         testColumnType(
                 ColumnType.INT,
                 "column\tlocation\ttimestamp\n" +
-                        "NaN\tsp052w\t1970-01-01T00:00:01.000000Z\n" +
+                        "null\tsp052w\t1970-01-01T00:00:01.000000Z\n" +
                         "5\t\t1970-01-01T00:00:04.000000Z\n",
                 (sender) -> {
                     sender.metric(tableName)
@@ -253,7 +257,8 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
                             .field(targetColumnName, 5)
                             .$(4000000000L);
                     sender.flush();
-                });
+                }
+        );
     }
 
     @Test
@@ -277,7 +282,8 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
                             .field(targetColumnName, 5)
                             .$(4000000000L);
                     sender.flush();
-                });
+                }
+        );
     }
 
     @Test
@@ -304,7 +310,8 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
                             .field(targetColumnName, 5)
                             .$(4000000000L);
                     sender.flush();
-                });
+                }
+        );
     }
 
     private void testColumnType(
@@ -313,7 +320,7 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
             Consumer<AbstractLineSender> senderConsumer
     ) throws Exception {
         TestUtils.assertMemoryLeak(() -> {
-            try (CairoEngine engine = new CairoEngine(configuration, metrics)) {
+            try (CairoEngine engine = new CairoEngine(configuration)) {
                 final SOCountDownLatch waitForData = new SOCountDownLatch(1);
                 engine.setPoolListener((factoryType, thread, name, event, segment, position) -> {
                     if (event == PoolListener.EV_RETURN && name.getTableName().equals(tableName)
@@ -323,11 +330,11 @@ public class LineUdpParserSupportTest extends LineUdpInsertTest {
                 });
                 try (AbstractLineProtoUdpReceiver receiver = createLineProtoReceiver(engine)) {
                     TableModel model = new TableModel(configuration, tableName, PartitionBy.NONE);
-                    TestUtils.create(model
-                                    .col(targetColumnName, columnType)
-                                    .col(locationColumnName, ColumnType.getGeoHashTypeWithBits(30))
-                                    .timestamp(),
-                            engine);
+                    TestUtils.createTable(engine, model
+                            .col(targetColumnName, columnType)
+                            .col(locationColumnName, ColumnType.getGeoHashTypeWithBits(30))
+                            .timestamp()
+                    );
                     receiver.start();
                     try (AbstractLineSender sender = createLineProtoSender()) {
                         senderConsumer.accept(sender);

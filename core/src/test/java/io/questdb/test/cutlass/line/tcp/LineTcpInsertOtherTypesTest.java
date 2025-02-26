@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -147,7 +147,7 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "127\t1970-01-01T00:00:05.000000Z\n" +
                         "-2147483648\t1970-01-01T00:00:06.000000Z\n" +
                         "-127\t1970-01-01T00:00:07.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:13.000000Z\n" +
+                        "null\t1970-01-01T00:00:13.000000Z\n" +
                         "1\t1970-01-01T00:00:15.000000Z\n" +
                         "0\t1970-01-01T00:00:16.000000Z\n",
                 new CharSequence[]{
@@ -291,8 +291,8 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "-3.01E-43\t1970-01-01T00:00:15.000000Z\n" +
                         "123.0\t1970-01-01T00:00:16.000000Z\n" +
                         "-123.0\t1970-01-01T00:00:17.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:18.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:19.000000Z\n" +
+                        "null\t1970-01-01T00:00:18.000000Z\n" +
+                        "null\t1970-01-01T00:00:19.000000Z\n" +
                         "1.0\t1970-01-01T00:00:21.000000Z\n" +
                         "0.0\t1970-01-01T00:00:22.000000Z\n",
                 new CharSequence[]{
@@ -341,8 +341,8 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "-3.01E-43\t1970-01-01T00:00:15.000000Z\n" +
                         "123.0\t1970-01-01T00:00:16.000000Z\n" +
                         "-123.0\t1970-01-01T00:00:17.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:18.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:19.000000Z\n" +
+                        "null\t1970-01-01T00:00:18.000000Z\n" +
+                        "null\t1970-01-01T00:00:19.000000Z\n" +
                         "1.0\t1970-01-01T00:00:21.000000Z\n" +
                         "0.0\t1970-01-01T00:00:22.000000Z\n",
                 new CharSequence[]{
@@ -389,8 +389,8 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "-3.01E-43\t1970-01-01T00:00:12.000000Z\n" +
                         "123.0\t1970-01-01T00:00:13.000000Z\n" +
                         "-123.0\t1970-01-01T00:00:14.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:15.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:16.000000Z\n" +
+                        "null\t1970-01-01T00:00:15.000000Z\n" +
+                        "null\t1970-01-01T00:00:16.000000Z\n" +
                         "1.0\t1970-01-01T00:00:19.000000Z\n" +
                         "0.0\t1970-01-01T00:00:20.000000Z\n",
                 new CharSequence[]{
@@ -431,15 +431,15 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "1.35000005E12\t1970-01-01T00:00:05.000000Z\n" +
                         "1.35000005E12\t1970-01-01T00:00:06.000000Z\n" +
                         "3.4028235E38\t1970-01-01T00:00:08.000000Z\n" +
-                        "Infinity\t1970-01-01T00:00:09.000000Z\n" +
-                        "-Infinity\t1970-01-01T00:00:10.000000Z\n" +
+                        "null\t1970-01-01T00:00:09.000000Z\n" +
+                        "null\t1970-01-01T00:00:10.000000Z\n" +
                         "-3.5000\t1970-01-01T00:00:11.000000Z\n" +
                         "-0.0000\t1970-01-01T00:00:12.000000Z\n" +
                         "123.0000\t1970-01-01T00:00:13.000000Z\n" +
                         "-123.0000\t1970-01-01T00:00:14.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:15.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:16.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:17.000000Z\n" +
+                        "null\t1970-01-01T00:00:15.000000Z\n" +
+                        "null\t1970-01-01T00:00:16.000000Z\n" +
+                        "null\t1970-01-01T00:00:17.000000Z\n" +
                         "1.0000\t1970-01-01T00:00:20.000000Z\n" +
                         "0.0000\t1970-01-01T00:00:21.000000Z\n",
                 new CharSequence[]{
@@ -482,7 +482,7 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "2147483647\t1970-01-01T00:00:07.000000Z\n" +
                         "-2147483647\t1970-01-01T00:00:08.000000Z\n" +
                         "-2147483648\t1970-01-01T00:00:11.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:19.000000Z\n" +
+                        "null\t1970-01-01T00:00:19.000000Z\n" +
                         "1\t1970-01-01T00:00:21.000000Z\n" +
                         "0\t1970-01-01T00:00:22.000000Z\n",
                 new CharSequence[]{
@@ -522,13 +522,13 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "100\t1970-01-01T00:00:02.000000Z\n" +
                         "0\t1970-01-01T00:00:03.000000Z\n" +
                         "-100\t1970-01-01T00:00:04.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:06.000000Z\n" +
+                        "null\t1970-01-01T00:00:06.000000Z\n" +
                         "2147483647\t1970-01-01T00:00:07.000000Z\n" +
                         "-2147483647\t1970-01-01T00:00:08.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:11.000000Z\n" +
+                        "null\t1970-01-01T00:00:11.000000Z\n" +
                         "1\t1970-01-01T00:00:14.000000Z\n" +
                         "0\t1970-01-01T00:00:15.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:21.000000Z\n",
+                        "null\t1970-01-01T00:00:21.000000Z\n",
                 new CharSequence[]{
                         "0i", // valid
                         "100i", // valid
@@ -612,10 +612,10 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "-100\t1970-01-01T00:00:04.000000Z\n" +
                         "9223372036854775807\t1970-01-01T00:00:05.000000Z\n" +
                         "-9223372036854775807\t1970-01-01T00:00:06.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:07.000000Z\n" +
+                        "null\t1970-01-01T00:00:07.000000Z\n" +
                         "1\t1970-01-01T00:00:15.000000Z\n" +
                         "0\t1970-01-01T00:00:16.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:20.000000Z\n",
+                        "null\t1970-01-01T00:00:20.000000Z\n",
                 new CharSequence[]{
                         "0i", // valid
                         "100i", // valid
@@ -654,10 +654,10 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "-100\t1970-01-01T00:00:04.000000Z\n" +
                         "9223372036854775807\t1970-01-01T00:00:05.000000Z\n" +
                         "-9223372036854775807\t1970-01-01T00:00:06.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:07.000000Z\n" +
+                        "null\t1970-01-01T00:00:07.000000Z\n" +
                         "1\t1970-01-01T00:00:14.000000Z\n" +
                         "0\t1970-01-01T00:00:15.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:19.000000Z\n",
+                        "null\t1970-01-01T00:00:19.000000Z\n",
                 new CharSequence[]{
                         "0i", // valid
                         "100i", // valid
@@ -696,7 +696,7 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "-32767\t1970-01-01T00:00:06.000000Z\n" +
                         "-2147483648\t1970-01-01T00:00:08.000000Z\n" +
                         "2147483648\t1970-01-01T00:00:09.000000Z\n" +
-                        "NaN\t1970-01-01T00:00:15.000000Z\n" +
+                        "null\t1970-01-01T00:00:15.000000Z\n" +
                         "1\t1970-01-01T00:00:17.000000Z\n" +
                         "0\t1970-01-01T00:00:18.000000Z\n",
                 new CharSequence[]{
@@ -789,6 +789,7 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "A\t1970-01-01T00:00:07.000000Z\n" +
                         "@plant2\t1970-01-01T00:00:08.000000Z\n" +
                         "@plant\t1970-01-01T00:00:09.000000Z\n" +
+                        "\"@plant\"\t1970-01-01T00:00:10.000000Z\n" +
                         "\t1970-01-01T00:00:11.000000Z\n",
                 new CharSequence[]{
                         "e", // valid
@@ -821,6 +822,7 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "A\t1970-01-01T00:00:07.000000Z\n" +
                         "@plant2\t1970-01-01T00:00:08.000000Z\n" +
                         "@plant\t1970-01-01T00:00:09.000000Z\n" +
+                        "\"@plant\"\t1970-01-01T00:00:10.000000Z\n" +
                         "\t1970-01-01T00:00:11.000000Z\n" +
                         "\"abcd\t1970-01-01T00:00:12.000000Z\n",
                 new CharSequence[]{
@@ -930,12 +932,6 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
         assertStringTypes(varchar ? ColumnType.VARCHAR : ColumnType.STRING);
     }
 
-    private void assertStringTypesNoTable(boolean varchar) throws Exception {
-        useLegacyString = !varchar;
-        assertStringTypes(ColumnType.UNDEFINED);
-        useLegacyString = true; // restore default
-    }
-
     private void assertStringTypes(int columnType) throws Exception {
         assertType(columnType,
                 "value\ttimestamp\n" +
@@ -943,28 +939,33 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
                         "xxx\t1970-01-01T00:00:02.000000Z\n" +
                         "paff\t1970-01-01T00:00:03.000000Z\n" +
                         "tt\"tt\t1970-01-01T00:00:11.000000Z\n" +
-                        "tt\"tt\" \n" +
-                        " =, ,=\"\t1970-01-01T00:00:12.000000Z\n" +
+                        "tt\"tt\" \n =, ,=\"\t1970-01-01T00:00:12.000000Z\n" +
                         "\t1970-01-01T00:00:15.000000Z\n",
                 new CharSequence[]{
-                        "\"e\"", // valid
-                        "\"xxx\"", // valid
-                        "\"paff\"", // valid
-                        "\"paff", // discarded bad value
-                        "paff\"", // discarded bad value
-                        "null", // discarded bad type symbol
-                        "yyy", // discarded bad type symbol
-                        "\"tt\"tt\"", // discarded bad value
-                        "tt\"tt\"", // discarded bad value
-                        "\"tt\"tt", // discarded bad value
-                        "\"tt\\\"tt\"", // valid
-                        "\"tt\\\"tt\\\" \\\n =, ,=\\\"\"", // valid
-                        "A", // discarded bad type symbol
-                        "@plant2", // discarded bad type symbol
-                        "" // valid null
+                        "\"e\"", // 1, valid
+                        "\"xxx\"", // 2, valid
+                        "\"paff\"", // 3, valid
+                        "\"paff", // 4, no quotes, invalid
+                        "paff\"", // 5, no quotes, invalid
+                        "null", // 6, no quotes, invalid
+                        "yyy", // 7, no quotes, invalid
+                        "\"tt\"tt\"", // 8, no quotes, invalid
+                        "tt\"tt\"", // 9, no quotes, invalid
+                        "\"tt\"tt", // 10, no quotes, invalid
+                        "\"tt\\\"tt\"", // 11, valid
+                        "\"tt\\\"tt\\\" \\\n =, ,=\\\"\"", // 12, valid
+                        "A", // 13, no quotes, invalid
+                        "@plant2", // 14, no quotes, invalid
+                        "" // 15, valid null
                 },
                 false
         );
+    }
+
+    private void assertStringTypesNoTable(boolean varchar) throws Exception {
+        useLegacyString = !varchar;
+        assertStringTypes(ColumnType.UNDEFINED);
+        useLegacyString = true; // restore default
     }
 
     private void assertTimestamp(String expected, CharSequence[] values) throws Exception {
@@ -993,7 +994,7 @@ public class LineTcpInsertOtherTypesTest extends BaseLineTcpContextTest {
         runInContext(() -> {
             if (columnType != ColumnType.UNDEFINED) {
                 TableModel model = new TableModel(configuration, TABLE, PartitionBy.DAY);
-                TestUtils.create(model.col(TARGET_COLUMN_NAME, columnType).timestamp(), engine);
+                TestUtils.createTable(engine, model.col(TARGET_COLUMN_NAME, columnType).timestamp());
                 if (walEnabled) {
                     Assert.assertTrue(isWalTable(TABLE));
                 }

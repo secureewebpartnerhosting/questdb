@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ package io.questdb.test.griffin.engine.functions;
 
 import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.engine.functions.ByteFunction;
-import io.questdb.std.str.Utf16Sink;
 import org.junit.Test;
 
 public class ByteFunctionTest {
@@ -37,14 +36,35 @@ public class ByteFunctionTest {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return true;
         }
     };
 
     @Test(expected = UnsupportedOperationException.class)
+    public void testGetBin() {
+        function.getBin(null);
+    }
+
+    // assert that all type casts that are not possible will throw exception
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBinLen() {
+        function.getBinLen(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBool() {
+        function.getBool(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
     public void testGetChar() {
         function.getChar(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetDate() {
+        function.getDate(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -68,69 +88,8 @@ public class ByteFunctionTest {
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void testGetBin() {
-        function.getBin(null);
-    }
-
-    // assert that all type casts that are not possible will throw exception
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetBinLen() {
-        function.getBinLen(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetBool() {
-        function.getBool(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetDate() {
-        function.getDate(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
     public void testGetIPv4() {
         function.getIPv4(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetRecordCursorFactory() {
-        function.getRecordCursorFactory();
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetStr() {
-        function.getStrA(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetStr2() {
-        function.getStr(null, null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetStrB() {
-        function.getStrB(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetStrLen() {
-        function.getStrLen(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetSym() {
-        function.getSymbol(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetSymbolB() {
-        function.getSymbolB(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetTimestamp() {
-        function.getTimestamp(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -159,8 +118,38 @@ public class ByteFunctionTest {
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void testGetVarcharToSink() {
-        function.getVarchar(null, null);
+    public void testGetRecordCursorFactory() {
+        function.getRecordCursorFactory();
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetStr() {
+        function.getStrA(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetStrB() {
+        function.getStrB(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetStrLen() {
+        function.getStrLen(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetSym() {
+        function.getSymbol(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetSymbolB() {
+        function.getSymbolB(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetTimestamp() {
+        function.getTimestamp(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)

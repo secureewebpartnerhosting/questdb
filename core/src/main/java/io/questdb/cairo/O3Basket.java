@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,8 +30,8 @@ import io.questdb.std.ObjList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class O3Basket implements Mutable {
-    private final ObjList<BitmapIndexWriter> indexers = new ObjList<BitmapIndexWriter>();
-    private final ObjList<AtomicInteger> partCounters = new ObjList<AtomicInteger>();
+    private final ObjList<BitmapIndexWriter> indexers = new ObjList<>();
+    private final ObjList<AtomicInteger> partCounters = new ObjList<>();
     private int columnCount;
     private int indexCount;
     private int indexerPointer;

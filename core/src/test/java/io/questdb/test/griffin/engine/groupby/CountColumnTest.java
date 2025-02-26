@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,7 +36,11 @@ public class CountColumnTest extends AbstractCairoTest {
                     "symbol", "geohash(5b)", "geohash(10b)", "geohash(20b)", "geohash(40b) "};
 
             for (String type : types) {
-                assertException("select count(cast(null as " + type + ")) from long_sequence(1)", 13, "NULL is not allowed");
+                assertSql(
+                        "count\n" +
+                                "0\n",
+                        "select count(cast(null as " + type + "))"
+                );
             }
         });
     }
@@ -44,12 +48,12 @@ public class CountColumnTest extends AbstractCairoTest {
     @Test
     public void testKeyedCountAllColumnTypesOnDataWithColTops() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table x ( tstmp timestamp ) timestamp (tstmp) partition by hour");
-            insert("insert into x values  (0::timestamp), (1::timestamp), (3600L*1000000::timestamp) ");
-            compile("alter table x add column k int");
-            insert("insert into x values ((1+3600L*1000000)::timestamp, 3), (2*3600L*1000000::timestamp, 4), ((1+2*3600L*1000000)::timestamp, 5), (3*3600L*1000000::timestamp, 0) ");
+            execute("create table x ( tstmp timestamp ) timestamp (tstmp) partition by hour");
+            execute("insert into x values  (0::timestamp), (1::timestamp), (3600L*1000000::timestamp) ");
+            execute("alter table x add column k int");
+            execute("insert into x values ((1+3600L*1000000)::timestamp, 3), (2*3600L*1000000::timestamp, 4), ((1+2*3600L*1000000)::timestamp, 5), (3*3600L*1000000::timestamp, 0) ");
 
-            compile("alter table x add column i int, " +
+            execute("alter table x add column i int, " +
                     " l long, " +
                     " f float, " +
                     " d double, " +
@@ -63,15 +67,15 @@ public class CountColumnTest extends AbstractCairoTest {
                     " gi geohash(20b), " +
                     " gl geohash(40b) ");
 
-            insert("insert into x values ((1+3*3600L*1000000)::timestamp,1, null,null,null,null,null,null,null,null,null,null,null,null,null)");
-            insert("insert into x values ((2+3*3600L*1000000)::timestamp,2, 8,8,8f,8d,cast(8 as date),8::timestamp,rnd_long256(),'8','8',rnd_geohash(5) ,rnd_geohash(10),rnd_geohash(20),rnd_geohash(40))");
+            execute("insert into x values ((1+3*3600L*1000000)::timestamp,1, null,null,null,null,null,null,null,null,null,null,null,null,null)");
+            execute("insert into x values ((2+3*3600L*1000000)::timestamp,2, 8,8,8f,8d,cast(8 as date),8::timestamp,rnd_long256(),'8','8',rnd_geohash(5) ,rnd_geohash(10),rnd_geohash(20),rnd_geohash(40))");
 
-            insert("insert into x values ((1+4*3600L*1000000)::timestamp,3, null,null,null,null,null,null,null,null,null,null,null,null,null)");
-            insert("insert into x values ((2+4*3600L*1000000)::timestamp,4, 10,10,10f,10d,cast(10 as date),10::timestamp,rnd_long256(),'10','10',rnd_geohash(5) ,rnd_geohash(10),rnd_geohash(20),rnd_geohash(40))");
+            execute("insert into x values ((1+4*3600L*1000000)::timestamp,3, null,null,null,null,null,null,null,null,null,null,null,null,null)");
+            execute("insert into x values ((2+4*3600L*1000000)::timestamp,4, 10,10,10f,10d,cast(10 as date),10::timestamp,rnd_long256(),'10','10',rnd_geohash(5) ,rnd_geohash(10),rnd_geohash(20),rnd_geohash(40))");
         });
 
         assertQuery("k\tc1\tcstar\tci\tcl\tcf\tcd\tcdat\tcts\tcl256\tcstr\tcsym\tcgb\tcgs\tcgi\tcgl\n" +
-                        "NaN\t3\t3\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n" +
+                        "null\t3\t3\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n" +
                         "0\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n" +
                         "1\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n" +
                         "2\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\n" +
@@ -182,7 +186,7 @@ public class CountColumnTest extends AbstractCairoTest {
     @Test
     public void testKeyedCountAllColumnTypesOnFixedData2() throws Exception {
         assertQuery("k\tc1\tcstar\tci\tcl\tcf\tcd\tcdat\tcts\tcl256\tcstr\tcsym\tcgb\tcgs\tcgi\tcgl\n" +
-                        "NaN\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n" +
+                        "null\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n" +
                         "0\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\t1\n",
                 "select k, " +
                         "count(1) c1, " +
@@ -253,15 +257,15 @@ public class CountColumnTest extends AbstractCairoTest {
         assertQuery(
                 "k\tc1\tcstar\tci\tcl\tcf\tcd\tcdat\tcts\tcl256\tcstr\tcvar\tcsym\tcgb\tcgs\tcgi\tcgl\n" +
                         "0\t10000\t10000\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n" +
-                        "1\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8300\t10000\t10000\t10000\t10000\t10000\n" +
-                        "2\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8364\t10000\t10000\t10000\t10000\t10000\n" +
-                        "3\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8359\t10000\t10000\t10000\t10000\t10000\n" +
-                        "4\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8303\t10000\t10000\t10000\t10000\t10000\n" +
+                        "1\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8392\t10000\t10000\t10000\t10000\t10000\n" +
+                        "2\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8341\t10000\t10000\t10000\t10000\t10000\n" +
+                        "3\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8327\t10000\t10000\t10000\t10000\t10000\n" +
+                        "4\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8298\t10000\t10000\t10000\t10000\t10000\n" +
                         "5\t10000\t10000\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n" +
-                        "6\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8312\t10000\t10000\t10000\t10000\t10000\n" +
-                        "7\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8282\t10000\t10000\t10000\t10000\t10000\n" +
-                        "8\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8351\t10000\t10000\t10000\t10000\t10000\n" +
-                        "9\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8355\t10000\t10000\t10000\t10000\t10000\n",
+                        "6\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8372\t10000\t10000\t10000\t10000\t10000\n" +
+                        "7\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8346\t10000\t10000\t10000\t10000\t10000\n" +
+                        "8\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8273\t10000\t10000\t10000\t10000\t10000\n" +
+                        "9\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t10000\t8378\t10000\t10000\t10000\t10000\t10000\n",
                 "select k, " +
                         "count(1) c1, " +
                         "count(*) cstar, " +
@@ -463,7 +467,7 @@ public class CountColumnTest extends AbstractCairoTest {
     @Test
     public void testVectorizedKeyedCount() throws Exception {
         assertQuery("k\tc1\tcstar\tci\tcl\n" +
-                        "NaN\t769230\t769230\t615384\t615384\n" +
+                        "null\t769230\t769230\t615384\t615384\n" +
                         "1\t769231\t769231\t615385\t615385\n" +
                         "2\t769231\t769231\t615385\t615385\n" +
                         "3\t769231\t769231\t615385\t615385\n" +
@@ -499,19 +503,19 @@ public class CountColumnTest extends AbstractCairoTest {
     @Test
     public void testVectorizedKeyedCountWithColTops() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table x ( tstmp timestamp ) timestamp (tstmp) partition by hour");
-            insert("insert into x values  (0::timestamp), (1::timestamp), (3600L*1000000::timestamp) ");
-            compile("alter table x add column k int");
-            insert("insert into x values ((1+3600L*1000000)::timestamp, 3), (2*3600L*1000000::timestamp, 4), ((1+2*3600L*1000000)::timestamp, 5), (3*3600L*1000000::timestamp, 0) ");
-            compile("alter table x add column i int, l long ");
-            insert("insert into x values ((1+3*3600L*1000000)::timestamp,1, null,null)");
-            insert("insert into x values ((2+3*3600L*1000000)::timestamp,2, 8,8)");
-            insert("insert into x values ((1+4*3600L*1000000)::timestamp,3, null,null)");
-            insert("insert into x values ((2+4*3600L*1000000)::timestamp,4, 10,10) ");
+            execute("create table x ( tstmp timestamp ) timestamp (tstmp) partition by hour");
+            execute("insert into x values  (0::timestamp), (1::timestamp), (3600L*1000000::timestamp) ");
+            execute("alter table x add column k int");
+            execute("insert into x values ((1+3600L*1000000)::timestamp, 3), (2*3600L*1000000::timestamp, 4), ((1+2*3600L*1000000)::timestamp, 5), (3*3600L*1000000::timestamp, 0) ");
+            execute("alter table x add column i int, l long ");
+            execute("insert into x values ((1+3*3600L*1000000)::timestamp,1, null,null)");
+            execute("insert into x values ((2+3*3600L*1000000)::timestamp,2, 8,8)");
+            execute("insert into x values ((1+4*3600L*1000000)::timestamp,3, null,null)");
+            execute("insert into x values ((2+4*3600L*1000000)::timestamp,4, 10,10) ");
         });
 
         assertQuery("k\tc1\tcstar\tci\tcl\n" +
-                        "NaN\t3\t3\t0\t0\n" +
+                        "null\t3\t3\t0\t0\n" +
                         "0\t1\t1\t0\t0\n" +
                         "1\t1\t1\t0\t0\n" +
                         "2\t1\t1\t1\t1\n" +

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 package io.questdb.griffin;
 
 import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.ColumnType;
 import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
 import io.questdb.std.IntList;
@@ -66,12 +67,14 @@ public interface FunctionFactory {
      * <li>W = string array</li>
      * <li>X = ipv4</li>
      * <li>Ø(ø) = varchar</li>
+     * <li>Δ(δ) = interval</li>
      * </ul>
      * <p>
      * Lower-case letters will require arguments to be constant expressions. Upper-case letters allow both constant and
-     * variable expressions.
+     * non-constant expressions.
      *
      * @return signature, for example "substr(SII)"
+     * @see Function#isConstant()
      */
     String getSignature();
 
@@ -106,4 +109,22 @@ public interface FunctionFactory {
             CairoConfiguration configuration,
             SqlExecutionContext sqlExecutionContext
     ) throws SqlException;
+
+    /**
+     * If function has variable number of arguments, this method should return preferred type
+     * for a variadic argument at given index.
+     * <p>
+     * SQL Compiler will use this as a hint to determine type of variadic arguments when they have the
+     * UNDEFINED type at compile time.
+     * <p>
+     *
+     * @param sqlPos sql position of the argument being resolved
+     * @param argPos index of the argument being resolved
+     * @param args   list of arguments, function type can be undefined
+     * @return preferred type for variadic arguments
+     * @throws SqlException if a function cannot resolve preferred type
+     */
+    default int resolvePreferredVariadicType(int sqlPos, int argPos, ObjList<Function> args) throws SqlException {
+        return ColumnType.STRING;
+    }
 }

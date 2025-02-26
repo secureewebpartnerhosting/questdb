@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,33 +26,47 @@ package io.questdb;
 
 import io.questdb.cairo.CairoConfiguration;
 import io.questdb.cairo.CairoEngine;
-import io.questdb.cutlass.http.HttpMinServerConfiguration;
+import io.questdb.cutlass.http.HttpFullFatServerConfiguration;
 import io.questdb.cutlass.http.HttpServerConfiguration;
 import io.questdb.cutlass.line.tcp.LineTcpReceiverConfiguration;
 import io.questdb.cutlass.line.udp.LineUdpReceiverConfiguration;
 import io.questdb.cutlass.pgwire.PGWireConfiguration;
 import io.questdb.metrics.MetricsConfiguration;
 import io.questdb.mp.WorkerPoolConfiguration;
-import io.questdb.std.ObjObjHashMap;
-import org.jetbrains.annotations.Nullable;
 
 public interface ServerConfiguration {
+    String OSS = "OSS";
 
     CairoConfiguration getCairoConfiguration();
 
     FactoryProvider getFactoryProvider();
 
-    HttpMinServerConfiguration getHttpMinServerConfiguration();
+    HttpServerConfiguration getHttpMinServerConfiguration();
 
-    HttpServerConfiguration getHttpServerConfiguration();
+    HttpFullFatServerConfiguration getHttpServerConfiguration();
 
     LineTcpReceiverConfiguration getLineTcpReceiverConfiguration();
 
     LineUdpReceiverConfiguration getLineUdpReceiverConfiguration();
 
+    MemoryConfiguration getMemoryConfiguration();
+
     MetricsConfiguration getMetricsConfiguration();
 
     PGWireConfiguration getPGWireConfiguration();
+
+    PublicPassthroughConfiguration getPublicPassthroughConfiguration();
+
+    default String getReleaseType() {
+        return OSS;
+    }
+
+    // used to detect configuration reloads
+    default long getVersion() {
+        return 0;
+    }
+
+    WorkerPoolConfiguration getMatViewRefreshPoolConfiguration();
 
     WorkerPoolConfiguration getWalApplyPoolConfiguration();
 
@@ -61,7 +75,5 @@ public interface ServerConfiguration {
     default void init(CairoEngine engine, FreeOnExit freeOnExit) {
     }
 
-    default boolean isLineTcpEnabled() {
-        return true;
-    }
+    Metrics getMetrics();
 }

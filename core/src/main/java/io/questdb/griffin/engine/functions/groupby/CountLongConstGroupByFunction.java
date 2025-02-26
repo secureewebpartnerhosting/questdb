@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,6 +37,11 @@ public class CountLongConstGroupByFunction extends LongFunction implements Group
     private int valueIndex;
 
     @Override
+    public int getSampleByFlags() {
+        return GroupByFunction.SAMPLE_BY_FILL_ALL;
+    }
+
+    @Override
     public void computeFirst(MapValue mapValue, Record record, long rowId) {
         mapValue.putLong(valueIndex, 1);
     }
@@ -57,7 +62,18 @@ public class CountLongConstGroupByFunction extends LongFunction implements Group
     }
 
     @Override
-    public boolean isReadThreadSafe() {
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        columnTypes.add(ColumnType.LONG);
+    }
+
+    @Override
+    public boolean isThreadSafe() {
         return true;
     }
 
@@ -65,12 +81,6 @@ public class CountLongConstGroupByFunction extends LongFunction implements Group
     public void merge(MapValue destValue, MapValue srcValue) {
         long srcCount = srcValue.getLong(valueIndex);
         destValue.addLong(valueIndex, srcCount);
-    }
-
-    @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        columnTypes.add(ColumnType.LONG);
     }
 
     @Override
@@ -85,12 +95,7 @@ public class CountLongConstGroupByFunction extends LongFunction implements Group
 
     @Override
     public void setNull(MapValue mapValue) {
-        mapValue.putLong(valueIndex, Numbers.LONG_NaN);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
+        mapValue.putLong(valueIndex, Numbers.LONG_NULL);
     }
 
     @Override

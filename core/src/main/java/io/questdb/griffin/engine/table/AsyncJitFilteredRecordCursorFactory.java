@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,7 +29,14 @@ import io.questdb.cairo.AbstractRecordCursorFactory;
 import io.questdb.cairo.CairoConfiguration;
 import io.questdb.cairo.ColumnType;
 import io.questdb.cairo.TableToken;
-import io.questdb.cairo.sql.*;
+import io.questdb.cairo.sql.Function;
+import io.questdb.cairo.sql.PageFrameMemory;
+import io.questdb.cairo.sql.PageFrameMemoryRecord;
+import io.questdb.cairo.sql.PartitionFormat;
+import io.questdb.cairo.sql.RecordCursor;
+import io.questdb.cairo.sql.RecordCursorFactory;
+import io.questdb.cairo.sql.SqlExecutionCircuitBreaker;
+import io.questdb.cairo.sql.SymbolTableSource;
 import io.questdb.cairo.sql.async.PageFrameReduceTask;
 import io.questdb.cairo.sql.async.PageFrameReduceTaskFactory;
 import io.questdb.cairo.sql.async.PageFrameReducer;
@@ -42,14 +49,17 @@ import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.bind.CompiledFilterSymbolBindVariable;
 import io.questdb.jit.CompiledFilter;
 import io.questdb.mp.SCSequence;
-import io.questdb.std.*;
+import io.questdb.std.DirectLongList;
+import io.questdb.std.IntList;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Misc;
+import io.questdb.std.ObjList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import static io.questdb.cairo.sql.DataFrameCursorFactory.*;
+import static io.questdb.cairo.sql.PartitionFrameCursorFactory.*;
 
-public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFactory implements StealableFilterRecordCursorFactory {
-
+public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFactory {
     private static final PageFrameReducer REDUCER = AsyncJitFilteredRecordCursorFactory::filter;
 
     private final RecordCursorFactory base;
@@ -87,21 +97,19 @@ public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFac
         this.base = base;
         this.compiledFilter = compiledFilter;
         this.filter = filter;
-        this.cursor = new AsyncFilteredRecordCursor(filter, base.getScanDirection());
-        this.negativeLimitCursor = new AsyncFilteredNegativeLimitRecordCursor(base.getScanDirection());
+        this.cursor = new AsyncFilteredRecordCursor(configuration, filter, base.getScanDirection());
+        this.negativeLimitCursor = new AsyncFilteredNegativeLimitRecordCursor(configuration, base.getScanDirection());
         this.bindVarMemory = Vm.getCARWInstance(
                 configuration.getSqlJitBindVarsMemoryPageSize(),
                 configuration.getSqlJitBindVarsMemoryMaxPages(),
                 MemoryTag.NATIVE_JIT
         );
         this.bindVarFunctions = bindVarFunctions;
-        IntList preTouchColumnTypes = null;
-        if (preTouchColumns) {
-            preTouchColumnTypes = new IntList();
-            for (int i = 0, n = base.getMetadata().getColumnCount(); i < n; i++) {
-                int columnType = base.getMetadata().getColumnType(i);
-                preTouchColumnTypes.add(columnType);
-            }
+        final int columnCount = base.getMetadata().getColumnCount();
+        final IntList columnTypes = new IntList(columnCount);
+        for (int i = 0; i < columnCount; i++) {
+            int columnType = base.getMetadata().getColumnType(i);
+            columnTypes.add(columnType);
         }
         AsyncJitFilterAtom atom = new AsyncJitFilterAtom(
                 configuration,
@@ -110,9 +118,18 @@ public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFac
                 compiledFilter,
                 bindVarMemory,
                 bindVarFunctions,
-                preTouchColumnTypes
+                columnTypes,
+                !preTouchColumns
         );
-        this.frameSequence = new PageFrameSequence<>(configuration, messageBus, atom, REDUCER, reduceTaskFactory, PageFrameReduceTask.TYPE_FILTER);
+        this.frameSequence = new PageFrameSequence<>(
+                configuration,
+                messageBus,
+                atom,
+                REDUCER,
+                reduceTaskFactory,
+                workerCount,
+                PageFrameReduceTask.TYPE_FILTER
+        );
         this.limitLoFunction = limitLoFunction;
         this.limitLoPos = limitLoPos;
         this.maxNegativeLimit = configuration.getSqlMaxNegativeLimit();
@@ -212,6 +229,11 @@ public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFac
     }
 
     @Override
+    public TableToken getTableToken() {
+        return base.getTableToken();
+    }
+
+    @Override
     public void halfClose() {
         Misc.free(frameSequence);
         cursor.freeRecords();
@@ -272,22 +294,25 @@ public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFac
 
     private static void filter(
             int workerId,
-            @NotNull PageAddressCacheRecord record,
+            @NotNull PageFrameMemoryRecord record,
             @NotNull PageFrameReduceTask task,
             @NotNull SqlExecutionCircuitBreaker circuitBreaker,
             @Nullable PageFrameSequence<?> stealingFrameSequence
     ) {
         final DirectLongList rows = task.getFilteredRows();
         final long frameRowCount = task.getFrameRowCount();
-        final AsyncJitFilterAtom atom = task.getFrameSequence(AsyncJitFilterAtom.class).getAtom();
-        final PageAddressCache pageAddressCache = task.getPageAddressCache();
+        final PageFrameSequence<AsyncJitFilterAtom> frameSequence = task.getFrameSequence(AsyncJitFilterAtom.class);
+        final AsyncJitFilterAtom atom = frameSequence.getAtom();
+
+        final PageFrameMemory frameMemory = task.populateFrameMemory();
+        record.init(frameMemory);
 
         rows.clear();
 
-        if (pageAddressCache.hasColumnTops(task.getFrameIndex())) {
+        if (frameMemory.hasColumnTops()) {
             // Use Java-based filter in case of a page frame with column tops.
             final boolean owner = stealingFrameSequence != null && stealingFrameSequence == task.getFrameSequence();
-            final int filterId = atom.acquireFilter(workerId, owner, circuitBreaker);
+            final int filterId = atom.maybeAcquireFilter(workerId, owner, circuitBreaker);
             final Function filter = atom.getFilter(filterId);
             try {
                 for (long r = 0; r < frameRowCount; r++) {
@@ -305,13 +330,13 @@ public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFac
         // Use JIT-compiled filter.
 
         task.populateJitData();
-        final DirectLongList columns = task.getColumns();
-        final DirectLongList varLenIndexes = task.getVarLenIndexes();
+        final DirectLongList dataAddresses = task.getDataAddresses();
+        final DirectLongList auxAddresses = task.getAuxAddresses();
 
         long hi = atom.compiledFilter.call(
-                columns.getAddress(),
-                columns.size(),
-                varLenIndexes.getAddress(),
+                dataAddresses.getAddress(),
+                dataAddresses.size(),
+                auxAddresses.getAddress(),
                 atom.bindVarMemory.getAddress(),
                 atom.bindVarFunctions.size(),
                 rows.getAddress(),
@@ -320,8 +345,10 @@ public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFac
         );
         rows.setPos(hi);
 
-        // Pre-touch fixed-size columns, if asked.
-        atom.preTouchColumns(record, rows);
+        // Pre-touch native columns, if asked.
+        if (frameMemory.getFrameFormat() == PartitionFormat.NATIVE) {
+            atom.preTouchColumns(record, rows);
+        }
     }
 
     private static void writeBindVarFunction(
@@ -414,9 +441,10 @@ public class AsyncJitFilteredRecordCursorFactory extends AbstractRecordCursorFac
                 CompiledFilter compiledFilter,
                 MemoryCARW bindVarMemory,
                 ObjList<Function> bindVarFunctions,
-                @Nullable IntList preTouchColumnTypes
+                IntList columnTypes,
+                boolean forceDisablePreTouch
         ) {
-            super(configuration, filter, perWorkerFilters, preTouchColumnTypes);
+            super(configuration, filter, perWorkerFilters, columnTypes, forceDisablePreTouch);
             this.compiledFilter = compiledFilter;
             this.bindVarMemory = bindVarMemory;
             this.bindVarFunctions = bindVarFunctions;

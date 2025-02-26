@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -46,9 +46,8 @@ public class CountDistinctLong256GroupByFunction extends LongFunction implements
 
     public CountDistinctLong256GroupByFunction(Function arg, int setInitialCapacity, double setLoadFactor) {
         this.arg = arg;
-        // We use zero as the default value to speed up zeroing on rehash.
-        setA = new GroupByLong256HashSet(setInitialCapacity, setLoadFactor, 0);
-        setB = new GroupByLong256HashSet(setInitialCapacity, setLoadFactor, 0);
+        setA = new GroupByLong256HashSet(setInitialCapacity, setLoadFactor, Numbers.LONG_NULL);
+        setB = new GroupByLong256HashSet(setInitialCapacity, setLoadFactor, Numbers.LONG_NULL);
     }
 
     @Override
@@ -60,47 +59,30 @@ public class CountDistinctLong256GroupByFunction extends LongFunction implements
     @Override
     public void computeFirst(MapValue mapValue, Record record, long rowId) {
         final Long256 l256 = arg.getLong256A(record);
-
         if (isNotNull(l256)) {
-            mapValue.putLong(valueIndex, 1L);
+            mapValue.putLong(valueIndex, 1);
             long l0 = l256.getLong0();
             long l1 = l256.getLong1();
             long l2 = l256.getLong2();
             long l3 = l256.getLong3();
-            // Remap zero since it's used as the no entry key.
-            if (l0 == 0 && l1 == 0 && l2 == 0 && l3 == 0) {
-                l0 = Numbers.LONG_NaN;
-                l1 = Numbers.LONG_NaN;
-                l2 = Numbers.LONG_NaN;
-                l3 = Numbers.LONG_NaN;
-            }
             setA.of(0).add(l0, l1, l2, l3);
             mapValue.putLong(valueIndex + 1, setA.ptr());
         } else {
             mapValue.putLong(valueIndex, 0);
             mapValue.putLong(valueIndex + 1, 0);
-            ;
         }
     }
 
     @Override
     public void computeNext(MapValue mapValue, Record record, long rowId) {
         final Long256 l256 = arg.getLong256A(record);
-
         if (isNotNull(l256)) {
             long l0 = l256.getLong0();
             long l1 = l256.getLong1();
             long l2 = l256.getLong2();
             long l3 = l256.getLong3();
             long ptr = mapValue.getLong(valueIndex + 1);
-            // Remap zero since it's used as the no entry key.
-            if (l0 == 0 && l1 == 0 && l2 == 0 && l3 == 0) {
-                l0 = Numbers.LONG_NaN;
-                l1 = Numbers.LONG_NaN;
-                l2 = Numbers.LONG_NaN;
-                l3 = Numbers.LONG_NaN;
-            }
-            final int index = setA.of(ptr).keyIndex(l0, l1, l2, l3);
+            final long index = setA.of(ptr).keyIndex(l0, l1, l2, l3);
             if (index >= 0) {
                 setA.addAt(index, l0, l1, l2, l3);
                 mapValue.addLong(valueIndex, 1);
@@ -125,8 +107,25 @@ public class CountDistinctLong256GroupByFunction extends LongFunction implements
     }
 
     @Override
+    public int getSampleByFlags() {
+        return GroupByFunction.SAMPLE_BY_FILL_ALL;
+    }
+
+    @Override
     public int getValueIndex() {
         return valueIndex;
+    }
+
+    @Override
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        columnTypes.add(ColumnType.LONG);
+        columnTypes.add(ColumnType.LONG);
     }
 
     @Override
@@ -135,20 +134,20 @@ public class CountDistinctLong256GroupByFunction extends LongFunction implements
     }
 
     @Override
-    public boolean isReadThreadSafe() {
+    public boolean isThreadSafe() {
         return false;
     }
 
     @Override
     public void merge(MapValue destValue, MapValue srcValue) {
         long srcCount = srcValue.getLong(valueIndex);
-        if (srcCount == 0 || srcCount == Numbers.LONG_NaN) {
+        if (srcCount == 0 || srcCount == Numbers.LONG_NULL) {
             return;
         }
         long srcPtr = srcValue.getLong(valueIndex + 1);
 
         long destCount = destValue.getLong(valueIndex);
-        if (destCount == 0 || destCount == Numbers.LONG_NaN) {
+        if (destCount == 0 || destCount == Numbers.LONG_NULL) {
             destValue.putLong(valueIndex, srcCount);
             destValue.putLong(valueIndex + 1, srcPtr);
             return;
@@ -171,13 +170,6 @@ public class CountDistinctLong256GroupByFunction extends LongFunction implements
     }
 
     @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        columnTypes.add(ColumnType.LONG);
-        columnTypes.add(ColumnType.LONG);
-    }
-
-    @Override
     public void setAllocator(GroupByAllocator allocator) {
         setA.setAllocator(allocator);
         setB.setAllocator(allocator);
@@ -185,7 +177,7 @@ public class CountDistinctLong256GroupByFunction extends LongFunction implements
 
     @Override
     public void setEmpty(MapValue mapValue) {
-        mapValue.putLong(valueIndex, 0L);
+        mapValue.putLong(valueIndex, 0);
         mapValue.putLong(valueIndex + 1, 0);
     }
 
@@ -197,13 +189,8 @@ public class CountDistinctLong256GroupByFunction extends LongFunction implements
 
     @Override
     public void setNull(MapValue mapValue) {
-        mapValue.putLong(valueIndex, Numbers.LONG_NaN);
+        mapValue.putLong(valueIndex, Numbers.LONG_NULL);
         mapValue.putLong(valueIndex + 1, 0);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override
@@ -217,10 +204,8 @@ public class CountDistinctLong256GroupByFunction extends LongFunction implements
     }
 
     private static boolean isNotNull(Long256 value) {
-        return value != null &&
-                value != Long256Impl.NULL_LONG256 && (value.getLong0() != Numbers.LONG_NaN ||
-                value.getLong1() != Numbers.LONG_NaN ||
-                value.getLong2() != Numbers.LONG_NaN ||
-                value.getLong3() != Numbers.LONG_NaN);
+        return value != null && value != Long256Impl.NULL_LONG256
+                && (value.getLong0() != Numbers.LONG_NULL || value.getLong1() != Numbers.LONG_NULL
+                || value.getLong2() != Numbers.LONG_NULL || value.getLong3() != Numbers.LONG_NULL);
     }
 }

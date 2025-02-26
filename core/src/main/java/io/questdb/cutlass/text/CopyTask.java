@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,19 @@
 
 package io.questdb.cutlass.text;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.DefaultLifecycleManager;
+import io.questdb.cairo.ImplicitCastException;
+import io.questdb.cairo.SymbolMapReaderImpl;
+import io.questdb.cairo.SymbolMapWriter;
+import io.questdb.cairo.TableStructure;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.TableWriter;
+import io.questdb.cairo.TxReader;
 import io.questdb.cairo.security.AllowAllSecurityContext;
 import io.questdb.cairo.sql.ExecutionCircuitBreaker;
 import io.questdb.cairo.sql.RecordMetadata;
@@ -35,8 +47,26 @@ import io.questdb.cutlass.text.types.TypeAdapter;
 import io.questdb.griffin.engine.functions.columns.ColumnUtils;
 import io.questdb.log.Log;
 import io.questdb.log.LogFactory;
-import io.questdb.std.*;
-import io.questdb.std.str.*;
+import io.questdb.std.DirectLongList;
+import io.questdb.std.Files;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.IOURing;
+import io.questdb.std.IOURingFacade;
+import io.questdb.std.IntObjHashMap;
+import io.questdb.std.LongList;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.NumericException;
+import io.questdb.std.ObjList;
+import io.questdb.std.Os;
+import io.questdb.std.SwarUtils;
+import io.questdb.std.Unsafe;
+import io.questdb.std.Vect;
+import io.questdb.std.str.DirectUtf16Sink;
+import io.questdb.std.str.DirectUtf8Sequence;
+import io.questdb.std.str.DirectUtf8Sink;
+import io.questdb.std.str.DirectUtf8String;
+import io.questdb.std.str.Path;
+import io.questdb.std.str.StringSink;
 import org.jetbrains.annotations.Nullable;
 
 import static io.questdb.cairo.TableUtils.TXN_FILE_NAME;
@@ -61,9 +91,10 @@ public class CopyTask {
     public static final byte STATUS_FINISHED = 1;
     public static final byte STATUS_STARTED = 0;
     private static final Log LOG = LogFactory.getLog(CopyTask.class);
+    private static final long MASK_NEW_LINE = SwarUtils.broadcast((byte) '\n');
+    private static final long MASK_QUOTE = SwarUtils.broadcast((byte) '"');
     private static final IntObjHashMap<String> PHASE_NAME_MAP = new IntObjHashMap<>();
     private static final IntObjHashMap<String> STATUS_NAME_MAP = new IntObjHashMap<>();
-
     private final PhaseBoundaryCheck phaseBoundaryCheck = new PhaseBoundaryCheck();
     private final PhaseBuildSymbolIndex phaseBuildSymbolIndex = new PhaseBuildSymbolIndex();
     private final PhaseIndexing phaseIndexing = new PhaseIndexing();
@@ -236,7 +267,8 @@ public class CopyTask {
     public boolean run(
             TextLexerWrapper lf,
             CsvFileIndexer indexer,
-            DirectUtf16Sink utf8Sink,
+            DirectUtf16Sink utf16Sink,
+            DirectUtf8Sink utf8Sink,
             DirectLongList unmergedIndexes,
             long fileBufAddr,
             long fileBufSize,
@@ -256,7 +288,7 @@ public class CopyTask {
             } else if (phase == PHASE_INDEXING) {
                 phaseIndexing.run(indexer, fileBufAddr, fileBufSize);
             } else if (phase == PHASE_PARTITION_IMPORT) {
-                phasePartitionImport.run(lf, fileBufAddr, fileBufSize, utf8Sink, unmergedIndexes, p1, p2);
+                phasePartitionImport.run(lf, fileBufAddr, fileBufSize, utf16Sink, utf8Sink, unmergedIndexes, p1, p2);
             } else if (phase == PHASE_SYMBOL_TABLE_MERGE) {
                 phaseSymbolTableMerge.run(p1);
             } else if (phase == PHASE_UPDATE_SYMBOL_KEYS) {
@@ -387,7 +419,7 @@ public class CopyTask {
         public void run(long fileBufPtr, long fileBufSize) throws TextException {
             long offset = chunkStart;
 
-            //output vars
+            // output vars
             long quotes = 0;
             long[] nlCount = new long[2];
             long[] nlFirst = new long[]{-1, -1};
@@ -396,7 +428,7 @@ public class CopyTask {
             long ptr;
             long hi;
 
-            int fd = TableUtils.openRO(ff, path, LOG);
+            long fd = TableUtils.openRO(ff, path.$(), LOG);
             ff.fadvise(fd, chunkStart, chunkEnd - chunkStart, Files.POSIX_FADV_SEQUENTIAL);
             try {
                 do {
@@ -409,10 +441,22 @@ public class CopyTask {
                     ptr = fileBufPtr;
 
                     while (ptr < hi) {
-                        final byte c = Unsafe.getUnsafe().getByte(ptr++);
-                        if (c == '"') {
+                        if (ptr < hi - 7) {
+                            long word = Unsafe.getUnsafe().getLong(ptr);
+                            long zeroBytesWord = SwarUtils.markZeroBytes(word ^ MASK_NEW_LINE)
+                                    | SwarUtils.markZeroBytes(word ^ MASK_QUOTE);
+                            if (zeroBytesWord == 0) {
+                                ptr += 7;
+                                continue;
+                            } else {
+                                ptr += SwarUtils.indexOfFirstMarkedByte(zeroBytesWord);
+                            }
+                        }
+
+                        final byte b = Unsafe.getUnsafe().getByte(ptr++);
+                        if (b == '"') {
                             quotes++;
-                        } else if (c == '\n') {
+                        } else if (b == '\n') {
                             nlCount[(int) (quotes & 1)]++;
                             if (nlFirst[(int) (quotes & 1)] == -1) {
                                 nlFirst[(int) (quotes & 1)] = offset + (ptr - fileBufPtr);
@@ -477,7 +521,7 @@ public class CopyTask {
             tableNameSink.clear();
             tableNameSink.put(tableStructure.getTableName()).put('_').put(index);
             String tableName = tableNameSink.toString();
-            TableToken tableToken = new TableToken(tableName, tableName, (int) cairoEngine.getTableIdGenerator().getNextId(), false, false, false);
+            TableToken tableToken = new TableToken(tableName, tableName, cairoEngine.getNextTableId(), false, false, false);
 
             final int columnCount = metadata.getColumnCount();
             try (
@@ -490,8 +534,8 @@ public class CopyTask {
                             DefaultLifecycleManager.INSTANCE,
                             root,
                             cairoEngine.getDdlListener(tableToken),
-                            cairoEngine.getSnapshotAgent(),
-                            cairoEngine.getMetrics()
+                            cairoEngine.getCheckpointStatus(),
+                            cairoEngine
                     )
             ) {
                 for (int i = 0; i < columnCount; i++) {
@@ -631,15 +675,15 @@ public class CopyTask {
             TableToken tableToken = cairoEngine.verifyTableName(tableStructure.getTableName());
             path.of(root).concat(tableToken.getTableName()).put('_').put(index);
             int plen = path.size();
-            TableUtils.setPathForPartition(path.slash(), tableStructure.getPartitionBy(), partitionTimestamp, -1);
+            TableUtils.setPathForNativePartition(path.slash(), tableStructure.getPartitionBy(), partitionTimestamp, -1);
             path.concat(columnName).put(TableUtils.FILE_SUFFIX_D);
 
             long columnMemory = 0;
             long columnMemorySize = 0;
             long remapTableMemory = 0;
             long remapTableMemorySize = 0;
-            int columnFd = -1;
-            int remapFd = -1;
+            long columnFd = -1;
+            long remapFd = -1;
             try {
                 columnFd = TableUtils.openFileRWOrFail(ff, path.$(), CairoConfiguration.O_NONE);
                 columnMemorySize = ff.length(columnFd);
@@ -800,7 +844,8 @@ public class CopyTask {
         private TimestampAdapter timestampAdapter;
         private int timestampIndex;
         private ObjList<TypeAdapter> types;
-        private DirectUtf16Sink utf8Sink;
+        private DirectUtf16Sink utf16Sink;
+        private DirectUtf8Sink utf8Sink;
         private final CsvTextLexer.Listener onFieldsPartitioned = this::onFieldsPartitioned;
 
         public void clear() {
@@ -823,7 +868,7 @@ public class CopyTask {
             this.rowsImported = 0;
             this.errors = 0;
 
-            this.utf8Sink = null;
+            this.utf16Sink = null;
         }
 
         public long getErrors() {
@@ -846,12 +891,13 @@ public class CopyTask {
                 TextLexerWrapper lf,
                 long fileBufAddr,
                 long fileBufSize,
-                DirectUtf16Sink utf8Sink,
+                DirectUtf16Sink utf16Sink,
+                DirectUtf8Sink utf8Sink,
                 DirectLongList unmergedIndexes,
                 Path path,
                 Path tmpPath
         ) throws TextException {
-
+            this.utf16Sink = utf16Sink;
             this.utf8Sink = utf8Sink;
 
             final CairoConfiguration configuration = engine.getConfiguration();
@@ -860,7 +906,7 @@ public class CopyTask {
             tableNameSink.clear();
             tableNameSink.put(targetTableStructure.getTableName()).put('_').put(index);
             String publicTableName = tableNameSink.toString();
-            TableToken tableToken = new TableToken(publicTableName, publicTableName, (int) engine.getTableIdGenerator().getNextId(), false, false, false);
+            TableToken tableToken = new TableToken(publicTableName, publicTableName, engine.getNextTableId(), false, false, false);
             createTable(ff, configuration.getMkDirMode(), importRoot, tableToken.getDirName(), publicTableName, targetTableStructure, 0, AllowAllSecurityContext.INSTANCE);
 
             try (
@@ -873,8 +919,8 @@ public class CopyTask {
                             DefaultLifecycleManager.INSTANCE,
                             importRoot,
                             engine.getDdlListener(tableToken),
-                            engine.getSnapshotAgent(),
-                            engine.getMetrics()
+                            engine.getCheckpointStatus(),
+                            engine
                     )
             ) {
                 tableWriterRef = writer;
@@ -900,7 +946,7 @@ public class CopyTask {
                                 lexer,
                                 fileBufAddr,
                                 fileBufSize,
-                                utf8Sink,
+                                utf16Sink,
                                 unmergedIndexes,
                                 tmpPath
                         );
@@ -1035,11 +1081,11 @@ public class CopyTask {
             offsets.clear();
             lexer.setupBeforeExactLines(onFieldsPartitioned);
 
-            int fd = -1;
+            long fd = -1;
             try {
-                tmpPath.of(configuration.getSqlCopyInputRoot()).concat(inputFileName).$();
+                tmpPath.of(configuration.getSqlCopyInputRoot()).concat(inputFileName);
                 utf8Sink.clear();
-                fd = TableUtils.openRO(ff, tmpPath, LOG);
+                fd = TableUtils.openRO(ff, tmpPath.$(), LOG);
 
                 final long len = ff.length(fd);
                 if (len == -1) {
@@ -1148,11 +1194,11 @@ public class CopyTask {
 
             lexer.setupBeforeExactLines(onFieldsPartitioned);
 
-            int fd = -1;
+            long fd = -1;
             try {
-                tmpPath.of(configuration.getSqlCopyInputRoot()).concat(inputFileName).$();
+                tmpPath.of(configuration.getSqlCopyInputRoot()).concat(inputFileName);
                 utf8Sink.clear();
-                fd = TableUtils.openRO(ff, tmpPath, LOG);
+                fd = TableUtils.openRO(ff, tmpPath.$(), LOG);
 
                 final long len = ff.length(fd);
                 if (len == -1) {
@@ -1206,7 +1252,7 @@ public class CopyTask {
                     long n = ff.read(fd, fileBufAddr, bytesToRead, offset);
                     if (n > 0) {
                         // at this phase there is no way for lines to be split across buffers
-                        lexer.parseExactLines(fileBufAddr, fileBufAddr + n);
+                        lexer.parse(fileBufAddr, fileBufAddr + n);
                     } else {
                         throw TextException
                                 .$("could not read from file [path='").put(tmpPath)
@@ -1247,15 +1293,15 @@ public class CopyTask {
 
             long mergedIndexSize = -1;
             long mergeIndexAddr = 0;
-            int fd = -1;
+            long fd = -1;
             try {
                 mergedIndexSize = openIndexChunks(ff, partitionPath, unmergedIndexes, partitionLen);
 
                 if (unmergedIndexes.size() > 2) { // there's more than 1 chunk so we've to merge
                     partitionPath.trimTo(partitionLen);
-                    partitionPath.concat(CsvFileIndexer.INDEX_FILE_NAME).$();
+                    partitionPath.concat(CsvFileIndexer.INDEX_FILE_NAME);
 
-                    fd = TableUtils.openFileRWOrFail(ff, partitionPath, CairoConfiguration.O_NONE);
+                    fd = TableUtils.openFileRWOrFail(ff, partitionPath.$(), CairoConfiguration.O_NONE);
                     mergeIndexAddr = TableUtils.mapRW(ff, fd, mergedIndexSize, MemoryTag.MMAP_IMPORT);
 
                     Vect.mergeLongIndexesAsc(unmergedIndexes.getAddress(), (int) unmergedIndexes.size() / 2, mergeIndexAddr);
@@ -1301,12 +1347,13 @@ public class CopyTask {
         ) throws TextException {
             TypeAdapter type = this.types.getQuick(fieldIndex);
             try {
-                type.write(w, fieldIndex, dus, utf8Sink);
+                type.write(w, fieldIndex, dus, utf16Sink, utf8Sink);
             } catch (NumericException | Utf8Exception | ImplicitCastException ignore) {
                 errors++;
                 logError(offset, fieldIndex, dus);
                 switch (atomicity) {
                     case Atomicity.SKIP_ALL:
+                        w.cancel();
                         tableWriterRef.rollback();
                         throw TextException.$("bad syntax [line offset=").put(offset).put(",column=").put(fieldIndex).put(']');
                     case Atomicity.SKIP_ROW:
@@ -1340,7 +1387,7 @@ public class CopyTask {
 
         private long openIndexChunks(FilesFacade ff, Path partitionPath, DirectLongList mergeIndexes, int partitionLen) {
             long mergedIndexSize = 0;
-            long chunk = ff.findFirst(partitionPath);
+            long chunk = ff.findFirst(partitionPath.$());
             if (chunk > 0) {
                 try {
                     do {
@@ -1349,9 +1396,9 @@ public class CopyTask {
                         long chunkType = ff.findType(chunk);
                         if (chunkType == Files.DT_FILE) {
                             partitionPath.trimTo(partitionLen);
-                            partitionPath.concat(chunkName).$();
+                            partitionPath.concat(chunkName);
 
-                            int fd = TableUtils.openRO(ff, partitionPath, LOG);
+                            long fd = TableUtils.openRO(ff, partitionPath.$(), LOG);
                             long size = 0;
                             long address = -1;
 
@@ -1384,7 +1431,7 @@ public class CopyTask {
         private void parseLinesAndWrite(AbstractTextLexer lexer, long fileBufAddr, LongList offsets, int j) {
             final long lo = fileBufAddr + offsets.getQuick(j * 2);
             final long hi = lo + offsets.getQuick(j * 2 + 1);
-            lexer.parseExactLines(lo, hi);
+            lexer.parse(lo, hi);
         }
 
         private void unmap(FilesFacade ff, DirectLongList mergeIndexes) {

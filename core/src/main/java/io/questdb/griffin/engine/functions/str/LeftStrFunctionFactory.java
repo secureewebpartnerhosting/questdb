@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,7 +39,6 @@ import io.questdb.std.IntList;
 import io.questdb.std.Numbers;
 import io.questdb.std.ObjList;
 import io.questdb.std.str.StringSink;
-import io.questdb.std.str.Utf16Sink;
 import org.jetbrains.annotations.Nullable;
 
 public class LeftStrFunctionFactory implements FunctionFactory {
@@ -61,7 +60,7 @@ public class LeftStrFunctionFactory implements FunctionFactory {
         final Function countFunc = args.getQuick(1);
         if (countFunc.isConstant()) {
             int count = countFunc.getInt(null);
-            if (count != Numbers.INT_NaN) {
+            if (count != Numbers.INT_NULL) {
                 return new ConstCountFunc(strFunc, count);
             } else {
                 return StrConstant.NULL;
@@ -75,9 +74,8 @@ public class LeftStrFunctionFactory implements FunctionFactory {
     }
 
     private static class ConstCountFunc extends StrFunction implements UnaryFunction {
-
         private final int count;
-        private final StringSink sink = new StringSink();
+        private final StringSink sinkA = new StringSink();
         private final StringSink sinkB = new StringSink();
         private final Function strFunc;
 
@@ -92,18 +90,8 @@ public class LeftStrFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            CharSequence str = strFunc.getStrA(rec);
-            if (str != null) {
-                final int len = str.length();
-                final int pos = getPos(len);
-                utf16Sink.put(str, 0, pos);
-            }
-        }
-
-        @Override
         public CharSequence getStrA(Record rec) {
-            return getStr0(rec, sink);
+            return getStr0(rec, sinkA);
         }
 
         @Override
@@ -115,6 +103,11 @@ public class LeftStrFunctionFactory implements FunctionFactory {
         public int getStrLen(Record rec) {
             int len = strFunc.getStrLen(rec);
             return len != TableUtils.NULL_LEN ? getPos(len) : TableUtils.NULL_LEN;
+        }
+
+        @Override
+        public boolean isThreadSafe() {
+            return false;
         }
 
         @Override
@@ -141,9 +134,8 @@ public class LeftStrFunctionFactory implements FunctionFactory {
     }
 
     private static class Func extends StrFunction implements BinaryFunction {
-
         private final Function countFunc;
-        private final StringSink sink = new StringSink();
+        private final StringSink sinkA = new StringSink();
         private final StringSink sinkB = new StringSink();
         private final Function strFunc;
 
@@ -168,19 +160,8 @@ public class LeftStrFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            final CharSequence str = strFunc.getStrA(rec);
-            final int count = countFunc.getInt(rec);
-            if (str != null && count != Numbers.INT_NaN) {
-                final int len = str.length();
-                final int pos = getPos(len, count);
-                utf16Sink.put(str, 0, pos);
-            }
-        }
-
-        @Override
         public CharSequence getStrA(Record rec) {
-            return getStr0(rec, sink);
+            return getStr0(rec, sinkA);
         }
 
         @Override
@@ -192,17 +173,22 @@ public class LeftStrFunctionFactory implements FunctionFactory {
         public int getStrLen(Record rec) {
             int count = countFunc.getInt(rec);
             int len = strFunc.getStrLen(rec);
-            if (len != TableUtils.NULL_LEN && count != Numbers.INT_NaN) {
+            if (len != TableUtils.NULL_LEN && count != Numbers.INT_NULL) {
                 return getPos(len, count);
             }
             return TableUtils.NULL_LEN;
+        }
+
+        @Override
+        public boolean isThreadSafe() {
+            return false;
         }
 
         @Nullable
         private StringSink getStr0(Record rec, StringSink sink) {
             final CharSequence str = strFunc.getStrA(rec);
             final int count = countFunc.getInt(rec);
-            if (str != null && count != Numbers.INT_NaN) {
+            if (str != null && count != Numbers.INT_NULL) {
                 final int len = str.length();
                 final int pos = getPos(len, count);
                 sink.clear();

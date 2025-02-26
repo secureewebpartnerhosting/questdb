@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ package io.questdb.griffin.engine.functions.groupby;
 import io.questdb.cairo.map.MapValue;
 import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
+import io.questdb.std.Numbers;
 import org.jetbrains.annotations.NotNull;
 
 public class LastNotNullFloatGroupByFunction extends FirstFloatGroupByFunction {
@@ -37,7 +38,7 @@ public class LastNotNullFloatGroupByFunction extends FirstFloatGroupByFunction {
 
     @Override
     public void computeNext(MapValue mapValue, Record record, long rowId) {
-        if (!Float.isNaN(arg.getFloat(record))) {
+        if (!Numbers.isNull(arg.getFloat(record))) {
             computeFirst(mapValue, record, rowId);
         }
     }
@@ -50,7 +51,7 @@ public class LastNotNullFloatGroupByFunction extends FirstFloatGroupByFunction {
     @Override
     public void merge(MapValue destValue, MapValue srcValue) {
         float srcVal = srcValue.getFloat(valueIndex + 1);
-        if (Float.isNaN(srcVal)) {
+        if (Numbers.isNull(srcVal)) {
             return;
         }
         long srcRowId = srcValue.getLong(valueIndex);

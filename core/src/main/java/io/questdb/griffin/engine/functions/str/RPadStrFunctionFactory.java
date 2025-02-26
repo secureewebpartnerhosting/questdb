@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -63,11 +63,10 @@ public class RPadStrFunctionFactory implements FunctionFactory {
     }
 
     public static class RPadStrFunc extends StrFunction implements TernaryFunction {
-
         private final Function fillTextFunc;
         private final Function lenFunc;
         private final int maxLength;
-        private final StringSink sink = new StringSink();
+        private final StringSink sinkA = new StringSink();
         private final StringSink sinkB = new StringSink();
         private final Function strFunc;
 
@@ -100,12 +99,12 @@ public class RPadStrFunctionFactory implements FunctionFactory {
 
         @Override
         public CharSequence getStrA(final Record rec) {
-            return rPadStr(strFunc.getStrA(rec), lenFunc.getInt(rec), fillTextFunc.getStrA(rec), sink);
+            return rPadStr(strFunc.getStrA(rec), lenFunc.getInt(rec), fillTextFunc.getStrA(rec), sinkA);
         }
 
         @Override
         public CharSequence getStrB(final Record rec) {
-            return rPadStr(strFunc.getStrA(rec), lenFunc.getInt(rec), fillTextFunc.getStrA(rec), sinkB);
+            return rPadStr(strFunc.getStrB(rec), lenFunc.getInt(rec), fillTextFunc.getStrB(rec), sinkB);
         }
 
         @Override
@@ -118,6 +117,11 @@ public class RPadStrFunctionFactory implements FunctionFactory {
             } else {
                 return TableUtils.NULL_LEN;
             }
+        }
+
+        @Override
+        public boolean isThreadSafe() {
+            return false;
         }
 
         @Nullable

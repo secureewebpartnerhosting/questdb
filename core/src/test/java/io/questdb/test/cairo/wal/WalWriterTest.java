@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import io.questdb.std.*;
 import io.questdb.std.str.*;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.TableModel;
+import io.questdb.test.cairo.TestTableReaderRecordCursor;
 import io.questdb.test.std.TestFilesFacadeImpl;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
@@ -112,7 +113,7 @@ public class WalWriterTest extends AbstractCairoTest {
                 final WalEventCursor eventCursor = reader.getEventCursor();
                 assertTrue(eventCursor.hasNext());
                 assertEquals(0, eventCursor.getTxn());
-                Assert.assertEquals(WalTxnType.DATA, eventCursor.getType());
+                assertEquals(WalTxnType.DATA, eventCursor.getType());
 
                 final WalEventCursor.DataInfo dataInfo = eventCursor.getDataInfo();
                 assertEquals(0, dataInfo.getStartRowID());
@@ -494,7 +495,7 @@ public class WalWriterTest extends AbstractCairoTest {
 
                 try {
                     addColumn(walWriter, "c", ColumnType.SHORT);
-                    assertException("Should not be able to add duplicate column");
+                    assertExceptionNoLeakCheck("Should not be able to add duplicate column");
                 } catch (CairoException e) {
                     assertEquals("[-1] duplicate column name: c", e.getMessage());
                 }
@@ -590,9 +591,9 @@ public class WalWriterTest extends AbstractCairoTest {
 
             try {
                 engine.getWalReader(sqlExecutionContext.getSecurityContext(), tableToken, walName, 2, 1);
-                assertException("Segment 2 should not exist");
+                assertExceptionNoLeakCheck("Segment 2 should not exist");
             } catch (CairoException e) {
-                assertTrue(e.getMessage().endsWith("could not open read-only [file=" + engine.getConfiguration().getRoot() +
+                assertTrue(e.getMessage().endsWith("could not open, file does not exist: " + engine.getConfiguration().getDbRoot() +
                         File.separatorChar + tableName + TableUtils.SYSTEM_TABLE_NAME_SUFFIX + "1" +
                         File.separatorChar + walName +
                         File.separatorChar + "2" +
@@ -656,9 +657,9 @@ public class WalWriterTest extends AbstractCairoTest {
     public void testAlterAddChangeLag() throws Exception {
         assertMemoryLeak(() -> {
             TableToken tableToken = createTable(testName.getMethodName());
-            ddl("alter table " + tableToken.getTableName() + " SET PARAM o3MaxLag = 20s");
-            ddl("alter table " + tableToken.getTableName() + " add i2 int");
-            insert("insert into " + tableToken.getTableName() + "(ts, i2) values ('2022-02-24', 2)");
+            execute("alter table " + tableToken.getTableName() + " SET PARAM o3MaxLag = 20s");
+            execute("alter table " + tableToken.getTableName() + " add i2 int");
+            execute("insert into " + tableToken.getTableName() + "(ts, i2) values ('2022-02-24', 2)");
 
             drainWalQueue();
             Assert.assertFalse(engine.getTableSequencerAPI().isSuspended(tableToken));
@@ -671,9 +672,9 @@ public class WalWriterTest extends AbstractCairoTest {
     public void testAlterAddChangeMaxUncommitted() throws Exception {
         assertMemoryLeak(() -> {
             TableToken tableToken = createTable(testName.getMethodName());
-            ddl("alter table " + tableToken.getTableName() + " set PARAM maxUncommittedRows = 20000");
-            ddl("alter table " + tableToken.getTableName() + " add i2 int");
-            insert("insert into " + tableToken.getTableName() + "(ts, i2) values ('2022-02-24', 2)");
+            execute("alter table " + tableToken.getTableName() + " set PARAM maxUncommittedRows = 20000");
+            execute("alter table " + tableToken.getTableName() + " add i2 int");
+            execute("insert into " + tableToken.getTableName() + "(ts, i2) values ('2022-02-24', 2)");
 
             drainWalQueue();
             Assert.assertFalse(engine.getTableSequencerAPI().isSuspended(tableToken));
@@ -686,14 +687,14 @@ public class WalWriterTest extends AbstractCairoTest {
     public void testAlterAddDropIndex() throws Exception {
         assertMemoryLeak(() -> {
             TableToken tableToken = createTable(testName.getMethodName());
-            compile("alter table " + tableToken.getTableName() + " add sym2 symbol");
-            compile("alter table " + tableToken.getTableName() + " alter column sym2 add index");
-            compile("alter table " + tableToken.getTableName() + " alter column sym2 drop index");
-            compile("alter table " + tableToken.getTableName() + " add i2 int");
+            execute("alter table " + tableToken.getTableName() + " add sym2 symbol");
+            execute("alter table " + tableToken.getTableName() + " alter column sym2 add index");
+            execute("alter table " + tableToken.getTableName() + " alter column sym2 drop index");
+            execute("alter table " + tableToken.getTableName() + " add i2 int");
 
             drainWalQueue();
 
-            insert("insert into " + tableToken.getTableName() + "(ts, i2) values ('2022-02-24', 2)");
+            execute("insert into " + tableToken.getTableName() + "(ts, i2) values ('2022-02-24', 2)");
 
             drainWalQueue();
             Assert.assertFalse(engine.getTableSequencerAPI().isSuspended(tableToken));
@@ -720,7 +721,7 @@ public class WalWriterTest extends AbstractCairoTest {
 
 
             assertSql("a\tb\tts\tc\n" +
-                    "1\t\t1970-01-01T00:00:00.000000Z\tNaN\n", tableToken.getTableName());
+                    "1\t\t1970-01-01T00:00:00.000000Z\tnull\n", tableToken.getTableName());
         });
     }
 
@@ -784,7 +785,7 @@ public class WalWriterTest extends AbstractCairoTest {
                 assertColumnMetadata(model, reader);
             }
 
-            try (Path path = new Path().of(configuration.getRoot())) {
+            try (Path path = new Path().of(configuration.getDbRoot())) {
                 assertWalFileExist(path, tableToken, walName, 0, "_meta");
                 assertWalFileExist(path, tableToken, walName, 0, "_event");
                 assertWalFileExist(path, tableToken, walName, 0, "a.d");
@@ -930,7 +931,7 @@ public class WalWriterTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testConcurrentAddRemoveColumn_DifferentColNamePerThread() throws Exception {
+    public void testConcurrentAddRemoveColumnDifferentColNamePerThread() throws Exception {
         assertMemoryLeak(() -> {
             final String tableName = testName.getMethodName();
             TableToken tableToken = createTable(testName.getMethodName());
@@ -978,7 +979,7 @@ public class WalWriterTest extends AbstractCairoTest {
                     } catch (Throwable th) {
                         errors.put(walId, th);
                     } finally {
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                         if (!countedDown) {
                             alterFinished.countDown();
                         }
@@ -990,7 +991,7 @@ public class WalWriterTest extends AbstractCairoTest {
 
             if (!errors.isEmpty()) {
                 for (Throwable th : errors.values()) {
-                    th.printStackTrace();
+                    th.printStackTrace(System.out);
                 }
                 Assert.fail("Write failed");
             }
@@ -1056,7 +1057,7 @@ public class WalWriterTest extends AbstractCairoTest {
                         assertFalse(eventCursor.hasNext());
                     }
 
-                    try (Path path = new Path().of(configuration.getRoot())) {
+                    try (Path path = new Path().of(configuration.getDbRoot())) {
                         assertWalFileExist(path, tableToken, walName, 0, "_meta");
                         assertWalFileExist(path, tableToken, walName, 0, "_event");
                         assertWalFileExist(path, tableToken, walName, 0, "a.d");
@@ -1088,7 +1089,7 @@ public class WalWriterTest extends AbstractCairoTest {
             final int numOfRows = 4000;
             final int maxRowCount = 500;
             node1.setProperty(PropertyKey.CAIRO_WAL_SEGMENT_ROLLOVER_ROW_COUNT, maxRowCount);
-            Assert.assertEquals(configuration.getWalSegmentRolloverRowCount(), maxRowCount);
+            assertEquals(maxRowCount, configuration.getWalSegmentRolloverRowCount());
             final int numOfSegments = numOfRows / maxRowCount;
             final int numOfThreads = 10;
             final int numOfTxn = numOfThreads * numOfSegments;
@@ -1125,7 +1126,7 @@ public class WalWriterTest extends AbstractCairoTest {
                     } catch (Throwable th) {
                         errors.put(walId, th);
                     } finally {
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                         writeFinished.countDown();
                     }
                 }).start();
@@ -1134,7 +1135,7 @@ public class WalWriterTest extends AbstractCairoTest {
 
             if (!errors.isEmpty()) {
                 for (Throwable th : errors.values()) {
-                    th.printStackTrace();
+                    th.printStackTrace(System.out);
                 }
                 Assert.fail("Write failed");
             }
@@ -1199,7 +1200,7 @@ public class WalWriterTest extends AbstractCairoTest {
                         assertFalse(eventCursor.hasNext());
                     }
 
-                    try (Path path = new Path().of(configuration.getRoot())) {
+                    try (Path path = new Path().of(configuration.getDbRoot())) {
                         assertWalFileExist(path, tableToken, walName, segmentId, "_meta");
                         assertWalFileExist(path, tableToken, walName, segmentId, "_event");
                         assertWalFileExist(path, tableToken, walName, segmentId, "a.d");
@@ -1232,41 +1233,15 @@ public class WalWriterTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testExceptionThrownIfSequencerCannotBeCreated() throws Exception {
-        assertMemoryLeak(() -> {
-            ff = new TestFilesFacadeImpl() {
-                @Override
-                public int openRW(LPSZ name, long opts) {
-                    if (Utf8s.endsWithAscii(name, WAL_INDEX_FILE_NAME)) {
-                        // Set errno to path does not exist
-                        this.openRO(Path.getThreadLocal2("does-not-exist").$());
-                        return -1;
-                    }
-                    return TestFilesFacadeImpl.INSTANCE.openRW(name, opts);
-                }
-            };
-
-            try {
-                createTable(testName.getMethodName());
-                assertException("Exception expected");
-            } catch (CairoException e) {
-                TestUtils.assertContains(e.getFlyweightMessage(), "table is dropped");
-            }
-        });
-    }
-
-    @Test
     public void testExceptionThrownIfSequencerCannotBeOpened() throws Exception {
         final FilesFacade ff = new TestFilesFacadeImpl() {
             @Override
             public long getPageSize() {
-                try {
-                    throw new RuntimeException("Test failure");
-                } catch (Exception e) {
-                    final StackTraceElement[] stackTrace = e.getStackTrace();
-                    if (stackTrace[4].getClassName().endsWith("TableSequencerImpl") && stackTrace[4].getMethodName().equals("open")) {
-                        throw e;
-                    }
+                RuntimeException e = new RuntimeException("Test failure");
+                e.fillInStackTrace();
+                final StackTraceElement[] stackTrace = e.getStackTrace();
+                if (stackTrace[4].getClassName().endsWith("TableSequencerImpl")) {
+                    throw e;
                 }
                 return Files.PAGE_SIZE;
             }
@@ -1275,7 +1250,7 @@ public class WalWriterTest extends AbstractCairoTest {
         assertMemoryLeak(ff, () -> {
             try {
                 createTable(testName.getMethodName());
-                assertException("Exception expected");
+                assertExceptionNoLeakCheck("Exception expected");
             } catch (Exception e) {
                 // this exception will be handled in ILP/PG/HTTP
                 assertEquals("Test failure", e.getMessage());
@@ -1308,10 +1283,31 @@ public class WalWriterTest extends AbstractCairoTest {
         assertMemoryLeak(ff, () -> {
             try {
                 createTable(testName.getMethodName());
-                assertException("Exception expected");
+                assertExceptionNoLeakCheck("Exception expected");
             } catch (Exception e) {
                 // this exception will be handled in ILP/PG/HTTP
                 assertTrue(e.getMessage().startsWith("[999] Cannot create sequencer directory:"));
+            }
+        });
+    }
+
+    @Test
+    public void testFileOpenExceptionThrownIfSequencerCannotBeOpened() throws Exception {
+        assertMemoryLeak(() -> {
+
+            createTable(testName.getMethodName());
+            TableToken tableToken = engine.verifyTableName(testName.getMethodName());
+
+            engine.execute("alter table " + tableToken.getTableName() + " set type bypass wal");
+            engine.load();
+
+            try {
+                var lastTxn = engine.getTableSequencerAPI().lastTxn(tableToken);
+                assertExceptionNoLeakCheck("Exception expected");
+            } catch (CairoException e) {
+                // The table is not dropped in the table registry, the exception should not be table dropped exception
+                Assert.assertFalse(e.isTableDropped());
+                TestUtils.assertContains(e.getFlyweightMessage(), "could not open read-write");
             }
         });
     }
@@ -1350,7 +1346,7 @@ public class WalWriterTest extends AbstractCairoTest {
 
                 ins.insertRow();
                 walWriter.commit();
-                Assert.assertEquals(ins.getCount(), 1);
+                assertEquals(1, ins.getCount());
 
                 // Just one segment.
                 assertWalExistence(true, tableName, 1);
@@ -1397,7 +1393,7 @@ public class WalWriterTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             TableToken tableToken = createTable(testName.getMethodName());
 
-            insert("insert into " + tableToken.getTableName() + "(ts) values ('2023-08-04T23:00:00.000000Z')");
+            execute("insert into " + tableToken.getTableName() + "(ts) values ('2023-08-04T23:00:00.000000Z')");
             tickWalQueue(1);
 
             assertSql(
@@ -1406,9 +1402,9 @@ public class WalWriterTest extends AbstractCairoTest {
                     tableToken.getTableName()
             );
 
-            insert("insert into " + tableToken.getTableName() + "(ts) values ('2023-08-04T22:00:00.000000Z')");
-            insert("insert into " + tableToken.getTableName() + "(ts) values ('2023-08-04T21:00:00.000000Z')");
-            insert("insert into " + tableToken.getTableName() + "(ts) values ('2023-08-04T20:00:00.000000Z')");
+            execute("insert into " + tableToken.getTableName() + "(ts) values ('2023-08-04T22:00:00.000000Z')");
+            execute("insert into " + tableToken.getTableName() + "(ts) values ('2023-08-04T21:00:00.000000Z')");
+            execute("insert into " + tableToken.getTableName() + "(ts) values ('2023-08-04T20:00:00.000000Z')");
 
             // Run WAL apply job two times:
             // Tick 1. Put row 2023-08-04T22 into the lag.
@@ -1441,7 +1437,7 @@ public class WalWriterTest extends AbstractCairoTest {
     public void testOverlappingStructureChangeCannotCreateFile() throws Exception {
         final FilesFacade ff = new TestFilesFacadeImpl() {
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.endsWithAscii(name, "0" + Files.SEPARATOR + "c.d")) {
                     return -1;
                 }
@@ -1456,7 +1452,7 @@ public class WalWriterTest extends AbstractCairoTest {
                 try (WalWriter walWriter2 = engine.getWalWriter(tableToken)) {
                     addColumn(walWriter1, "c", ColumnType.INT);
                     addColumn(walWriter2, "d", ColumnType.INT);
-                    assertException("Exception expected");
+                    assertExceptionNoLeakCheck("Exception expected");
                 } catch (CairoException e) {
                     // this exception will be handled in ILP/PG/HTTP
                     TestUtils.assertContains(e.getFlyweightMessage(), "could not open read-write");
@@ -1469,30 +1465,25 @@ public class WalWriterTest extends AbstractCairoTest {
     public void testOverlappingStructureChangeFails() throws Exception {
         final FilesFacade ff = new TestFilesFacadeImpl() {
             @Override
-            public int openRO(LPSZ name) {
-                try {
-                    throw new RuntimeException("Test failure");
-                } catch (Exception e) {
-                    final StackTraceElement[] stackTrace = e.getStackTrace();
-                    if (stackTrace[2].getClassName().endsWith("TableTransactionLog") && stackTrace[2].getMethodName().equals("openFileRO")) {
-                        return -1;
-                    }
+            public long openRO(LPSZ name) {
+                if (Chars.endsWith(name.asAsciiCharSequence(), "_txnlog.meta.d")) {
+                    return -1;
                 }
                 return TestFilesFacadeImpl.INSTANCE.openRO(name);
             }
         };
 
         assertMemoryLeak(ff, () -> {
-            TableToken tableToken = createTable(testName.getMethodName());
+            final TableToken tableToken = createTable(testName.getMethodName());
 
             try (WalWriter walWriter1 = engine.getWalWriter(tableToken)) {
                 try (WalWriter walWriter2 = engine.getWalWriter(tableToken)) {
                     addColumn(walWriter1, "c", ColumnType.INT);
                     addColumn(walWriter2, "d", ColumnType.INT);
-                    assertException("Exception expected");
+                    Assert.fail("Exception expected");
                 } catch (Exception e) {
                     // this exception will be handled in ILP/PG/HTTP
-                    assertTrue(e.getMessage().contains("could not open read-only"));
+                    assertTrue(e.getMessage().contains("could not open"));
                 }
             }
         });
@@ -1502,7 +1493,7 @@ public class WalWriterTest extends AbstractCairoTest {
     public void testOverlappingStructureChangeMissing() throws Exception {
         final FilesFacade ff = new TestFilesFacadeImpl() {
             @Override
-            public long readNonNegativeLong(int fd, long offset) {
+            public long readNonNegativeLong(long fd, long offset) {
                 try {
                     throw new RuntimeException("Test failure");
                 } catch (Exception e) {
@@ -1522,7 +1513,7 @@ public class WalWriterTest extends AbstractCairoTest {
                 try (WalWriter walWriter2 = engine.getWalWriter(tableToken)) {
                     addColumn(walWriter1, "c", ColumnType.INT);
                     addColumn(walWriter2, "d", ColumnType.INT);
-                    assertException("Exception expected");
+                    assertExceptionNoLeakCheck("Exception expected");
                 } catch (Exception e) {
                     // this exception will be handled in ILP/PG/HTTP
                     assertEquals("[0] expected to read table structure changes but there is no saved in the sequencer [structureVersionLo=0]", e.getMessage());
@@ -1563,17 +1554,19 @@ public class WalWriterTest extends AbstractCairoTest {
                     .col("stringc", ColumnType.STRING) // putStr(int columnIndex, CharSequence value, int pos, int len)
                     .col("symbol", ColumnType.SYMBOL) // putSym(int columnIndex, CharSequence value)
                     .col("symbolb", ColumnType.SYMBOL) // putSym(int columnIndex, char value)
-                    .col("symbol8", ColumnType.SYMBOL) // putSymUtf8(int columnIndex, DirectByteCharSequence value, boolean hasNonAsciiChars)
-                    .col("string8", ColumnType.STRING) // putStrUtf8AsUtf16(int columnIndex, DirectByteCharSequence value, boolean hasNonAsciiChars)
+                    .col("symbol8", ColumnType.SYMBOL) // putSymUtf8(int columnIndex, DirectUtf8Sequence value)
+                    .col("string8", ColumnType.STRING) // putStrUtf8(int columnIndex, DirectUtf8Sequence value)
                     .col("uuida", ColumnType.UUID) // putUUID(int columnIndex, long lo, long hi)
                     .col("uuidb", ColumnType.UUID) // putUUID(int columnIndex, CharSequence value)
                     .col("IPv4", ColumnType.IPv4)
+                    .col("varchara", ColumnType.VARCHAR)
+                    .col("varcharb", ColumnType.VARCHAR)
                     .timestamp("ts")
                     .wal();
             tableToken = createTable(model);
 
             final int rowsToInsertTotal = 100;
-            final long pointer = Unsafe.getUnsafe().allocateMemory(rowsToInsertTotal);
+            final long pointer = Unsafe.malloc(rowsToInsertTotal, MemoryTag.NATIVE_DEFAULT);
             try {
                 final long ts = Os.currentTimeMicros();
                 final Long256Impl long256 = new Long256Impl();
@@ -1637,6 +1630,9 @@ public class WalWriterTest extends AbstractCairoTest {
                         row.putUuid(29, stringSink);
                         row.putInt(30, i);
 
+                        row.putVarchar(31, new Utf8String(String.valueOf(i)));
+                        row.putVarchar(32, null);
+
                         row.append();
                     }
 
@@ -1650,7 +1646,7 @@ public class WalWriterTest extends AbstractCairoTest {
                 }
 
                 try (WalReader reader = engine.getWalReader(sqlExecutionContext.getSecurityContext(), tableToken, walName, 0, rowsToInsertTotal)) {
-                    assertEquals(32, reader.getColumnCount());
+                    assertEquals(34, reader.getColumnCount());
                     assertEquals(walName, reader.getWalName());
                     assertEquals(tableName, reader.getTableName());
                     assertEquals(rowsToInsertTotal, reader.size());
@@ -1717,20 +1713,30 @@ public class WalWriterTest extends AbstractCairoTest {
                         assertEquals(i + 1, record.getLong128Hi(29));
                         assertEquals(i, record.getIPv4(30));
 
-                        assertEquals(ts, record.getTimestamp(31));
+                        TestUtils.assertEquals(String.valueOf(i), record.getVarcharA(31));
+                        TestUtils.assertEquals(record.getVarcharA(31), record.getVarcharB(31));
+                        // the string is ascii, so length is same as size
+                        assertEquals(String.valueOf(i).length(), record.getVarcharSize(31));
+
+                        assertNull(record.getVarcharA(32));
+                        assertNull(record.getVarcharB(32));
+                        // the string is ascii, so length is same as size
+                        assertEquals(-1, record.getVarcharSize(32));
+
+                        assertEquals(ts, record.getTimestamp(33));
                         assertEquals(i, record.getRowId());
                         testSink.clear();
                         ((Sinkable) record).toSink(testSink);
                         assertEquals("WalReaderRecord [recordIndex=" + i + "]", testSink.toString());
                         try {
                             cursor.getRecordB();
-                            assertException("UnsupportedOperationException expected");
+                            assertExceptionNoLeakCheck("UnsupportedOperationException expected");
                         } catch (UnsupportedOperationException e) {
                             // ignore, this is expected
                         }
                         try {
                             record.getUpdateRowId();
-                            assertException("UnsupportedOperationException expected");
+                            assertExceptionNoLeakCheck("UnsupportedOperationException expected");
                         } catch (UnsupportedOperationException e) {
                             // ignore, this is expected
                         }
@@ -1740,7 +1746,7 @@ public class WalWriterTest extends AbstractCairoTest {
                     assertEquals(i, reader.size());
                 }
             } finally {
-                Unsafe.getUnsafe().freeMemory(pointer);
+                Unsafe.free(pointer, rowsToInsertTotal, MemoryTag.NATIVE_DEFAULT);
             }
         });
     }
@@ -1965,9 +1971,9 @@ public class WalWriterTest extends AbstractCairoTest {
 
             try {
                 engine.getWalReader(sqlExecutionContext.getSecurityContext(), tableToken, walName, 1, 0);
-                assertException("Segment 1 should not exist");
+                assertExceptionNoLeakCheck("Segment 1 should not exist");
             } catch (CairoException e) {
-                TestUtils.assertContains(e.getFlyweightMessage(), "could not open read-only [file=" + engine.getConfiguration().getRoot() +
+                TestUtils.assertContains(e.getFlyweightMessage(), "could not open, file does not exist: " + engine.getConfiguration().getDbRoot() +
                         File.separatorChar + tableName + TableUtils.SYSTEM_TABLE_NAME_SUFFIX + "1" +
                         File.separatorChar + walName +
                         File.separatorChar + "1" +
@@ -1992,9 +1998,9 @@ public class WalWriterTest extends AbstractCairoTest {
 
                 try {
                     removeColumn(walWriter, "noColLikeThis");
-                    assertException("Should not be able to remove non existent column");
+                    assertExceptionNoLeakCheck("Should not be able to remove non existent column");
                 } catch (CairoException e) {
-                    TestUtils.assertContains(e.getMessage(), "cannot remove column, column does not exist [table=testRemovingNonExistentColumn, column=noColLikeThis]");
+                    TestUtils.assertContains(e.getMessage(), "cannot remove, column does not exist [table=testRemovingNonExistentColumn, column=noColLikeThis]");
                 }
                 row = walWriter.newRow(0);
                 row.putByte(0, (byte) 10);
@@ -2083,12 +2089,12 @@ public class WalWriterTest extends AbstractCairoTest {
                 row.putInt(0, 133);
                 try {
                     row.putSym(1, "anything");
-                    assertException("UnsupportedOperationException expected");
+                    assertExceptionNoLeakCheck("UnsupportedOperationException expected");
                 } catch (UnsupportedOperationException ignore) {
                 }
                 try {
                     TestUtils.putUtf8(row, "Щось", 1, true);
-                    assertException("UnsupportedOperationException expected");
+                    assertExceptionNoLeakCheck("UnsupportedOperationException expected");
                 } catch (UnsupportedOperationException ignore) {
                 }
 
@@ -2460,7 +2466,7 @@ public class WalWriterTest extends AbstractCairoTest {
                 assertFalse(eventCursor.hasNext());
             }
 
-            try (Path path = new Path().of(configuration.getRoot())) {
+            try (Path path = new Path().of(configuration.getDbRoot())) {
                 assertWalFileExist(path, tableToken, walName, 0, "_meta");
                 assertWalFileExist(path, tableToken, walName, 0, "_event");
                 assertWalFileExist(path, tableToken, walName, 0, "a.d");
@@ -2912,10 +2918,12 @@ public class WalWriterTest extends AbstractCairoTest {
                 walWriter.commit();
             }
 
-            try (TableReader reader = engine.getReader(tableToken)) {
+            try (
+                    TableReader reader = engine.getReader(tableToken);
+                    TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+            ) {
                 assertEquals(5, reader.getMetadata().getColumnCount());
                 assertEquals(5, reader.getTransientRowCount());
-                RecordCursor cursor = reader.getCursor();
                 Record record = cursor.getRecord();
                 int i = 0;
                 while (cursor.hasNext()) {
@@ -2995,7 +3003,7 @@ public class WalWriterTest extends AbstractCairoTest {
                 assertFalse(eventCursor.hasNext());
             }
 
-            try (Path path = new Path().of(configuration.getRoot())) {
+            try (Path path = new Path().of(configuration.getDbRoot())) {
                 assertWalFileExist(path, tableToken, walName, 0, "_meta");
                 assertWalFileExist(path, tableToken, walName, 0, "_event");
                 assertWalFileExist(path, tableToken, walName, 0, "a.d");
@@ -3014,6 +3022,38 @@ public class WalWriterTest extends AbstractCairoTest {
                 assertWalFileExist(path, tableToken, walName, "d.k");
                 assertWalFileExist(path, tableToken, walName, "d.o");
                 assertWalFileExist(path, tableToken, walName, "d.v");
+            }
+        });
+    }
+
+    @Test
+    public void testTableDropExceptionThrownIfSequencerCannotBeOpenTableIsDropped() throws Exception {
+        assertMemoryLeak(() -> {
+            createTable(testName.getMethodName());
+            TableToken tableToken = engine.verifyTableName(testName.getMethodName());
+
+            // Now that the table is really dropped
+            engine.execute("drop table " + tableToken.getTableName());
+
+            ff = new TestFilesFacadeImpl() {
+                @Override
+                public long openRW(LPSZ name, long opts) {
+                    if (Utf8s.endsWithAscii(name, WAL_INDEX_FILE_NAME)) {
+                        // Set errno to path does not exist
+                        this.openRO(Path.getThreadLocal2("does-not-exist").$());
+                        return -1;
+                    }
+                    return TestFilesFacadeImpl.INSTANCE.openRW(name, opts);
+                }
+            };
+
+            try {
+                var lastTxn = engine.getTableSequencerAPI().lastTxn(tableToken);
+                Assert.fail("Exception expected");
+            } catch (CairoException e) {
+                // We should receive table is dropped error
+                Assert.assertTrue(e.isTableDropped());
+                TestUtils.assertContains(e.getFlyweightMessage(), "table is dropped");
             }
         });
     }
@@ -3039,7 +3079,7 @@ public class WalWriterTest extends AbstractCairoTest {
         FilesFacade ff = new TestFilesFacadeImpl() {
 
             @Override
-            public long length(int fd) {
+            public long length(long fd) {
                 long len = super.length(fd);
                 if (fd == this.fd && evenFileLengthCallBack.get() != null) {
                     TestUtils.unchecked(() -> {
@@ -3051,7 +3091,7 @@ public class WalWriterTest extends AbstractCairoTest {
             }
 
             @Override
-            public long mmap(int fd, long len, long offset, int flags, int memoryTag) {
+            public long mmap(long fd, long len, long offset, int flags, int memoryTag) {
                 if (fd == this.fd) {
                     if (evenFileLengthCallBack.get() != null) {
                         TestUtils.unchecked(() -> {
@@ -3068,8 +3108,8 @@ public class WalWriterTest extends AbstractCairoTest {
             }
 
             @Override
-            public int openRO(LPSZ path) {
-                int fd = super.openRO(path);
+            public long openRO(LPSZ path) {
+                long fd = super.openRO(path);
                 if (Utf8s.endsWithAscii(path, EVENT_FILE_NAME)) {
                     this.fd = fd;
                 }
@@ -3180,7 +3220,7 @@ public class WalWriterTest extends AbstractCairoTest {
             try (WalWriter ignored = engine.getWalWriter(tableToken)) {
                 Assert.fail();
             } catch (CairoException e) {
-                TestUtils.assertContains(e.getFlyweightMessage(), "table is dropped");
+                TestUtils.assertContains(e.getFlyweightMessage(), "could not open read-write");
                 TestUtils.assertContains(e.getFlyweightMessage(), tableName);
             }
         });
@@ -3188,8 +3228,8 @@ public class WalWriterTest extends AbstractCairoTest {
 
     private static Path constructPath(Path path, TableToken tableName, CharSequence walName, long segment, CharSequence fileName) {
         return segment < 0
-                ? path.concat(tableName).slash().concat(walName).slash().concat(fileName).$()
-                : path.concat(tableName).slash().concat(walName).slash().put(segment).slash().concat(fileName).$();
+                ? path.concat(tableName).slash().concat(walName).slash().concat(fileName)
+                : path.concat(tableName).slash().concat(walName).slash().put(segment).slash().concat(fileName);
     }
 
     private static TableModel defaultModel(String tableName) {
@@ -3232,7 +3272,7 @@ public class WalWriterTest extends AbstractCairoTest {
         final int pathLen = path.size();
         try {
             path = constructPath(path, tableName, walName, segment, fileName);
-            if (!Files.exists(path)) {
+            if (!Files.exists(path.$())) {
                 throw new AssertionError("Path " + path + " does not exists!");
             }
         } finally {

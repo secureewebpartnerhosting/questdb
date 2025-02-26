@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,14 @@ package io.questdb.cutlass.line.tcp;
 import io.questdb.Telemetry;
 import io.questdb.TelemetryOrigin;
 import io.questdb.TelemetrySystemEvent;
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.CommitFailedException;
+import io.questdb.cairo.EntryUnavailableException;
+import io.questdb.cairo.SecurityContext;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
 import io.questdb.cairo.vm.Vm;
 import io.questdb.cairo.vm.api.MemoryMARW;
 import io.questdb.log.Log;
@@ -38,9 +45,20 @@ import io.questdb.mp.RingQueue;
 import io.questdb.mp.SCSequence;
 import io.questdb.mp.WorkerPool;
 import io.questdb.network.IODispatcher;
-import io.questdb.std.*;
+import io.questdb.std.LowerCaseCharSequenceObjHashMap;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Misc;
+import io.questdb.std.Numbers;
+import io.questdb.std.ObjList;
+import io.questdb.std.Os;
+import io.questdb.std.SimpleReadWriteLock;
+import io.questdb.std.Utf8StringObjHashMap;
 import io.questdb.std.datetime.millitime.MillisecondClock;
-import io.questdb.std.str.*;
+import io.questdb.std.str.DirectUtf8Sequence;
+import io.questdb.std.str.Path;
+import io.questdb.std.str.StringSink;
+import io.questdb.std.str.Utf8String;
+import io.questdb.std.str.Utf8s;
 import io.questdb.tasks.TelemetryTask;
 import org.jetbrains.annotations.NotNull;
 
@@ -55,7 +73,7 @@ public class LineTcpMeasurementScheduler implements Closeable {
     private final boolean autoCreateNewTables;
     private final MillisecondClock clock;
     private final LineTcpReceiverConfiguration configuration;
-    private final MemoryMARW ddlMem = Vm.getMARWInstance();
+    private final MemoryMARW ddlMem = Vm.getCMARWInstance();
     private final DefaultColumnTypes defaultColumnTypes;
     private final CairoEngine engine;
     private final LowerCaseCharSequenceObjHashMap<TableUpdateDetails> idleTableUpdateDetailsUtf16;
@@ -80,90 +98,95 @@ public class LineTcpMeasurementScheduler implements Closeable {
             IODispatcher<LineTcpConnectionContext> dispatcher,
             WorkerPool writerWorkerPool
     ) {
-        this.engine = engine;
-        this.telemetry = engine.getTelemetry();
-        CairoConfiguration cairoConfiguration = engine.getConfiguration();
-        this.configuration = lineConfiguration;
-        this.clock = cairoConfiguration.getMillisecondClock();
-        this.spinLockTimeoutMs = cairoConfiguration.getSpinLockTimeout();
-        this.defaultColumnTypes = new DefaultColumnTypes(lineConfiguration);
-        final int ioWorkerPoolSize = ioWorkerPool.getWorkerCount();
-        this.netIoJobs = new NetworkIOJob[ioWorkerPoolSize];
-        this.tableNameSinks = new StringSink[ioWorkerPoolSize];
-        for (int i = 0; i < ioWorkerPoolSize; i++) {
-            tableNameSinks[i] = new StringSink();
-            NetworkIOJob netIoJob = createNetworkIOJob(dispatcher, i);
-            netIoJobs[i] = netIoJob;
-            ioWorkerPool.assign(i, netIoJob);
-            ioWorkerPool.freeOnExit(netIoJob);
-        }
+        try {
+            this.engine = engine;
+            this.telemetry = engine.getTelemetry();
+            CairoConfiguration cairoConfiguration = engine.getConfiguration();
+            this.configuration = lineConfiguration;
+            this.clock = cairoConfiguration.getMillisecondClock();
+            this.spinLockTimeoutMs = cairoConfiguration.getSpinLockTimeout();
+            this.defaultColumnTypes = new DefaultColumnTypes(lineConfiguration);
+            final int ioWorkerPoolSize = ioWorkerPool.getWorkerCount();
+            this.netIoJobs = new NetworkIOJob[ioWorkerPoolSize];
+            this.tableNameSinks = new StringSink[ioWorkerPoolSize];
+            for (int i = 0; i < ioWorkerPoolSize; i++) {
+                tableNameSinks[i] = new StringSink();
+                NetworkIOJob netIoJob = createNetworkIOJob(dispatcher, i);
+                netIoJobs[i] = netIoJob;
+                ioWorkerPool.assign(i, netIoJob);
+                ioWorkerPool.freeOnExit(netIoJob);
+            }
 
-        // Worker count is set to 1 because we do not use this execution context
-        // in worker threads.
-        tableUpdateDetailsUtf16 = new LowerCaseCharSequenceObjHashMap<>();
-        idleTableUpdateDetailsUtf16 = new LowerCaseCharSequenceObjHashMap<>();
-        loadByWriterThread = new long[writerWorkerPool.getWorkerCount()];
-        autoCreateNewTables = lineConfiguration.getAutoCreateNewTables();
-        autoCreateNewColumns = lineConfiguration.getAutoCreateNewColumns();
-        int maxMeasurementSize = lineConfiguration.getMaxMeasurementSize();
-        int queueSize = lineConfiguration.getWriterQueueCapacity();
-        long commitInterval = configuration.getCommitInterval();
-        int nWriterThreads = writerWorkerPool.getWorkerCount();
-        pubSeq = new MPSequence[nWriterThreads];
-        //noinspection unchecked
-        queue = new RingQueue[nWriterThreads];
-        //noinspection unchecked
-        assignedTables = new ObjList[nWriterThreads];
-        for (int i = 0; i < nWriterThreads; i++) {
-            MPSequence ps = new MPSequence(queueSize);
-            pubSeq[i] = ps;
+            // Worker count is set to 1 because we do not use this execution context
+            // in worker threads.
+            tableUpdateDetailsUtf16 = new LowerCaseCharSequenceObjHashMap<>();
+            idleTableUpdateDetailsUtf16 = new LowerCaseCharSequenceObjHashMap<>();
+            loadByWriterThread = new long[writerWorkerPool.getWorkerCount()];
+            autoCreateNewTables = lineConfiguration.getAutoCreateNewTables();
+            autoCreateNewColumns = lineConfiguration.getAutoCreateNewColumns();
+            int maxMeasurementSize = lineConfiguration.getMaxMeasurementSize();
+            int queueSize = lineConfiguration.getWriterQueueCapacity();
+            long commitInterval = configuration.getCommitInterval();
+            int nWriterThreads = writerWorkerPool.getWorkerCount();
+            pubSeq = new MPSequence[nWriterThreads];
+            //noinspection unchecked
+            queue = new RingQueue[nWriterThreads];
+            //noinspection unchecked
+            assignedTables = new ObjList[nWriterThreads];
+            for (int i = 0; i < nWriterThreads; i++) {
+                MPSequence ps = new MPSequence(queueSize);
+                pubSeq[i] = ps;
 
-            RingQueue<LineTcpMeasurementEvent> q = new RingQueue<>(
-                    (address, addressSize) -> new LineTcpMeasurementEvent(
-                            address,
-                            addressSize,
-                            lineConfiguration.getMicrosecondClock(),
-                            lineConfiguration.getTimestampAdapter(),
-                            defaultColumnTypes,
-                            lineConfiguration.isStringToCharCastAllowed(),
-                            lineConfiguration.getMaxFileNameLength(),
-                            lineConfiguration.getAutoCreateNewColumns()
-                    ),
-                    getEventSlotSize(maxMeasurementSize),
-                    queueSize,
-                    MemoryTag.NATIVE_ILP_RSS
+                RingQueue<LineTcpMeasurementEvent> q = new RingQueue<>(
+                        (address, addressSize) -> new LineTcpMeasurementEvent(
+                                address,
+                                addressSize,
+                                lineConfiguration.getMicrosecondClock(),
+                                lineConfiguration.getTimestampAdapter(),
+                                defaultColumnTypes,
+                                lineConfiguration.isStringToCharCastAllowed(),
+                                lineConfiguration.getMaxFileNameLength(),
+                                lineConfiguration.getAutoCreateNewColumns()
+                        ),
+                        getEventSlotSize(maxMeasurementSize),
+                        queueSize,
+                        MemoryTag.NATIVE_ILP_RSS
+                );
+
+                queue[i] = q;
+                SCSequence subSeq = new SCSequence();
+                ps.then(subSeq).then(ps);
+
+                assignedTables[i] = new ObjList<>();
+
+                final LineTcpWriterJob lineTcpWriterJob = new LineTcpWriterJob(
+                        i,
+                        q,
+                        subSeq,
+                        clock,
+                        commitInterval, this, engine.getMetrics(), assignedTables[i]
+                );
+                writerWorkerPool.assign(i, lineTcpWriterJob);
+                writerWorkerPool.freeOnExit(lineTcpWriterJob);
+            }
+            this.tableStructureAdapter = new TableStructureAdapter(
+                    cairoConfiguration,
+                    defaultColumnTypes,
+                    configuration.getDefaultPartitionBy(),
+                    cairoConfiguration.getWalEnabledDefault()
             );
-
-            queue[i] = q;
-            SCSequence subSeq = new SCSequence();
-            ps.then(subSeq).then(ps);
-
-            assignedTables[i] = new ObjList<>();
-
-            final LineTcpWriterJob lineTcpWriterJob = new LineTcpWriterJob(
-                    i,
-                    q,
-                    subSeq,
-                    clock,
-                    commitInterval, this, engine.getMetrics(), assignedTables[i]
+            writerIdleTimeout = lineConfiguration.getWriterIdleTimeout();
+            lineWalAppender = new LineWalAppender(
+                    autoCreateNewColumns,
+                    configuration.isStringToCharCastAllowed(),
+                    configuration.getTimestampAdapter(),
+                    cairoConfiguration.getMaxFileNameLength(),
+                    configuration.getMicrosecondClock()
             );
-            writerWorkerPool.assign(i, lineTcpWriterJob);
-            writerWorkerPool.freeOnExit(lineTcpWriterJob);
+        } catch (Throwable t) {
+            close();
+            throw t;
         }
-        this.tableStructureAdapter = new TableStructureAdapter(
-                cairoConfiguration,
-                defaultColumnTypes,
-                configuration.getDefaultPartitionBy(),
-                cairoConfiguration.getWalEnabledDefault()
-        );
-        writerIdleTimeout = lineConfiguration.getWriterIdleTimeout();
-        lineWalAppender = new LineWalAppender(
-                autoCreateNewColumns,
-                configuration.isStringToCharCastAllowed(),
-                configuration.getTimestampAdapter(),
-                cairoConfiguration.getMaxFileNameLength(),
-                configuration.getMicrosecondClock()
-        );
     }
 
     @Override
@@ -417,7 +440,6 @@ public class LineTcpMeasurementScheduler implements Closeable {
                         }
                         engine.createTable(securityContext, ddlMem, path, true, tsa, false);
                     }
-
                     // by the time we get here, the table should exist on disk
                     // check the global idle cache - TUD can be there
                     final int idleTudKeyIndex = idleTableUpdateDetailsUtf16.keyIndex(tableNameUtf16);
@@ -447,6 +469,12 @@ public class LineTcpMeasurementScheduler implements Closeable {
                                         .put(']');
                             }
                             continue; // go for another spin
+                        }
+                        if (tableToken.isMatView()) {
+                            throw CairoException.nonCritical()
+                                    .put("cannot modify materialized view [view=")
+                                    .put(tableToken.getTableName())
+                                    .put(']');
                         }
                         TelemetryTask.store(telemetry, TelemetryOrigin.ILP_TCP, TelemetrySystemEvent.ILP_RESERVE_WRITER);
                         if (engine.isWalTable(tableToken)) {
@@ -481,7 +509,7 @@ public class LineTcpMeasurementScheduler implements Closeable {
     }
 
     private boolean isOpen() {
-        return null != pubSeq;
+        return pubSeq != null;
     }
 
     @NotNull

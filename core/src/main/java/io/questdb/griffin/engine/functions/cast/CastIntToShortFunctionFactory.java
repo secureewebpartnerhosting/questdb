@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ public class CastIntToShortFunctionFactory implements FunctionFactory {
         @Override
         public short getShort(Record rec) {
             final int value = arg.getInt(rec);
-            return value != Numbers.INT_NaN ? (short) value : 0;
+            return value != Numbers.INT_NULL ? (short) value : 0;
         }
     }
 }

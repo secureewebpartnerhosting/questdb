@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,15 +26,13 @@ package io.questdb.griffin.engine.union;
 
 import io.questdb.cairo.sql.Function;
 import io.questdb.std.BinarySequence;
+import io.questdb.std.Interval;
 import io.questdb.std.Long256;
 import io.questdb.std.ObjList;
 import io.questdb.std.str.CharSink;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 public class UnionCastRecord extends AbstractUnionRecord {
-
     private final ObjList<Function> castFunctionsA;
     private final ObjList<Function> castFunctionsB;
 
@@ -164,6 +162,14 @@ public class UnionCastRecord extends AbstractUnionRecord {
     }
 
     @Override
+    public Interval getInterval(int col) {
+        if (useA) {
+            return castFunctionsA.getQuick(col).getInterval(recordA);
+        }
+        return castFunctionsB.getQuick(col).getInterval(recordB);
+    }
+
+    @Override
     public long getLong(int col) {
         if (useA) {
             return castFunctionsA.getQuick(col).getLong(recordA);
@@ -235,15 +241,6 @@ public class UnionCastRecord extends AbstractUnionRecord {
     }
 
     @Override
-    public void getStr(int col, Utf16Sink utf16Sink) {
-        if (useA) {
-            castFunctionsA.getQuick(col).getStr(recordA, utf16Sink);
-        } else {
-            castFunctionsB.getQuick(col).getStr(recordB, utf16Sink);
-        }
-    }
-
-    @Override
     public CharSequence getStrB(int col) {
         if (useA) {
             return castFunctionsA.getQuick(col).getStrB(recordA);
@@ -268,15 +265,6 @@ public class UnionCastRecord extends AbstractUnionRecord {
     }
 
     @Override
-    public void getVarchar(int col, Utf8Sink utf8Sink) {
-        if (useA) {
-            castFunctionsA.getQuick(col).getVarchar(recordA, utf8Sink);
-        } else {
-            castFunctionsB.getQuick(col).getVarchar(recordB, utf8Sink);
-        }
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(int col) {
         if (useA) {
             return castFunctionsA.getQuick(col).getVarcharA(recordA);
@@ -290,5 +278,13 @@ public class UnionCastRecord extends AbstractUnionRecord {
             return castFunctionsA.getQuick(col).getVarcharB(recordA);
         }
         return castFunctionsB.getQuick(col).getVarcharB(recordB);
+    }
+
+    @Override
+    public int getVarcharSize(int col) {
+        if (useA) {
+            return castFunctionsA.getQuick(col).getVarcharSize(recordA);
+        }
+        return castFunctionsB.getQuick(col).getVarcharSize(recordB);
     }
 }

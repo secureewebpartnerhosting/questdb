@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,10 +28,9 @@ import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.engine.functions.groupby.InterpolationGroupByFunction;
 import io.questdb.std.BinarySequence;
+import io.questdb.std.Interval;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 public class SplitVirtualRecord implements Record {
     private final ObjList<? extends Function> functionsA;
@@ -128,6 +127,11 @@ public class SplitVirtualRecord implements Record {
     }
 
     @Override
+    public Interval getInterval(int col) {
+        return getFunction(col).getInterval(base);
+    }
+
+    @Override
     public long getLong(int col) {
         return getFunction(col).getLong(base);
     }
@@ -158,11 +162,6 @@ public class SplitVirtualRecord implements Record {
     }
 
     @Override
-    public void getStr(int col, Utf16Sink utf16Sink) {
-        getFunction(col).getStr(base, utf16Sink);
-    }
-
-    @Override
     public CharSequence getStrB(int col) {
         return getFunction(col).getStrB(base);
     }
@@ -188,11 +187,6 @@ public class SplitVirtualRecord implements Record {
     }
 
     @Override
-    public void getVarchar(int col, Utf8Sink utf8Sink) {
-        getFunction(col).getVarchar(base, utf8Sink);
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(int col) {
         return getFunction(col).getVarcharA(base);
     }
@@ -200,6 +194,11 @@ public class SplitVirtualRecord implements Record {
     @Override
     public Utf8Sequence getVarcharB(int col) {
         return getFunction(col).getVarcharB(base);
+    }
+
+    @Override
+    public int getVarcharSize(int col) {
+        return getFunction(col).getVarcharSize(base);
     }
 
     public void setActiveA() {
@@ -220,7 +219,7 @@ public class SplitVirtualRecord implements Record {
         }
     }
 
-    public void setTarget(Record target) {
+    public void setInterpolationTarget(Record target) {
         for (int i = 0, n = interpolations.size(); i < n; i++) {
             interpolations.get(i).setTarget(target);
         }

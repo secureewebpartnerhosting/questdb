@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -122,6 +122,11 @@ public class ExpressionParserTest extends AbstractCairoTest {
     @Test
     public void testBinaryMinus() throws Exception {
         x("4 c -", "4-c");
+    }
+
+    @Test
+    public void testBooleanLogicPrecedence() throws Exception {
+        x("x y not =", "x = NOT y");
     }
 
     @Test
@@ -546,6 +551,56 @@ public class ExpressionParserTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testCorrectPrecedenceOfBasicOps() throws Exception {
+        x("a ~ b ^ c d & |", "~a^b|c&d");
+        x("1 2 4 & |", "1|2&4");
+        x("1 - 1 in not", "-1 not in (1)");
+        x("'1' '2' || '12' in not", "'1' || '2' not in ('12')");
+        x("'1' '2' || '12' in not", "not '1' || '2' in ('12')");
+        x("true true false and or", "true or true and false");
+        x("1 2 | 3 in", "1 | 2 IN 3");
+        x("1 1 in not true =", "1 not in (1) = true");
+        x("a b ^ c ^", "a^b^c");
+    }
+
+    @Test
+    public void testCountDistinctRewrites() throws SqlException {
+        x("foo count_distinct", "count_distinct(foo)");
+        x("foo count_distinct", "count(distinct foo)");
+
+        x("1 1 + count_distinct", "count_distinct(1+1)");
+        x("1 1 + count_distinct", "count(distinct 1+1)");
+
+        x("bar foo count_distinct", "count_distinct(foo(bar))");
+        x("bar foo count_distinct", "count(distinct foo(bar))");
+
+        x("bar foo count_distinct varchar cast", "cast (count_distinct(foo(bar)) as varchar)");
+        x("bar foo count_distinct varchar cast", "cast (count(distinct foo(bar)) as varchar)");
+
+        // check distinct works as a column name when quoted
+        x("distinct count varchar cast", "cast (count(\"distinct\") as varchar)");
+        // it works with multiple arguments too
+        x("distinct foo count", "count(\"distinct\", foo)");
+        // not written when count is not a function
+        x("count distinct foo", "foo(count, distinct)");
+        x("distinctnot count", "count(distinctnot)");
+        x("bar count distinct foo", "foo(bar, count, distinct)");
+        x("count bar distinct foo", "foo(bar(count), distinct)");
+
+        assertFail("count(distinct *)", 6, "count(distinct *) is not supported");
+        assertFail("count(distinct ", 6, "table and column names that are SQL keywords have to be enclosed in double quotes, such as \"distinct\"");
+        assertFail("notcount(distinct foo)", 18, "dangling literal");
+        assertFail("count(distinct(foo, bar))", 23, "count distinct aggregation supports a single column only");
+        assertFail("count(DISTINCT(foo, bar))", 23, "count distinct aggregation supports a single column only");
+        assertFail("count(distinct (foo, bar))", 24, "count distinct aggregation supports a single column only"); // with an extra space
+        assertFail("count(DiSTiNcT (foo, bar))", 24, "count distinct aggregation supports a single column only"); // with an extra space
+        assertFail("count(distinct(foo, bar, foobar))", 31, "count distinct aggregation supports a single column only");
+        assertFail("count(distinct(foo, bar, foobar, 1+1))", 36, "count distinct aggregation supports a single column only");
+        assertFail("count(Distinct(foo, bar, foobar, 1+1))", 36, "count distinct aggregation supports a single column only");
+        assertFail("count(distinct))", 6, "table and column names that are SQL keywords have to be enclosed in double quotes, such as \"distinct\"");
+    }
+
+    @Test
     public void testCountStar() throws SqlException {
         x("* count", "count(*)");
     }
@@ -679,11 +734,6 @@ public class ExpressionParserTest extends AbstractCairoTest {
                 4,
                 "not a method call"
         );
-    }
-
-    @Test
-    public void testEqualPrecedence() throws Exception {
-        x("a b c ^ ^", "a^b^c");
     }
 
     @Test
@@ -902,6 +952,13 @@ public class ExpressionParserTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testIsNotFalse() throws SqlException {
+        x("a False !=", "a IS not False");
+        x("tab.a False !=", "tab.a IS NOT False");
+        x("'False' False !=", "'False' IS not False");
+    }
+
+    @Test
     public void testIsNotNull() throws SqlException {
         x("a NULL !=", "a IS NOT NULL");
         x("tab.a NULL !=", "tab.a IS NOT NULL");
@@ -910,10 +967,17 @@ public class ExpressionParserTest extends AbstractCairoTest {
         x("NULL NULL !=", "NULL IS NOT NULL");
         x("'null' NULL !=", "'null' IS NOT NULL");
         x("'' null || NULL !=", "('' || null) IS NOT NULL");
-        assertFail("column is not 3", 7, "IS NOT must be followed by NULL");
+        assertFail("column is not 3", 7, "IS NOT must be followed by NULL, TRUE or FALSE");
         assertFail(". is not great", 2, "IS [NOT] not allowed here");
-        assertFail("column is not $1", 7, "IS NOT must be followed by NULL");
-        assertFail("column is not", 7, "IS NOT must be followed by NULL");
+        assertFail("column is not $1", 7, "IS NOT must be followed by NULL, TRUE or FALSE");
+        assertFail("column is not", 7, "IS NOT must be followed by NULL, TRUE or FALSE");
+    }
+
+    @Test
+    public void testIsNotTrue() throws SqlException {
+        x("a True !=", "a IS not True");
+        x("tab.a True !=", "tab.a IS NOT True");
+        x("'true' true !=", "'true' IS not true");
     }
 
     @Test
@@ -925,10 +989,18 @@ public class ExpressionParserTest extends AbstractCairoTest {
         x("NULL NULL =", "NULL IS NULL");
         x("'null' NULL =", "'null' IS NULL");
         x("'' null | NULL =", "('' | null) IS NULL");
-        assertFail("column is 3", 7, "IS must be followed by NULL");
+        assertFail("column is 3", 7, "IS must be followed by NULL, TRUE or FALSE");
         assertFail(". is great", 2, "IS [NOT] not allowed here");
-        assertFail("column is $1", 7, "IS must be followed by NULL");
+        assertFail("column is $1", 7, "IS must be followed by NULL, TRUE or FALSE");
         assertFail("column is", 7, "IS must be followed by [NOT] NULL");
+    }
+
+    @Test
+    public void testIsTrue() throws SqlException {
+        x("a True =", "a IS True");
+        x("tab.a True =", "tab.a IS True");
+        x("'true' true =", "'true' IS true");
+        x("'' null | NULL =", "('' | null) IS NULL");
     }
 
     @Test
@@ -1072,6 +1144,16 @@ public class ExpressionParserTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testNotInTimestamp() throws Exception {
+        x("x '2022-01-01' in not", "x not in '2022-01-01'");
+    }
+
+    @Test
+    public void testNotOperator() throws SqlException {
+        x("aboolean true = aboolean false not = not or", "aboolean = true or not aboolean = not false");
+    }
+
+    @Test
     public void testOverlappedBraceBracket() {
         assertFail(
                 "a([i)]",
@@ -1115,6 +1197,38 @@ public class ExpressionParserTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testStringAggDistinctRewrites() throws SqlException {
+        x("foo ',' string_distinct_agg", "string_distinct_agg(foo, ',')");
+        x("foo ',' string_distinct_agg", "string_agg(distinct foo, ',')");
+
+        x("1 1 + ',' string_distinct_agg", "string_distinct_agg(1+1, ',')");
+        x("1 1 + ',' string_distinct_agg", "string_agg(distinct 1+1, ',')");
+
+        x("bar foo ',' string_distinct_agg", "string_distinct_agg(foo(bar), ',')");
+        x("bar foo ',' string_distinct_agg", "string_agg(distinct foo(bar), ',')");
+
+        x("bar foo ',' string_distinct_agg varchar cast", "cast (string_distinct_agg(foo(bar), ',') as varchar)");
+        x("bar foo ',' string_distinct_agg varchar cast", "cast (string_agg(distinct foo(bar), ',') as varchar)");
+
+        // check 'distinct' as a column name works when quoted
+        x("distinct ',' string_agg varchar cast", "cast (string_agg(\"distinct\", ',') as varchar)");
+        // not re-written when string_agg is not a function
+        x("string_agg distinct foo", "foo(string_agg, distinct)");
+        x("distinctnot string_agg", "string_agg(distinctnot)");
+        x("bar string_agg distinct foo", "foo(bar, string_agg, distinct)");
+        x("string_agg bar distinct foo", "foo(bar(string_agg), distinct)");
+
+        assertFail("string_agg(distinct)", 11, "table and column names that are SQL keywords have to be enclosed in double quotes, such as \"distinct\"");
+        assertFail("notcount(distinct foo, ',')", 18, "dangling literal");
+        assertFail("notcount(distinct foo)", 18, "dangling literal");
+    }
+
+    @Test
+    public void testStringAggDistinct_orderByNotSupported() {
+        assertFail("string_agg(distinct foo, ',' order by bar)", 29, "ORDER BY not supported for string_distinct_agg");
+    }
+
+    @Test
     public void testStringConcat() throws SqlException {
         x("a 'b' || c || d ||", "a||'b'||c||d");
     }
@@ -1140,6 +1254,12 @@ public class ExpressionParserTest extends AbstractCairoTest {
     @Test
     public void testUnary() throws Exception {
         x("4 c - *", "4 * -c");
+    }
+
+    @Test
+    public void testUnaryComplement() throws Exception {
+        x("1 ~ 1 >", "~1 > 1");
+        x("1 ~ - ~ - 1 - ~ >", "-~-~1 > ~-1");
     }
 
     @Test

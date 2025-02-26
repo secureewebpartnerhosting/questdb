@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -75,48 +75,48 @@ public class FirstIPv4GroupByFunction extends IPv4Function implements GroupByFun
     }
 
     @Override
-    public boolean isConstant() {
-        return false;
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
     }
 
     @Override
-    public boolean isReadThreadSafe() {
-        return UnaryFunction.super.isReadThreadSafe();
-    }
-
-    @Override
-    public void merge(MapValue destValue, MapValue srcValue) {
-        long srcRowId = srcValue.getLong(valueIndex);
-        long destRowId = destValue.getLong(valueIndex);
-        if (srcRowId != Numbers.LONG_NaN && (srcRowId < destRowId || destRowId == Numbers.LONG_NaN)) {
-            destValue.putLong(valueIndex, srcRowId);
-            destValue.putInt(valueIndex + 1, srcValue.getIPv4(valueIndex + 1));
-        }
-    }
-
-    @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
         this.valueIndex = columnTypes.getColumnCount();
         columnTypes.add(ColumnType.LONG); // row id
         columnTypes.add(ColumnType.IPv4); // value
     }
 
     @Override
+    public boolean isConstant() {
+        return false;
+    }
+
+    @Override
+    public boolean isThreadSafe() {
+        return UnaryFunction.super.isThreadSafe();
+    }
+
+    @Override
+    public void merge(MapValue destValue, MapValue srcValue) {
+        long srcRowId = srcValue.getLong(valueIndex);
+        long destRowId = destValue.getLong(valueIndex);
+        if (srcRowId != Numbers.LONG_NULL && (srcRowId < destRowId || destRowId == Numbers.LONG_NULL)) {
+            destValue.putLong(valueIndex, srcRowId);
+            destValue.putInt(valueIndex + 1, srcValue.getIPv4(valueIndex + 1));
+        }
+    }
+
+    @Override
     public void setInt(MapValue mapValue, int value) {
         // This method is used to define interpolated points and to init
         // an empty value, so it's ok to reset the row id field here.
-        mapValue.putLong(valueIndex, Numbers.LONG_NaN);
+        mapValue.putLong(valueIndex, Numbers.LONG_NULL);
         mapValue.putInt(valueIndex + 1, value);
     }
 
     @Override
     public void setNull(MapValue mapValue) {
         setInt(mapValue, Numbers.IPv4_NULL);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override

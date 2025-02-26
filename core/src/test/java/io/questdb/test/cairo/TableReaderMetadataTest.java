@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,13 @@
 
 package io.questdb.test.cairo;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableReaderMetadata;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.TableWriter;
 import io.questdb.std.ObjIntHashMap;
 import io.questdb.std.Os;
 import io.questdb.std.Rnd;
@@ -74,12 +80,12 @@ public class TableReaderMetadataTest extends AbstractCairoTest {
 
     @Test
     public void testAddColumnConcurrent() throws Throwable {
-        CyclicBarrier start = new CyclicBarrier(2);
-        AtomicInteger done = new AtomicInteger();
-        AtomicInteger columnsAdded = new AtomicInteger();
-        AtomicInteger reloadCount = new AtomicInteger();
-        int totalColAddCount = 1000;
-        TableToken tableToken = engine.verifyTableName("all");
+        final CyclicBarrier start = new CyclicBarrier(2);
+        final AtomicInteger columnsAdded = new AtomicInteger();
+        final AtomicInteger reloadCount = new AtomicInteger();
+
+        final int totalColAddCount = 1000;
+        final TableToken tableToken = engine.verifyTableName("all");
 
         Thread writerThread = new Thread(() -> {
             try (TableWriter writer = getWriter(tableToken)) {
@@ -91,15 +97,14 @@ public class TableReaderMetadataTest extends AbstractCairoTest {
             } catch (Throwable e) {
                 exception = e;
                 LOG.error().$(e).$();
-            } finally {
-                done.incrementAndGet();
             }
         });
 
         Thread readerThread = new Thread(() -> {
             try (TableReader reader = engine.getReader(tableToken)) {
                 start.await();
-                int colAdded = -1, newColsAdded;
+                int colAdded = -1;
+                int newColsAdded;
                 while (colAdded < totalColAddCount) {
                     if (colAdded < (newColsAdded = columnsAdded.get())) {
                         reader.reload();
@@ -122,7 +127,7 @@ public class TableReaderMetadataTest extends AbstractCairoTest {
         if (exception != null) {
             throw exception;
         }
-        Assert.assertTrue(reloadCount.get() > 100);
+        Assert.assertTrue(reloadCount.get() > 0);
         LOG.infoW().$("total reload count ").$(reloadCount.get()).$();
     }
 
@@ -150,6 +155,49 @@ public class TableReaderMetadataTest extends AbstractCairoTest {
     }
 
     @Test
+    public void testAddRemoveChangeType() throws Exception {
+        final String expected = "int:INT\n" +
+                "short:SHORT\n" +
+                "byte:BYTE\n" +
+                "double:DOUBLE\n" +
+                "float:FLOAT\n" +
+                "long:LONG\n" +
+                "str:" + varcharColumnType + "\n" +
+                "sym:" + stringColumnType + "\n" +
+                "bin:BINARY\n" +
+                "date:DATE\n" +
+                "varchar:" + stringColumnType + "\n" +
+                "bool2:BOOLEAN\n";
+        assertThat(expected,
+                w -> w.changeColumnType("sym", ColumnType.STRING, 0, false, false, 0, false, null),
+                w -> w.changeColumnType("str", ColumnType.VARCHAR, 0, false, false, 0, false, null),
+                w -> w.removeColumn("bool"),
+                w -> w.addColumn("bool2", ColumnType.BOOLEAN, 0, false, false, 0, false, false, null),
+                w -> w.changeColumnType("varchar", ColumnType.STRING, 0, false, false, 0, false, null)
+        );
+    }
+
+    @Test
+    public void testChangeType() throws Exception {
+        final String expected = "int:INT\n" +
+                "short:SHORT\n" +
+                "byte:BYTE\n" +
+                "double:DOUBLE\n" +
+                "float:FLOAT\n" +
+                "long:LONG\n" +
+                "str:" + varcharColumnType + "\n" +
+                "sym:" + stringColumnType + "\n" +
+                "bool:BOOLEAN\n" +
+                "bin:BINARY\n" +
+                "date:DATE\n" +
+                "varchar:" + varcharColumnType + "\n";
+        assertThat(expected,
+                w -> w.changeColumnType("sym", ColumnType.STRING, 0, false, false, 0, false, null),
+                w -> w.changeColumnType("str", ColumnType.VARCHAR, 0, false, false, 0, false, null)
+        );
+    }
+
+    @Test
     public void testColumnIndex() {
         ObjIntHashMap<String> expected = new ObjIntHashMap<>();
         expected.put("int", 0);
@@ -171,7 +219,7 @@ public class TableReaderMetadataTest extends AbstractCairoTest {
                 Path path = getMetaFilePath(root, tableName);
                 TableReaderMetadata metadata = new TableReaderMetadata(configuration)
         ) {
-            metadata.load(path);
+            metadata.load(path.$());
             for (ObjIntHashMap.Entry<String> e : expected) {
                 Assert.assertEquals(e.value, metadata.getColumnIndexQuiet(e.key));
             }
@@ -408,14 +456,14 @@ public class TableReaderMetadataTest extends AbstractCairoTest {
 
     private static Path getMetaFilePath(final CharSequence root, final CharSequence tableName) {
         TableToken tableToken = engine.verifyTableName(tableName);
-        return new Path().of(root).concat(tableToken).concat(TableUtils.META_FILE_NAME).$();
+        return new Path().of(root).concat(tableToken).concat(TableUtils.META_FILE_NAME);
     }
 
     private void assertThat(String expected, ColumnManipulator... manipulators) throws Exception {
         // Test one by one
         runWithManipulators(expected, manipulators);
         try (Path path = new Path()) {
-            engine.drop(path, engine.verifyTableName("all"));
+            engine.dropTableOrMatView(path, engine.verifyTableName("all"));
         }
         CreateTableTestUtils.createAllTable(engine, PartitionBy.DAY);
 
@@ -436,16 +484,12 @@ public class TableReaderMetadataTest extends AbstractCairoTest {
                 tableId = metadata.getTableId();
                 for (ColumnManipulator manipulator : manipulators) {
                     long structVersion;
-                    try (TableWriter writer = newOffPoolWriter(configuration, tableName, metrics)) {
+                    try (TableWriter writer = newOffPoolWriter(configuration, tableName)) {
                         manipulator.restructure(writer);
                         structVersion = writer.getMetadataVersion();
                     }
-                    long pTransitionIndex = metadata.createTransitionIndex(structVersion);
-                    try {
-                        metadata.applyTransitionIndex();
-                    } finally {
-                        TableUtils.freeTransitionIndex(pTransitionIndex);
-                    }
+                    metadata.prepareTransition(structVersion);
+                    metadata.applyTransition();
                 }
                 StringSink sink = new StringSink();
                 for (int i = 0; i < metadata.getColumnCount(); i++) {

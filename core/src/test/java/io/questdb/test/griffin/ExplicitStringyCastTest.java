@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,6 +35,31 @@ import java.util.Collection;
 @RunWith(Parameterized.class)
 public class ExplicitStringyCastTest extends AbstractCairoTest {
 
+    private final String castTableDdl = "create table cast_table as (select" +
+            " rnd_boolean() a_boolean," +
+            " rnd_byte(0,1) a_byte," +
+            " rnd_short(0,1) a_short," +
+            " rnd_int(0,1,0) a_int," +
+            " rnd_long(0,1,0) a_long," +
+            " rnd_long256() a_long256," +
+            " rnd_float() a_float," +
+            " rnd_double() a_double," +
+            " rnd_date(to_date('2024','yyyy'),to_date('2025','yyyy'),0) a_date," +
+            " rnd_timestamp(to_timestamp('2024','yyyy'),to_timestamp('2025','yyyy'),0) a_timestamp," +
+            " rnd_char() a_char," +
+            " rnd_symbol('sym1') a_symbol," +
+            " rnd_uuid4() a_uuid4," +
+            " rnd_str(3,3,0) a_string," +
+            " rnd_varchar(3,3,0) a_varchar," +
+            " from long_sequence(1))";
+    private final String castType;
+    private final String expectedCastValue;
+
+    public ExplicitStringyCastTest(String castType, String expectedCastValue) {
+        this.castType = castType;
+        this.expectedCastValue = expectedCastValue;
+    }
+
     @Parameterized.Parameters(name = "{0}")
     public static Collection<Object[]> data() {
         return Arrays.asList(new Object[][]{
@@ -56,36 +81,10 @@ public class ExplicitStringyCastTest extends AbstractCairoTest {
         });
     }
 
-    private final String castTableDdl = "create table cast_table as (select" +
-            " rnd_boolean() a_boolean," +
-            " rnd_byte(0,1) a_byte," +
-            " rnd_short(0,1) a_short," +
-            " rnd_int(0,1,0) a_int," +
-            " rnd_long(0,1,0) a_long," +
-            " rnd_long256() a_long256," +
-            " rnd_float() a_float," +
-            " rnd_double() a_double," +
-            " rnd_date(to_date('2024','yyyy'),to_date('2025','yyyy'),0) a_date," +
-            " rnd_timestamp(to_timestamp('2024','yyyy'),to_timestamp('2025','yyyy'),0) a_timestamp," +
-            " rnd_char() a_char," +
-            " rnd_symbol('sym1') a_symbol," +
-            " rnd_uuid4() a_uuid4," +
-            " rnd_str(3,3,0) a_string," +
-            " rnd_varchar(3,3,0) a_varchar," +
-            " from long_sequence(1))";
-
-    private final String castType;
-    private final String expectedCastValue;
-
-    public ExplicitStringyCastTest(String castType, String expectedCastValue) {
-        this.castType = castType;
-        this.expectedCastValue = expectedCastValue;
-    }
-
     @Test
     public void testCastToString() throws Exception {
         assertQuery("a\ttypeOf\n" +
-                expectedCastValue + "\tSTRING\n",
+                        expectedCastValue + "\tSTRING\n",
                 String.format("select a, typeOf(a) typeOf from" +
                         " (select cast(a_%s as string) a from cast_table)", castType),
                 castTableDdl, null, true, true
@@ -95,7 +94,7 @@ public class ExplicitStringyCastTest extends AbstractCairoTest {
     @Test
     public void testCastToVarchar() throws Exception {
         assertQuery("a\ttypeOf\n" +
-                expectedCastValue + "\tVARCHAR\n",
+                        expectedCastValue + "\tVARCHAR\n",
                 String.format("select a, typeOf(a) typeOf from" +
                         " (select cast(a_%s as varchar) a from cast_table)", castType),
                 castTableDdl, null, true, true

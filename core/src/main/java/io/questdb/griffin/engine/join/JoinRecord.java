@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,11 +26,10 @@ package io.questdb.griffin.engine.join;
 
 import io.questdb.cairo.sql.Record;
 import io.questdb.std.BinarySequence;
+import io.questdb.std.Interval;
 import io.questdb.std.Long256;
 import io.questdb.std.str.CharSink;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 public class JoinRecord implements Record {
     protected final int split;
@@ -154,6 +153,14 @@ public class JoinRecord implements Record {
     }
 
     @Override
+    public Interval getInterval(int col) {
+        if (col < split) {
+            return master.getInterval(col);
+        }
+        return slave.getInterval(col - split);
+    }
+
+    @Override
     public long getLong(int col) {
         if (col < split) {
             return master.getLong(col);
@@ -232,15 +239,6 @@ public class JoinRecord implements Record {
     }
 
     @Override
-    public void getStr(int col, Utf16Sink utf16Sink) {
-        if (col < split) {
-            master.getStr(col, utf16Sink);
-        } else {
-            slave.getStr(col - split, utf16Sink);
-        }
-    }
-
-    @Override
     public CharSequence getStrB(int col) {
         if (col < split) {
             return master.getStrB(col);
@@ -286,15 +284,6 @@ public class JoinRecord implements Record {
     }
 
     @Override
-    public void getVarchar(int col, Utf8Sink utf8Sink) {
-        if (col < split) {
-            master.getVarchar(col, utf8Sink);
-        } else {
-            slave.getVarchar(col - split, utf8Sink);
-        }
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(int col) {
         if (col < split) {
             return master.getVarcharA(col);
@@ -308,6 +297,14 @@ public class JoinRecord implements Record {
             return master.getVarcharB(col);
         }
         return slave.getVarcharB(col - split);
+    }
+
+    @Override
+    public int getVarcharSize(int col) {
+        if (col < split) {
+            return master.getVarcharSize(col);
+        }
+        return slave.getVarcharSize(col - split);
     }
 
     void of(Record master, Record slave) {

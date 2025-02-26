@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,9 +33,6 @@ import io.questdb.std.NumericException;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
 import io.questdb.std.datetime.millitime.DateFormatUtils;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
-import io.questdb.std.str.Utf8StringSink;
-import io.questdb.std.str.Utf8s;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -122,7 +119,7 @@ public class StrFunctionTest {
 
     @Test
     public void testCastToDateNull() {
-        Assert.assertEquals(Numbers.LONG_NaN, new StrConstant(null).getDate(null));
+        Assert.assertEquals(Numbers.LONG_NULL, new StrConstant(null).getDate(null));
     }
 
     @Test
@@ -282,7 +279,7 @@ public class StrFunctionTest {
 
     @Test
     public void testCastToIntNull() {
-        Assert.assertEquals(Numbers.INT_NaN, new StrConstant(null).getInt(null));
+        Assert.assertEquals(Numbers.INT_NULL, new StrConstant(null).getInt(null));
     }
 
     @Test
@@ -327,7 +324,7 @@ public class StrFunctionTest {
 
     @Test
     public void testCastToLongNull() {
-        Assert.assertEquals(Numbers.LONG_NaN, new StrConstant(null).getLong(null));
+        Assert.assertEquals(Numbers.LONG_NULL, new StrConstant(null).getLong(null));
     }
 
     @Test
@@ -412,7 +409,22 @@ public class StrFunctionTest {
 
     @Test
     public void testCastToTimestampNull() {
-        Assert.assertEquals(Numbers.LONG_NaN, new StrConstant(null).getTimestamp(null));
+        Assert.assertEquals(Numbers.LONG_NULL, new StrConstant(null).getTimestamp(null));
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBin() {
+        function.getBin(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBinLen() {
+        function.getBinLen(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBool() {
+        function.getBool(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -433,41 +445,6 @@ public class StrFunctionTest {
     @Test(expected = UnsupportedOperationException.class)
     public void testGetGeoShort() {
         function.getGeoShort(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetBin() {
-        function.getBin(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetBinLen() {
-        function.getBinLen(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetBool() {
-        function.getBool(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetRecordCursorFactory() {
-        function.getRecordCursorFactory();
-    }
-
-    @Test
-    public void testGetStrLen() {
-        Assert.assertEquals(1, function.getStrLen(null));
-    }
-
-    @Test
-    public void testGetSymbol() {
-        TestUtils.assertEquals("a", function.getSymbol(null));
-    }
-
-    @Test
-    public void testGetSymbolB() {
-        TestUtils.assertEquals("a", function.getSymbolB(null));
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -495,11 +472,24 @@ public class StrFunctionTest {
         function.getLong256B(null);
     }
 
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetRecordCursorFactory() {
+        function.getRecordCursorFactory();
+    }
+
     @Test
-    public void testGetVarcharToSink() {
-        Utf8Sink sink = new Utf8StringSink();
-        function.getVarchar(null, sink);
-        TestUtils.assertEquals("a", sink.toString());
+    public void testGetStrLen() {
+        Assert.assertEquals(1, function.getStrLen(null));
+    }
+
+    @Test
+    public void testGetSymbol() {
+        TestUtils.assertEquals("a", function.getSymbol(null));
+    }
+
+    @Test
+    public void testGetSymbolB() {
+        TestUtils.assertEquals("a", function.getSymbolB(null));
     }
 
     @Test

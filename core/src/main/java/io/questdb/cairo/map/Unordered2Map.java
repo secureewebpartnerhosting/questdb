@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,10 +24,20 @@
 
 package io.questdb.cairo.map;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.ColumnTypes;
+import io.questdb.cairo.RecordSink;
+import io.questdb.cairo.Reopenable;
 import io.questdb.cairo.sql.Record;
 import io.questdb.cairo.sql.RecordCursor;
-import io.questdb.std.*;
+import io.questdb.std.BinarySequence;
+import io.questdb.std.Interval;
+import io.questdb.std.Long256;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Transient;
+import io.questdb.std.Unsafe;
+import io.questdb.std.Vect;
 import io.questdb.std.bytes.Bytes;
 import io.questdb.std.str.Utf8Sequence;
 import org.jetbrains.annotations.NotNull;
@@ -47,9 +57,9 @@ import org.jetbrains.annotations.Nullable;
  * the declared column types to guarantee memory access safety.
  */
 public class Unordered2Map implements Map, Reopenable {
-
     static final long KEY_SIZE = Short.BYTES;
-    private static final int TABLE_SIZE = Short.toUnsignedInt((short) -1) + 1;
+    private static final int TABLE_CAPACITY = Short.toUnsignedInt((short) -1) + 1;
+
     private final Unordered2MapCursor cursor;
     private final long entrySize;
     private final Key key;
@@ -76,73 +86,78 @@ public class Unordered2Map implements Map, Reopenable {
             @Nullable @Transient ColumnTypes valueTypes,
             int memoryTag
     ) {
-        this.memoryTag = memoryTag;
+        try {
+            this.memoryTag = memoryTag;
 
-        final int keyColumnCount = keyTypes.getColumnCount();
-        long keySize = 0;
-        for (int i = 0; i < keyColumnCount; i++) {
-            final int columnType = keyTypes.getColumnType(i);
-            final int size = ColumnType.sizeOf(columnType);
-            if (size > 0) {
-                keySize += size;
-            } else {
-                keySize = -1;
-                break;
-            }
-        }
-        if (keySize <= 0 || keySize > KEY_SIZE) {
-            throw CairoException.nonCritical().put("unexpected key size: ").put(keySize);
-        }
-
-        long valueOffset = 0;
-        long[] valueOffsets = null;
-        long valueSize = 0;
-        if (valueTypes != null) {
-            int valueColumnCount = valueTypes.getColumnCount();
-            valueOffsets = new long[valueColumnCount];
-
-            for (int i = 0; i < valueColumnCount; i++) {
-                valueOffsets[i] = valueOffset;
-                final int columnType = valueTypes.getColumnType(i);
+            final int keyColumnCount = keyTypes.getColumnCount();
+            long keySize = 0;
+            for (int i = 0; i < keyColumnCount; i++) {
+                final int columnType = keyTypes.getColumnType(i);
                 final int size = ColumnType.sizeOf(columnType);
-                if (size <= 0) {
-                    throw CairoException.nonCritical().put("value type is not supported: ").put(ColumnType.nameOf(columnType));
+                if (size > 0) {
+                    keySize += size;
+                } else {
+                    keySize = -1;
+                    break;
                 }
-                valueOffset += size;
-                valueSize += size;
             }
+            if (keySize <= 0 || keySize > KEY_SIZE) {
+                throw CairoException.nonCritical().put("unexpected key size: ").put(keySize);
+            }
+
+            long valueOffset = 0;
+            long[] valueOffsets = null;
+            long valueSize = 0;
+            if (valueTypes != null) {
+                int valueColumnCount = valueTypes.getColumnCount();
+                valueOffsets = new long[valueColumnCount];
+
+                for (int i = 0; i < valueColumnCount; i++) {
+                    valueOffsets[i] = valueOffset;
+                    final int columnType = valueTypes.getColumnType(i);
+                    final int size = ColumnType.sizeOf(columnType);
+                    if (size <= 0) {
+                        throw CairoException.nonCritical().put("value type is not supported: ").put(ColumnType.nameOf(columnType));
+                    }
+                    valueOffset += size;
+                    valueSize += size;
+                }
+            }
+
+            this.entrySize = Bytes.align2b(KEY_SIZE + valueSize);
+
+            final long sizeBytes = entrySize * TABLE_CAPACITY;
+            memStart = Unsafe.malloc(sizeBytes, memoryTag);
+            Vect.memset(memStart, sizeBytes, 0);
+            memLimit = memStart + sizeBytes;
+            keyMemStart = Unsafe.malloc(KEY_SIZE, memoryTag);
+            Unsafe.getUnsafe().putShort(keyMemStart, (short) 0);
+
+            value = new Unordered2MapValue(valueSize, valueOffsets);
+            value2 = new Unordered2MapValue(valueSize, valueOffsets);
+            value3 = new Unordered2MapValue(valueSize, valueOffsets);
+
+            record = new Unordered2MapRecord(valueSize, valueOffsets, value, keyTypes, valueTypes);
+            cursor = new Unordered2MapCursor(record, this);
+            key = new Key();
+        } catch (Throwable th) {
+            close();
+            throw th;
         }
-
-        this.entrySize = Bytes.align2b(KEY_SIZE + valueSize);
-
-        final long sizeBytes = entrySize * TABLE_SIZE;
-        memStart = Unsafe.malloc(sizeBytes, memoryTag);
-        Vect.memset(memStart, sizeBytes, 0);
-        memLimit = memStart + sizeBytes;
-        keyMemStart = Unsafe.malloc(KEY_SIZE, memoryTag);
-        Unsafe.getUnsafe().putShort(keyMemStart, (short) 0);
-
-        value = new Unordered2MapValue(valueSize, valueOffsets);
-        value2 = new Unordered2MapValue(valueSize, valueOffsets);
-        value3 = new Unordered2MapValue(valueSize, valueOffsets);
-
-        record = new Unordered2MapRecord(valueSize, valueOffsets, value, keyTypes, valueTypes);
-        cursor = new Unordered2MapCursor(record, this);
-        key = new Key();
     }
 
     @Override
     public void clear() {
         size = 0;
         hasZero = false;
-        Vect.memset(memStart, entrySize * TABLE_SIZE, 0);
+        Vect.memset(memStart, entrySize * TABLE_CAPACITY, 0);
         Unsafe.getUnsafe().putShort(keyMemStart, (short) 0);
     }
 
     @Override
-    public final void close() {
+    public void close() {
         if (memStart != 0) {
-            memStart = memLimit = Unsafe.free(memStart, entrySize * TABLE_SIZE, memoryTag);
+            memStart = memLimit = Unsafe.free(memStart, entrySize * TABLE_CAPACITY, memoryTag);
             keyMemStart = Unsafe.free(keyMemStart, KEY_SIZE, memoryTag);
             size = 0;
             hasZero = false;
@@ -156,12 +171,17 @@ public class Unordered2Map implements Map, Reopenable {
 
     @Override
     public int getKeyCapacity() {
-        return TABLE_SIZE;
+        return TABLE_CAPACITY;
     }
 
     @Override
     public MapRecord getRecord() {
         return record;
+    }
+
+    @Override
+    public boolean isOpen() {
+        return memStart != 0;
     }
 
     @Override
@@ -194,7 +214,7 @@ public class Unordered2Map implements Map, Reopenable {
         // Then we handle all non-zero keys.
         long destAddr = memStart + entrySize;
         long srcAddr = src2Map.memStart + entrySize;
-        for (int i = 1; i < TABLE_SIZE; i++, destAddr += entrySize, srcAddr += entrySize) {
+        for (int i = 1; i < TABLE_CAPACITY; i++, destAddr += entrySize, srcAddr += entrySize) {
             short srcKey = Unsafe.getUnsafe().getShort(srcAddr);
             if (srcKey == 0) {
                 continue;
@@ -216,7 +236,7 @@ public class Unordered2Map implements Map, Reopenable {
     }
 
     @Override
-    public void reopen(int keyCapacity, int heapSize) {
+    public void reopen(int keyCapacity, long heapSize) {
         reopen();
     }
 
@@ -229,7 +249,7 @@ public class Unordered2Map implements Map, Reopenable {
     @Override
     public void restoreInitialCapacity() {
         if (memStart == 0) {
-            final long sizeBytes = entrySize * TABLE_SIZE;
+            final long sizeBytes = entrySize * TABLE_CAPACITY;
             memStart = Unsafe.malloc(sizeBytes, memoryTag);
             memLimit = memStart + sizeBytes;
         }
@@ -288,8 +308,8 @@ public class Unordered2Map implements Map, Reopenable {
 
         @Override
         public void copyFrom(MapKey srcKey) {
-            Key srcFastKey = (Key) srcKey;
-            copyFromRawKey(srcFastKey.startAddress());
+            Key src2Key = (Key) srcKey;
+            copyFromRawKey(src2Key.startAddress());
         }
 
         @Override
@@ -312,7 +332,7 @@ public class Unordered2Map implements Map, Reopenable {
         }
 
         @Override
-        public MapValue createValue(int hashCode) {
+        public MapValue createValue(long hashCode) {
             return createValue();
         }
 
@@ -332,7 +352,7 @@ public class Unordered2Map implements Map, Reopenable {
         }
 
         @Override
-        public int hash() {
+        public long hash() {
             return 0; // no-op
         }
 
@@ -391,6 +411,11 @@ public class Unordered2Map implements Map, Reopenable {
 
         @Override
         public void putInt(int value) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void putInterval(Interval interval) {
             throw new UnsupportedOperationException();
         }
 

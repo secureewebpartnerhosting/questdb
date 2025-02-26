@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import io.questdb.cutlass.line.LineSenderException;
 import io.questdb.std.str.Path;
 import io.questdb.test.AbstractBootstrapTest;
 import io.questdb.test.TestServerMain;
+import io.questdb.test.cairo.TestTableReaderRecordCursor;
 import io.questdb.test.tools.TestUtils;
 import io.questdb.test.tools.TlsProxyRule;
 import org.junit.Assert;
@@ -83,13 +84,11 @@ public class LineHttpsSenderTest extends AbstractBootstrapTest {
                 }
                 long expectedSum = (count / 2) * (count + 1);
                 double expectedAvg = expectedSum / (double) count;
-                TestUtils.assertEventually(() -> {
-                    serverMain.assertSql(
-                            "select sum(value), max(value), min(value), avg(value) from " + tableName,
-                            "sum\tmax\tmin\tavg\n"
-                                    + expectedSum + "\t" + count + "\t1\t" + expectedAvg + "\n"
-                    );
-                });
+                TestUtils.assertEventually(() -> serverMain.assertSql(
+                        "select sum(value), max(value), min(value), avg(value) from " + tableName,
+                        "sum\tmax\tmin\tavg\n"
+                                + expectedSum + "\t" + count + "\t1\t" + expectedAvg + "\n"
+                ));
             }
         });
     }
@@ -140,13 +139,11 @@ public class LineHttpsSenderTest extends AbstractBootstrapTest {
                 }
                 long expectedSum = (count / 2) * (count + 1);
                 double expectedAvg = expectedSum / (double) count;
-                TestUtils.assertEventually(() -> {
-                    serverMain.assertSql(
-                            "select sum(value), max(value), min(value), avg(value) from " + tableName,
-                            "sum\tmax\tmin\tavg\n"
-                                    + expectedSum + "\t" + count + "\t1\t" + expectedAvg + "\n"
-                    );
-                });
+                TestUtils.assertEventually(() -> serverMain.assertSql(
+                        "select sum(value), max(value), min(value), avg(value) from " + tableName,
+                        "sum\tmax\tmin\tavg\n"
+                                + expectedSum + "\t" + count + "\t1\t" + expectedAvg + "\n"
+                ));
             }
         });
     }
@@ -289,8 +286,11 @@ public class LineHttpsSenderTest extends AbstractBootstrapTest {
         TestUtils.assertEventually(() -> {
             assertTableExists(engine, tableName);
 
-            try (TableReader reader = engine.getReader(tableName)) {
-                long size = reader.getCursor().size();
+            try (
+                    TableReader reader = engine.getReader(tableName);
+                    TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+            ) {
+                long size = cursor.size();
                 assertEquals(expectedSize, size);
             } catch (EntryLockedException e) {
                 // if table is busy we want to fail this round and have the assertEventually() to retry later

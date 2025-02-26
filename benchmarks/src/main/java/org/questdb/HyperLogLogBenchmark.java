@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 
 package org.questdb;
 
+import io.questdb.griffin.engine.groupby.FastGroupByAllocator;
 import io.questdb.griffin.engine.groupby.GroupByAllocator;
-import io.questdb.griffin.engine.groupby.GroupByAllocatorArena;
 import io.questdb.griffin.engine.groupby.GroupByLongHashSet;
 import io.questdb.griffin.engine.groupby.hyperloglog.HyperLogLog;
 import io.questdb.std.Hash;
@@ -44,7 +44,7 @@ import java.util.concurrent.TimeUnit;
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 public class HyperLogLogBenchmark {
     private static final long N = 1_000_000;
-    private static final GroupByAllocator allocator = new GroupByAllocatorArena(128 * 1024, Numbers.SIZE_1GB);
+    private static final GroupByAllocator allocator = new FastGroupByAllocator(128 * 1024, Numbers.SIZE_1GB);
     private static final HyperLogLog hll = new HyperLogLog(14);
     private static final Rnd rnd = new Rnd();
     private static final GroupByLongHashSet set = new GroupByLongHashSet(16, 0.7, 0);
@@ -80,7 +80,7 @@ public class HyperLogLogBenchmark {
     @Benchmark
     public void testGroupByLongHashSet() {
         long value = rnd.nextLong(N);
-        int index = set.of(setPtr).keyIndex(value);
+        long index = set.of(setPtr).keyIndex(value);
         if (index >= 0) {
             set.addAt(index, value);
             setPtr = set.ptr();

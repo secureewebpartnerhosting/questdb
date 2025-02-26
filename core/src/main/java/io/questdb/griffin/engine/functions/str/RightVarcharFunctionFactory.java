@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,7 +38,6 @@ import io.questdb.std.IntList;
 import io.questdb.std.Numbers;
 import io.questdb.std.ObjList;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 import io.questdb.std.str.Utf8StringSink;
 import io.questdb.std.str.Utf8s;
 import org.jetbrains.annotations.Nullable;
@@ -62,7 +61,7 @@ public class RightVarcharFunctionFactory implements FunctionFactory {
         final Function countFunc = args.getQuick(1);
         if (countFunc.isConstant()) {
             int count = countFunc.getInt(null);
-            if (count != Numbers.INT_NaN) {
+            if (count != Numbers.INT_NULL) {
                 return new ConstCountFunc(varcharFunc, count);
             } else {
                 return VarcharConstant.NULL;
@@ -76,9 +75,8 @@ public class RightVarcharFunctionFactory implements FunctionFactory {
     }
 
     private static class ConstCountFunc extends VarcharFunction implements UnaryFunction {
-
         private final int count;
-        private final Utf8StringSink sink = new Utf8StringSink();
+        private final Utf8StringSink sinkA = new Utf8StringSink();
         private final Utf8StringSink sinkB = new Utf8StringSink();
         private final Function varcharFunc;
 
@@ -93,27 +91,18 @@ public class RightVarcharFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-            Utf8Sequence value = varcharFunc.getVarcharA(rec);
-            if (value != null) {
-                final int len = Utf8s.validateUtf8(value);
-                if (len == -1) {
-                    // Invalid UTF-8.
-                    return;
-                }
-                final int charLo = getCharPos(len);
-                Utf8s.strCpy(value, charLo, len, utf8Sink);
-            }
-        }
-
-        @Override
         public @Nullable Utf8Sequence getVarcharA(Record rec) {
-            return getVarchar0(rec, sink);
+            return getVarchar0(rec, sinkA);
         }
 
         @Override
         public @Nullable Utf8Sequence getVarcharB(Record rec) {
             return getVarchar0(rec, sinkB);
+        }
+
+        @Override
+        public boolean isThreadSafe() {
+            return false;
         }
 
         @Override
@@ -144,9 +133,8 @@ public class RightVarcharFunctionFactory implements FunctionFactory {
     }
 
     private static class Func extends VarcharFunction implements BinaryFunction {
-
         private final Function countFunc;
-        private final Utf8StringSink sink = new Utf8StringSink();
+        private final Utf8StringSink sinkA = new Utf8StringSink();
         private final Utf8StringSink sinkB = new Utf8StringSink();
         private final Function varcharFunc;
 
@@ -171,23 +159,8 @@ public class RightVarcharFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-            final Utf8Sequence value = varcharFunc.getVarcharA(rec);
-            final int count = countFunc.getInt(rec);
-            if (value != null && count != Numbers.INT_NaN) {
-                final int len = Utf8s.validateUtf8(value);
-                if (len == -1) {
-                    // Invalid UTF-8.
-                    return;
-                }
-                final int charLo = getCharPos(len, count);
-                Utf8s.strCpy(value, charLo, len, utf8Sink);
-            }
-        }
-
-        @Override
         public @Nullable Utf8Sequence getVarcharA(Record rec) {
-            return getVarchar0(rec, sink);
+            return getVarchar0(rec, sinkA);
         }
 
         @Override
@@ -195,11 +168,16 @@ public class RightVarcharFunctionFactory implements FunctionFactory {
             return getVarchar0(rec, sinkB);
         }
 
+        @Override
+        public boolean isThreadSafe() {
+            return false;
+        }
+
         @Nullable
         private Utf8StringSink getVarchar0(Record rec, Utf8StringSink sink) {
             final Utf8Sequence value = varcharFunc.getVarcharA(rec);
             final int count = countFunc.getInt(rec);
-            if (value != null && count != Numbers.INT_NaN) {
+            if (value != null && count != Numbers.INT_NULL) {
                 final int len = Utf8s.validateUtf8(value);
                 if (len == -1) {
                     // Invalid UTF-8.

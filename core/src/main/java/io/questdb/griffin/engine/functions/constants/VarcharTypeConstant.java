@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,20 +27,10 @@ package io.questdb.griffin.engine.functions.constants;
 import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.TypeConstant;
 import io.questdb.griffin.engine.functions.VarcharFunction;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 public class VarcharTypeConstant extends VarcharFunction implements TypeConstant {
     public static final VarcharTypeConstant INSTANCE = new VarcharTypeConstant();
-
-    private VarcharTypeConstant() {
-        super();
-    }
-
-    @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-    }
 
     @Override
     public Utf8Sequence getVarcharA(Record rec) {

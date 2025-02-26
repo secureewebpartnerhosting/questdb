@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,18 +25,22 @@
 package io.questdb.cairo;
 
 import io.questdb.cairo.vm.api.MemoryMA;
-import io.questdb.std.*;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Misc;
+import io.questdb.std.Mutable;
+import io.questdb.std.Unsafe;
 import io.questdb.std.str.Path;
 
 public class SymbolColumnIndexer implements ColumnIndexer, Mutable {
 
     private static final long SEQUENCE_OFFSET;
-    private long buffer;
     private final int bufferSize;
     private final BitmapIndexWriter writer;
+    private long buffer;
     private long columnTop;
     private volatile boolean distressed = false;
-    private int fd = -1;
+    private long fd = -1;
     private FilesFacade ff;
     @SuppressWarnings({"FieldCanBeLocal", "FieldMayBeFinal"})
     private volatile long sequence = 0L;
@@ -44,7 +48,7 @@ public class SymbolColumnIndexer implements ColumnIndexer, Mutable {
     public SymbolColumnIndexer(CairoConfiguration configuration) {
         writer = new BitmapIndexWriter(configuration);
         bufferSize = 4096 * 1024;
-        buffer = Unsafe.malloc(bufferSize, MemoryTag.MMAP_INDEX_READER);
+        buffer = Unsafe.malloc(bufferSize, MemoryTag.NATIVE_INDEX_READER);
     }
 
     @Override
@@ -57,13 +61,9 @@ public class SymbolColumnIndexer implements ColumnIndexer, Mutable {
         releaseIndexWriter();
         if (buffer != 0) {
             fd = -1;
-            Unsafe.free(buffer, bufferSize, MemoryTag.MMAP_INDEX_READER);
+            Unsafe.free(buffer, bufferSize, MemoryTag.NATIVE_INDEX_READER);
             buffer = 0;
         }
-    }
-
-    public void releaseIndexWriter() {
-        Misc.free(writer);
     }
 
     @Override
@@ -90,7 +90,7 @@ public class SymbolColumnIndexer implements ColumnIndexer, Mutable {
     public void configureWriter(Path path, CharSequence name, long columnNameTxn, long columnTop) {
         this.columnTop = columnTop;
         try {
-            this.writer.of(path, name, columnNameTxn);
+            writer.of(path, name, columnNameTxn);
         } catch (Throwable e) {
             this.close();
             throw e;
@@ -103,7 +103,7 @@ public class SymbolColumnIndexer implements ColumnIndexer, Mutable {
     }
 
     @Override
-    public int getFd() {
+    public long getFd() {
         return fd;
     }
 
@@ -118,7 +118,7 @@ public class SymbolColumnIndexer implements ColumnIndexer, Mutable {
     }
 
     @Override
-    public void index(FilesFacade ff, int dataColumnFd, long loRow, long hiRow) {
+    public void index(FilesFacade ff, long dataColumnFd, long loRow, long hiRow) {
         // while we may have to read column starting with zero offset
         // index values have to be adjusted to partition-level row id
         writer.rollbackConditionally(loRow);
@@ -127,7 +127,7 @@ public class SymbolColumnIndexer implements ColumnIndexer, Mutable {
         int bufferCount = (int) (((hiRow - lo) * 4 - 1) / bufferSize + 1);
         for (int i = 0; i < bufferCount; i++) {
             long fileOffset = (lo - columnTop) * 4;
-            long bytesToRead = Math.min(bufferSize, (hiRow - lo) * 4);
+            long bytesToRead = Math.min(bufferSize, (hiRow - loRow) * 4);
             long read = ff.read(dataColumnFd, buffer, bytesToRead, fileOffset);
             if (read == -1) {
                 throw CairoException.critical(ff.errno()).put("could not read symbol column during indexing [fd=").put(dataColumnFd)
@@ -151,6 +151,10 @@ public class SymbolColumnIndexer implements ColumnIndexer, Mutable {
     @Override
     public void refreshSourceAndIndex(long loRow, long hiRow) {
         index(ff, fd, loRow, hiRow);
+    }
+
+    public void releaseIndexWriter() {
+        Misc.free(writer);
     }
 
     @Override

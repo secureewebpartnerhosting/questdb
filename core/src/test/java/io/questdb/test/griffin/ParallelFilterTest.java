@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ package io.questdb.test.griffin;
 import io.questdb.PropertyKey;
 import io.questdb.cairo.CairoException;
 import io.questdb.cairo.SqlJitMode;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.sql.AtomicBooleanCircuitBreaker;
 import io.questdb.cairo.sql.NetworkSqlExecutionCircuitBreaker;
 import io.questdb.cairo.sql.Record;
 import io.questdb.cairo.sql.RecordCursor;
@@ -35,13 +37,19 @@ import io.questdb.griffin.DefaultSqlExecutionCircuitBreakerConfiguration;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.SqlExecutionContextImpl;
+import io.questdb.griffin.engine.table.parquet.ParquetCompression;
+import io.questdb.griffin.engine.table.parquet.ParquetVersion;
+import io.questdb.griffin.engine.table.parquet.PartitionDescriptor;
+import io.questdb.griffin.engine.table.parquet.PartitionEncoder;
 import io.questdb.jit.JitUtil;
 import io.questdb.mp.SOCountDownLatch;
 import io.questdb.mp.WorkerPool;
+import io.questdb.std.Files;
 import io.questdb.std.LongList;
 import io.questdb.std.MemoryTag;
 import io.questdb.std.Misc;
 import io.questdb.std.datetime.millitime.MillisecondClock;
+import io.questdb.std.str.Path;
 import io.questdb.std.str.StringSink;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.tools.TestUtils;
@@ -50,14 +58,18 @@ import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.questdb.PropertyKey.CAIRO_PAGE_FRAME_SHARD_COUNT;
 
+@RunWith(Parameterized.class)
 public class ParallelFilterTest extends AbstractCairoTest {
-
     private static final int PAGE_FRAME_COUNT = 4; // also used to set queue size, so must be a power of 2
     private static final int PAGE_FRAME_MAX_ROWS = 100;
     private static final int ROW_COUNT = PAGE_FRAME_COUNT * PAGE_FRAME_MAX_ROWS;
@@ -110,29 +122,40 @@ public class ParallelFilterTest extends AbstractCairoTest {
             "4238042693748641409\n" +
             "4290477379978201771\n";
     private static final String expectedVarcharNoLimit = "l\tv\n" +
-            "3350660451986397456\t\uF885֜\uDB84\uDC57\uDA5F\uDC3E톾uȕ룿׆$ҙʪ薰H\n" +
-            "3520350102904985914\tؕ\uE62E8Q\n" +
-            "3523446414305966840\t涙㿽[gnS V@\uDB0F\uDDC2鉉ⓨQ\uDAE1\uDCBB鰅\uD961\uDC9E\n" +
-            "3547449704743013886\t\uDA51\uDF64Xⴿ\uD947\uDFA2̨RfAɥꚹF\n" +
-            "3564031921719748904\t\uDB62\uDCBCŞծZ骞\uDA1A\uDCB5\uD936\uDF44Uę\uDA65\uDE071(rոҊG\n" +
-            "3608246352203239925\t]Ddjvs\n" +
-            "3704058272045366471\t6\u05CF+ǩ\uD9F1\uDEE2\n" +
-            "3737446659030162960\t\uDB6D\uDFA0W٪Oߔ ɇ䊊\uDAF7\uDD75\uD9DD\uDC07ˡ\uD9F9\uDC4F飪E\n" +
-            "3781351123666129476\t鼨<sѳ\uE82E!ߟ✝س\uD8C6\uDCB6\n" +
-            "3795326354273440728\tΎK\u05F9\uD9CA\uDE84\n" +
-            "3843127285248668146\t堝ᢣ΄B\n" +
-            "3907043318808511548\t\u0092\uDB86\uDDA1̔L\n" +
-            "3917852914082112347\t䥍x\uD8C5\uDE7AS\uD9D9\uDE2Ak\n" +
-            "4007166842224933390\tˠֱ\uDB0A\uDEB4>钹\uDBC5\uDF3C(닸鉩j䂢ӽš評,\n" +
-            "4034325504592033197\tV퍳L嫣\uEB54\uDAF0\uDF8F̅!w\n" +
-            "4080972133824221876\t8W|鹚\uDB64\uDFC2Ԋ!\n" +
-            "4155840810671567423\t\uDB06\uDDF0\uDB6B\uDF55L꽭ܙ\uEB908ȫŒɽ[\uD9B4\uDE21\n" +
-            "4313109016078855600\tn䟺ᦺƼ\uD8CB\uDC7EٷiW\uD93D\uDD98\n" +
-            "4323884142722208393\t\uD99C\uDD61n촗ۉI\uD92F\uDD1C:퐲ޘ\uDA64\uDF82\n";
+            "3342946432339528961\t^̈RɗT\uDBCE\uDF3F\u008E\n" +
+            "3349345766605440862\t\n" +
+            "3394168647660478011\t)|1u%2uL>gG8#3Ts\n" +
+            "3401443869949416748\t\n" +
+            "3433721896286859656\t?[麛P\uD9E8\uDEDE\uD931\uDF48ҽ\uDA01\uDE60\n" +
+            "3523446414305966840\t7yXx>K%H[ g0nHS\\\n" +
+            "3547449704743013886\tfT)D>XP?dYL\n" +
+            "3570175762165818271\t97hVO\n" +
+            "3571824131493518678\tA왋G&ُܵ9}\uD91F\uDCE8+\uDAAF\uDC59\uDAC8\uDE3B亲\n" +
+            "3585172908882940409\t\n" +
+            "3682423623919780100\tF~)xNm\\~Fwz;gR.G\n" +
+            "3739186870210598690\tB&LA.&g\n" +
+            "3780956794407111569\t\n" +
+            "3921912097533020222\tmH%/###`3g?\n" +
+            "3927079694554322589\tg\uECF9J9漫\uDBDB\uDDDB1fÄ}o輖NI\n" +
+            "4171842711013652287\t\n" +
+            "4290056275098552124\t=ܼDdjvsoߛ)*EB\n";
     private static final String symbolQueryNegativeLimit = "select v from x where v > 3326086085493629941L and v < 4326086085493629941L limit -10";
     private static final String symbolQueryNoLimit = "select v from x where v > 3326086085493629941L and v < 4326086085493629941L order by v";
     private static final String symbolQueryPositiveLimit = "select v from x where v > 3326086085493629941L and v < 4326086085493629941L limit 10";
     private static final String varcharQueryNoLimit = "select l, v from x where l > 3326086085493629941L and l < 4326086085493629941L order by l";
+    private final boolean convertToParquet;
+
+    public ParallelFilterTest(boolean convertToParquet) {
+        this.convertToParquet = convertToParquet;
+    }
+
+    @Parameterized.Parameters(name = "parquet={0}")
+    public static Collection<Object[]> data() {
+        return Arrays.asList(new Object[][]{
+                {true},
+                {false},
+        });
+    }
 
     @Before
     public void setUp() {
@@ -141,7 +164,9 @@ public class ParallelFilterTest extends AbstractCairoTest {
         // queue capacity to exhibit various edge cases.
         setProperty(CAIRO_PAGE_FRAME_SHARD_COUNT, 2);
         setProperty(PropertyKey.CAIRO_PAGE_FRAME_REDUCE_QUEUE_CAPACITY, PAGE_FRAME_COUNT);
+        setProperty(PropertyKey.CAIRO_SQL_PARALLEL_WORK_STEALING_THRESHOLD, 1);
         super.setUp();
+        inputRoot = root;
     }
 
     @Test
@@ -172,23 +197,73 @@ public class ParallelFilterTest extends AbstractCairoTest {
 
     @Test
     public void testAsyncSubQueryWithFilterOnIndexedSymbol() throws Exception {
-        testAsyncSubQueryWithFilter("SELECT count(*) " +
-                "FROM price " +
-                "WHERE type IN (SELECT id FROM mapping WHERE ext in ('s1', 's2') and substring(ext,2,1) = '1')");
+        testAsyncSubQueryWithFilter(
+                "SELECT count(*) " +
+                        "FROM price " +
+                        "WHERE type IN (SELECT id FROM mapping WHERE ext in ('s1', 's2') and substring(ext,2,1) = '1')"
+        );
     }
 
     @Test
     public void testAsyncSubQueryWithFilterOnLatestBy() throws Exception {
-        testAsyncSubQueryWithFilter("SELECT count(*) " +
-                "FROM price " +
-                "WHERE type IN (SELECT id FROM mapping WHERE ext in ('s1'))");
+        testAsyncSubQueryWithFilter(
+                "SELECT count(*) " +
+                        "FROM price " +
+                        "WHERE type IN (SELECT id FROM mapping WHERE ext in ('s1'))"
+        );
     }
 
     @Test
     public void testAsyncSubQueryWithFilterOnSymbol() throws Exception {
-        testAsyncSubQueryWithFilter("SELECT count(*) " +
-                "FROM price " +
-                "WHERE type IN (SELECT id FROM mapping WHERE ext in ('s1'))");
+        testAsyncSubQueryWithFilter(
+                "SELECT count(*) " +
+                        "FROM price " +
+                        "WHERE type IN (SELECT id FROM mapping WHERE ext in ('s1'))"
+        );
+    }
+
+    @Test
+    public void testAsyncTimestampSubQueryWithEqFilter() throws Exception {
+        testAsyncTimestampSubQueryWithFilter(
+                "select * from x where ts2 = (select min(ts) from x)",
+                "ts\tts2\tid\n" +
+                        "1970-01-01T00:00:00.000001Z\t1970-01-01T00:00:00.000001Z\t1\n"
+        );
+    }
+
+    @Test
+    public void testEarlyCursorClose() throws Exception {
+        // This scenario used to lead to an NPE on `circuitBreaker.cancelledFlag` access in PageFrameReduceJob.
+        WorkerPool pool = new WorkerPool(() -> 4);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
+                            "CREATE TABLE x (" +
+                                    "  ts TIMESTAMP," +
+                                    "  id long" +
+                                    ") timestamp (ts) PARTITION BY DAY;",
+                            sqlExecutionContext
+                    );
+                    // We want a lot of page frames, so that reduce jobs have enough tasks to do.
+                    engine.execute("insert into x select x::timestamp, x from long_sequence(" + (1000 * PAGE_FRAME_MAX_ROWS) + ")", sqlExecutionContext);
+
+                    // A special CB is needed to be able to track NPEs since otherwise the exception will come unnoticed.
+                    final NpeCountingAtomicBooleanCircuitBreaker npeCountingCircuitBreaker = new NpeCountingAtomicBooleanCircuitBreaker();
+                    ((SqlExecutionContextImpl) sqlExecutionContext).with(npeCountingCircuitBreaker);
+
+                    try (RecordCursorFactory factory = compiler.compile("x where id != -1;", sqlExecutionContext).getRecordCursorFactory()) {
+                        try (RecordCursor cursor = factory.getCursor(sqlExecutionContext)) {
+                            // Trigger parallel filter and call it a day. The cursor will be closed early.
+                            Assert.assertTrue(cursor.hasNext());
+                        }
+                    }
+
+                    Assert.assertEquals(0, npeCountingCircuitBreaker.npeCounter.get());
+                },
+                configuration,
+                LOG
+        );
     }
 
     @Test
@@ -196,9 +271,11 @@ public class ParallelFilterTest extends AbstractCairoTest {
         final int threadCount = 4;
         final int workerCount = 4;
 
-        WorkerPool pool = new WorkerPool((() -> workerCount));
-        TestUtils.execute(pool, (engine, compiler, sqlExecutionContext) -> {
-                    engine.ddl(
+        WorkerPool pool = new WorkerPool(() -> workerCount);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
                             "CREATE TABLE 'test1' " +
                                     "(column1 SYMBOL capacity 256 CACHE index capacity 256, timestamp TIMESTAMP) " +
                                     "timestamp (timestamp) PARTITION BY HOUR",
@@ -208,10 +285,15 @@ public class ParallelFilterTest extends AbstractCairoTest {
                     final int numOfRows = 2000;
                     for (int i = 0; i < numOfRows; i++) {
                         final int seconds = i % 60;
-                        engine.insert(
-                                "INSERT INTO test1 (column1, timestamp) " +
-                                        "VALUES ('0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c', '2022-08-28T06:25:"
-                                        + (seconds < 10 ? "0" + seconds : String.valueOf(seconds)) + "Z')",
+                        CharSequence insertSql = "INSERT INTO test1 (column1, timestamp) " +
+                                "VALUES ('0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c', '2022-08-28T06:25:"
+                                + (seconds < 10 ? "0" + seconds : String.valueOf(seconds)) + "Z')";
+                        engine.execute(insertSql, sqlExecutionContext);
+                    }
+
+                    if (convertToParquet) {
+                        engine.execute(
+                                "alter table test1 convert partition to parquet where timestamp >= 0",
                                 sqlExecutionContext
                         );
                     }
@@ -261,6 +343,100 @@ public class ParallelFilterTest extends AbstractCairoTest {
                 configuration,
                 LOG
         );
+    }
+
+    @Test
+    public void testHammerWorkStealing() throws Exception {
+        Assume.assumeFalse(convertToParquet);
+        // Here we're stress-testing work stealing, so no shared workers and no reduce jobs.
+        final int threadCount = 4;
+        final int iterations = 1000;
+
+        assertMemoryLeak(() -> {
+            engine.execute(
+                    "CREATE TABLE 'x' (ts timestamp, id long) TIMESTAMP(ts) PARTITION BY DAY;",
+                    sqlExecutionContext
+            );
+            // We want tasks from different queries to interleave within the queue,
+            // so generate only `PAGE_FRAME_COUNT / 2` page frames.
+            engine.execute(
+                    "insert into x select x::timestamp, x from long_sequence(" + ((PAGE_FRAME_COUNT / 2) * PAGE_FRAME_MAX_ROWS) + ")",
+                    sqlExecutionContext
+            );
+
+            final String query = "SELECT count() FROM x WHERE id > 42;";
+
+            final RecordCursorFactory[] factories = new RecordCursorFactory[threadCount];
+            for (int i = 0; i < threadCount; i++) {
+                // Each factory should use a dedicated compiler instance, so that they don't
+                // share the same reduce task local pool in the SqlCodeGenerator.
+                factories[i] = engine.select(query, sqlExecutionContext);
+            }
+
+            final AtomicInteger errors = new AtomicInteger();
+            final CyclicBarrier barrier = new CyclicBarrier(threadCount);
+            final SOCountDownLatch haltLatch = new SOCountDownLatch(threadCount);
+            for (int i = 0; i < threadCount; i++) {
+                final int finalI = i;
+                new Thread(() -> {
+                    TestUtils.await(barrier);
+
+                    final RecordCursorFactory factory = factories[finalI];
+                    try (SqlExecutionContext ctx = TestUtils.createSqlExecutionCtx(engine)) {
+                        // Make sure to use atomic CB instead of the default test no-op.
+                        ctx.setUseSimpleCircuitBreaker(true);
+                        for (int j = 0; j < iterations; j++) {
+                            try (RecordCursor cursor = factory.getCursor(ctx)) {
+                                final Record record = cursor.getRecord();
+                                Assert.assertTrue(cursor.hasNext());
+                                Assert.assertEquals(158, record.getLong(0));
+                                Assert.assertFalse(cursor.hasNext());
+                            } catch (Throwable e) {
+                                e.printStackTrace();
+                                errors.incrementAndGet();
+                            }
+                        }
+                    } finally {
+                        haltLatch.countDown();
+                    }
+                }).start();
+            }
+
+            haltLatch.await();
+
+            Misc.free(factories);
+            Assert.assertEquals(0, errors.get());
+        });
+    }
+
+    @Test
+    public void testInAndInTimestampJitDisabled() throws Exception {
+        testInAndInTimestamp(SqlJitMode.JIT_MODE_DISABLED);
+    }
+
+    @Test
+    public void testInAndInTimestampJitEnabled() throws Exception {
+        testInAndInTimestamp(SqlJitMode.JIT_MODE_ENABLED);
+    }
+
+    @Test
+    public void testInJitDisabled() throws Exception {
+        testIn(SqlJitMode.JIT_MODE_DISABLED);
+    }
+
+    @Test
+    public void testInJitEnabled() throws Exception {
+        testIn(SqlJitMode.JIT_MODE_ENABLED);
+    }
+
+    @Test
+    public void testInTimestampJitDisabled() throws Exception {
+        testInTimestamp(SqlJitMode.JIT_MODE_DISABLED);
+    }
+
+    @Test
+    public void testInTimestampJitEnabled() throws Exception {
+        testInTimestamp(SqlJitMode.JIT_MODE_ENABLED);
     }
 
     @Test
@@ -375,12 +551,61 @@ public class ParallelFilterTest extends AbstractCairoTest {
     @Test
     public void testParallelStressVarcharSingleThreadMultipleWorkersSymbolValueFilter() throws Exception {
         testParallelStressVarchar(
-                "x where l > 3326086085493629941L and l < 4326086085493629941L and v = 'ؕ\uE62E8Q' order by l",
+                "x where l > 3326086085493629941L and l < 4326086085493629941L and v = 'A왋G&ُܵ9}\uD91F\uDCE8+\uDAAF\uDC59\uDAC8\uDE3B亲' order by l",
                 "l\tv\n" +
-                        "3520350102904985914\tؕ\uE62E8Q\n",
+                        "3571824131493518678\tA왋G&ُܵ9}\uD91F\uDCE8+\uDAAF\uDC59\uDAC8\uDE3B亲\n",
                 4,
                 1,
                 SqlJitMode.JIT_MODE_DISABLED
+        );
+    }
+
+    @Test
+    public void testReadParquet() throws Exception {
+        Assume.assumeTrue(convertToParquet);
+        WorkerPool pool = new WorkerPool(() -> 4);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
+                            "CREATE TABLE price (" +
+                                    "  ts TIMESTAMP," +
+                                    "  type SYMBOL," +
+                                    "  value DOUBLE" +
+                                    ") timestamp (ts) PARTITION BY DAY;",
+                            sqlExecutionContext
+                    );
+                    engine.execute("insert into price select x::timestamp, 't' || (x%5), rnd_double() from long_sequence(50000)", sqlExecutionContext);
+
+                    try (
+                            Path path = new Path();
+                            PartitionDescriptor partitionDescriptor = new PartitionDescriptor();
+                            TableReader reader = engine.getReader("price")
+                    ) {
+                        path.of(root).concat("price.parquet");
+                        PartitionEncoder.populateFromTableReader(reader, partitionDescriptor, 0);
+                        PartitionEncoder.encodeWithOptions(
+                                partitionDescriptor,
+                                path,
+                                ParquetCompression.COMPRESSION_UNCOMPRESSED,
+                                true,
+                                PAGE_FRAME_MAX_ROWS,
+                                0,
+                                ParquetVersion.PARQUET_VERSION_V1
+                        );
+                        Assert.assertTrue(Files.exists(path.$()));
+
+                        TestUtils.assertSql(
+                                engine,
+                                sqlExecutionContext,
+                                "select count() from read_parquet('price.parquet') where value > 0.5",
+                                sink,
+                                "count\n25139\n"
+                        );
+                    }
+                },
+                configuration,
+                LOG
         );
     }
 
@@ -464,9 +689,10 @@ public class ParallelFilterTest extends AbstractCairoTest {
     }
 
     private void testAsyncOffloadNegativeLimitTimeout() throws Exception {
+        Assume.assumeFalse(convertToParquet);
         assertMemoryLeak(() -> {
             SqlExecutionContextImpl context = (SqlExecutionContextImpl) sqlExecutionContext;
-            currentMicros = 0;
+            setCurrentMicros(0);
             NetworkSqlExecutionCircuitBreaker circuitBreaker = new NetworkSqlExecutionCircuitBreaker(
                     new DefaultSqlExecutionCircuitBreakerConfiguration() {
                         @Override
@@ -483,23 +709,23 @@ public class ParallelFilterTest extends AbstractCairoTest {
                     MemoryTag.NATIVE_DEFAULT
             );
 
-            ddl(
-                    "create table x ( " +
-                            "v long, " +
-                            "s symbol capacity 4 cache " +
-                            ")"
-            );
-            insert("insert into x select rnd_long() v, rnd_symbol('A','B','C') s from long_sequence(" + ROW_COUNT + ")");
-
-            context.with(
-                    context.getSecurityContext(),
-                    context.getBindVariableService(),
-                    context.getRandom(),
-                    context.getRequestFd(),
-                    circuitBreaker
-            );
-
             try {
+                execute(
+                        "create table x ( " +
+                                "v long, " +
+                                "s symbol capacity 4 cache " +
+                                ")"
+                );
+                execute("insert into x select rnd_long() v, rnd_symbol('A','B','C') s from long_sequence(" + ROW_COUNT + ")");
+
+                context.with(
+                        context.getSecurityContext(),
+                        context.getBindVariableService(),
+                        context.getRandom(),
+                        context.getRequestFd(),
+                        circuitBreaker
+                );
+
                 assertSql(
                         "s\n" +
                                 "A\n" +
@@ -526,9 +752,10 @@ public class ParallelFilterTest extends AbstractCairoTest {
     }
 
     private void testAsyncOffloadTimeout() throws Exception {
+        Assume.assumeFalse(convertToParquet);
         assertMemoryLeak(() -> {
             SqlExecutionContextImpl context = (SqlExecutionContextImpl) sqlExecutionContext;
-            currentMicros = 0;
+            setCurrentMicros(0);
             NetworkSqlExecutionCircuitBreaker circuitBreaker = new NetworkSqlExecutionCircuitBreaker(
                     new DefaultSqlExecutionCircuitBreakerConfiguration() {
                         @Override
@@ -545,23 +772,23 @@ public class ParallelFilterTest extends AbstractCairoTest {
                     MemoryTag.NATIVE_DEFAULT
             );
 
-            ddl(
-                    "create table x ( " +
-                            "v long, " +
-                            "s symbol capacity 4 cache " +
-                            ")"
-            );
-            insert("insert into x select rnd_long() v, rnd_symbol('A','B','C') s from long_sequence(" + ROW_COUNT + ")");
-
-            context.with(
-                    context.getSecurityContext(),
-                    context.getBindVariableService(),
-                    context.getRandom(),
-                    context.getRequestFd(),
-                    circuitBreaker
-            );
-
             try {
+                execute(
+                        "create table x ( " +
+                                "v long, " +
+                                "s symbol capacity 4 cache " +
+                                ")"
+                );
+                execute("insert into x select rnd_long() v, rnd_symbol('A','B','C') s from long_sequence(" + ROW_COUNT + ")");
+
+                context.with(
+                        context.getSecurityContext(),
+                        context.getBindVariableService(),
+                        context.getRandom(),
+                        context.getRequestFd(),
+                        circuitBreaker
+                );
+
                 assertSql(
                         "v\ts\n" +
                                 "3393210801760647293\tA\n" +
@@ -590,15 +817,28 @@ public class ParallelFilterTest extends AbstractCairoTest {
     }
 
     private void testAsyncSubQueryWithFilter(String query) throws Exception {
-        WorkerPool pool = new WorkerPool((() -> 4));
-        TestUtils.execute(pool, (engine, compiler, sqlExecutionContext) -> {
-                    ddl(compiler, "CREATE TABLE price (\n" +
-                            "  ts TIMESTAMP," +
-                            "  type SYMBOL," +
-                            "  value DOUBLE ) timestamp (ts) PARTITION BY DAY;", sqlExecutionContext);
-                    insert(compiler, "insert into price select x::timestamp,  't' || (x%5), rnd_double()  from long_sequence(100000)", sqlExecutionContext);
-                    ddl(compiler, "CREATE TABLE mapping ( id SYMBOL, ext SYMBOL, ext_in SYMBOL, ts timestamp ) timestamp(ts)", sqlExecutionContext);
-                    ddl(compiler, "insert into mapping select 't' || x, 's' || x, 's' || x, x::timestamp  from long_sequence(5)", sqlExecutionContext);
+        WorkerPool pool = new WorkerPool(() -> 4);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
+                            "CREATE TABLE price (" +
+                                    "  ts TIMESTAMP," +
+                                    "  type SYMBOL," +
+                                    "  value DOUBLE" +
+                                    ") timestamp (ts) PARTITION BY DAY;",
+                            sqlExecutionContext
+                    );
+                    engine.execute("insert into price select x::timestamp, 't' || (x%5), rnd_double() from long_sequence(100000)", sqlExecutionContext);
+                    engine.execute("CREATE TABLE mapping (id SYMBOL, ext SYMBOL, ext_in SYMBOL, ts timestamp) timestamp(ts)", sqlExecutionContext);
+                    engine.execute("insert into mapping select 't' || x, 's' || x, 's' || x, x::timestamp  from long_sequence(5)", sqlExecutionContext);
+                    if (convertToParquet) {
+                        execute(
+                                compiler,
+                                "alter table price convert partition to parquet where ts >= 0",
+                                sqlExecutionContext
+                        );
+                    }
 
                     TestUtils.assertSql(
                             engine,
@@ -613,22 +853,179 @@ public class ParallelFilterTest extends AbstractCairoTest {
         );
     }
 
+    private void testAsyncTimestampSubQueryWithFilter(String query, String expected) throws Exception {
+        WorkerPool pool = new WorkerPool(() -> 4);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
+                            "CREATE TABLE x (" +
+                                    "  ts TIMESTAMP," +
+                                    "  ts2 TIMESTAMP," +
+                                    "  id long" +
+                                    ") timestamp (ts) PARTITION BY DAY;",
+                            sqlExecutionContext
+                    );
+                    engine.execute("insert into x select x::timestamp, x::timestamp, x from long_sequence(100000)", sqlExecutionContext);
+
+                    TestUtils.assertSql(
+                            engine,
+                            sqlExecutionContext,
+                            query,
+                            sink,
+                            expected
+                    );
+                },
+                configuration,
+                LOG
+        );
+    }
+
+    private void testIn(int jitMode) throws Exception {
+        node1.setProperty(PropertyKey.CAIRO_SQL_JIT_MODE, SqlJitMode.toString(jitMode));
+
+        WorkerPool pool = new WorkerPool(() -> 4);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
+                            "CREATE TABLE tab (\n" +
+                                    "  ts TIMESTAMP," +
+                                    "  type INT," +
+                                    "  value SYMBOL) timestamp (ts) PARTITION BY DAY;",
+                            sqlExecutionContext
+                    );
+                    engine.execute("insert into tab select x::timestamp, x%10, 't' || (x%10) from long_sequence(10)", sqlExecutionContext);
+                    if (convertToParquet) {
+                        execute(
+                                compiler,
+                                "alter table tab convert partition to parquet where ts >= 0",
+                                sqlExecutionContext
+                        );
+                    }
+
+                    TestUtils.assertSql(
+                            engine,
+                            sqlExecutionContext,
+                            "select * from tab where type IN (2, 3, 4, 6) limit 10",
+                            sink,
+                            "ts\ttype\tvalue\n" +
+                                    "1970-01-01T00:00:00.000002Z\t2\tt2\n" +
+                                    "1970-01-01T00:00:00.000003Z\t3\tt3\n" +
+                                    "1970-01-01T00:00:00.000004Z\t4\tt4\n" +
+                                    "1970-01-01T00:00:00.000006Z\t6\tt6\n"
+                    );
+                },
+                configuration,
+                LOG
+        );
+    }
+
+    private void testInAndInTimestamp(int jitMode) throws Exception {
+        node1.setProperty(PropertyKey.CAIRO_SQL_JIT_MODE, SqlJitMode.toString(jitMode));
+
+        WorkerPool pool = new WorkerPool(() -> 4);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
+                            "CREATE TABLE tab (\n" +
+                                    "  ts TIMESTAMP," +
+                                    "  preciseTs TIMESTAMP," +
+                                    "  type INT," +
+                                    "  value SYMBOL) timestamp (ts) PARTITION BY DAY;",
+                            sqlExecutionContext
+                    );
+                    engine.execute("insert into tab select (x * 1000 * 1000 * 60)::timestamp, (x * 1000 * 1000 * 60)::timestamp, x%10, 't' || (x%10) from long_sequence(10000)", sqlExecutionContext);
+                    if (convertToParquet) {
+                        execute(
+                                compiler,
+                                "alter table tab convert partition to parquet where ts >= 0",
+                                sqlExecutionContext
+                        );
+                    }
+
+                    TestUtils.assertSql(
+                            engine,
+                            sqlExecutionContext,
+                            "select * from tab where preciseTs in '1970-01-01T00:00:00;3m;1d;5' and value IN ('t1', 't3') limit 10",
+                            sink,
+                            "ts\tpreciseTs\ttype\tvalue\n" +
+                                    "1970-01-01T00:01:00.000000Z\t1970-01-01T00:01:00.000000Z\t1\tt1\n" +
+                                    "1970-01-01T00:03:00.000000Z\t1970-01-01T00:03:00.000000Z\t3\tt3\n" +
+                                    "1970-01-02T00:01:00.000000Z\t1970-01-02T00:01:00.000000Z\t1\tt1\n" +
+                                    "1970-01-02T00:03:00.000000Z\t1970-01-02T00:03:00.000000Z\t3\tt3\n" +
+                                    "1970-01-03T00:01:00.000000Z\t1970-01-03T00:01:00.000000Z\t1\tt1\n" +
+                                    "1970-01-03T00:03:00.000000Z\t1970-01-03T00:03:00.000000Z\t3\tt3\n" +
+                                    "1970-01-04T00:01:00.000000Z\t1970-01-04T00:01:00.000000Z\t1\tt1\n" +
+                                    "1970-01-04T00:03:00.000000Z\t1970-01-04T00:03:00.000000Z\t3\tt3\n" +
+                                    "1970-01-05T00:01:00.000000Z\t1970-01-05T00:01:00.000000Z\t1\tt1\n" +
+                                    "1970-01-05T00:03:00.000000Z\t1970-01-05T00:03:00.000000Z\t3\tt3\n"
+                    );
+                },
+                configuration,
+                LOG
+        );
+    }
+
+    private void testInTimestamp(int jitMode) throws Exception {
+        node1.setProperty(PropertyKey.CAIRO_SQL_JIT_MODE, SqlJitMode.toString(jitMode));
+
+        WorkerPool pool = new WorkerPool(() -> 4);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
+                            "CREATE TABLE tab (\n" +
+                                    "  ts TIMESTAMP," +
+                                    "  preciseTs TIMESTAMP," +
+                                    "  type INT," +
+                                    "  value SYMBOL) timestamp (ts) PARTITION BY DAY;",
+                            sqlExecutionContext
+                    );
+                    engine.execute("insert into tab select (x * 1000 * 1000 * 60)::timestamp, (x * 1000 * 1000 * 60)::timestamp, x%10, 't' || (x%10) from long_sequence(10000)", sqlExecutionContext);
+                    if (convertToParquet) {
+                        execute(
+                                compiler,
+                                "alter table tab convert partition to parquet where ts >= 0",
+                                sqlExecutionContext
+                        );
+                    }
+
+                    TestUtils.assertSql(
+                            engine,
+                            sqlExecutionContext,
+                            "select * from tab where preciseTs in '1970-01-01T00:00:00;3m;1d;5' and value = 't3' limit 10",
+                            sink,
+                            "ts\tpreciseTs\ttype\tvalue\n" +
+                                    "1970-01-01T00:03:00.000000Z\t1970-01-01T00:03:00.000000Z\t3\tt3\n" +
+                                    "1970-01-02T00:03:00.000000Z\t1970-01-02T00:03:00.000000Z\t3\tt3\n" +
+                                    "1970-01-03T00:03:00.000000Z\t1970-01-03T00:03:00.000000Z\t3\tt3\n" +
+                                    "1970-01-04T00:03:00.000000Z\t1970-01-04T00:03:00.000000Z\t3\tt3\n" +
+                                    "1970-01-05T00:03:00.000000Z\t1970-01-05T00:03:00.000000Z\t3\tt3\n"
+                    );
+                },
+                configuration,
+                LOG
+        );
+    }
+
     private void testParallelStressSymbol(String query, String expected, int workerCount, int threadCount, int jitMode) throws Exception {
+        Assume.assumeFalse(convertToParquet);
         node1.setProperty(PropertyKey.CAIRO_SQL_JIT_MODE, SqlJitMode.toString(jitMode));
 
         WorkerPool pool = new WorkerPool(() -> workerCount);
-        TestUtils.execute(pool, (engine, compiler, sqlExecutionContext) -> {
-                    engine.ddl(
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
                             "create table x ( " +
                                     " v long, " +
                                     " s symbol capacity 4 cache " +
                                     ")",
                             sqlExecutionContext
                     );
-                    engine.insert(
-                            "insert into x select rnd_long() v, rnd_symbol('A','B','C') s from long_sequence(" + ROW_COUNT + ")",
-                            sqlExecutionContext
-                    );
+                    engine.execute("insert into x select rnd_long() v, rnd_symbol('A','B','C') s from long_sequence(" + ROW_COUNT + ")", sqlExecutionContext);
 
                     RecordCursorFactory[] factories = new RecordCursorFactory[threadCount];
 
@@ -670,21 +1067,21 @@ public class ParallelFilterTest extends AbstractCairoTest {
     }
 
     private void testParallelStressVarchar(String query, String expected, int workerCount, int threadCount, int jitMode) throws Exception {
+        Assume.assumeFalse(convertToParquet);
         node1.setProperty(PropertyKey.CAIRO_SQL_JIT_MODE, SqlJitMode.toString(jitMode));
 
         WorkerPool pool = new WorkerPool(() -> workerCount);
-        TestUtils.execute(pool, (engine, compiler, sqlExecutionContext) -> {
-                    engine.ddl(
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
                             "create table x ( " +
                                     " l long, " +
                                     " v varchar " +
                                     ")",
                             sqlExecutionContext
                     );
-                    engine.insert(
-                            "insert into x select rnd_long() v, rnd_varchar(4,16,5) s from long_sequence(" + ROW_COUNT + ")",
-                            sqlExecutionContext
-                    );
+                    engine.execute("insert into x select rnd_long() v, rnd_varchar(4,16,5) s from long_sequence(" + ROW_COUNT + ")", sqlExecutionContext);
 
                     RecordCursorFactory[] factories = new RecordCursorFactory[threadCount];
 
@@ -728,13 +1125,25 @@ public class ParallelFilterTest extends AbstractCairoTest {
     private void testStrBindVariable(String columnType, int jitMode) throws Exception {
         node1.setProperty(PropertyKey.CAIRO_SQL_JIT_MODE, SqlJitMode.toString(jitMode));
 
-        WorkerPool pool = new WorkerPool((() -> 4));
-        TestUtils.execute(pool, (engine, compiler, sqlExecutionContext) -> {
-                    ddl(compiler, "CREATE TABLE price (\n" +
-                            "  ts TIMESTAMP," +
-                            "  type " + columnType + "," +
-                            "  value DOUBLE) timestamp (ts) PARTITION BY DAY;", sqlExecutionContext);
-                    insert(compiler, "insert into price select x::timestamp, 't' || (x%5), rnd_double()  from long_sequence(100000)", sqlExecutionContext);
+        WorkerPool pool = new WorkerPool(() -> 4);
+        TestUtils.execute(
+                pool,
+                (engine, compiler, sqlExecutionContext) -> {
+                    engine.execute(
+                            "CREATE TABLE price (\n" +
+                                    "  ts TIMESTAMP," +
+                                    "  type " + columnType + "," +
+                                    "  value DOUBLE) timestamp (ts) PARTITION BY DAY;",
+                            sqlExecutionContext
+                    );
+                    engine.execute("insert into price select x::timestamp, 't' || (x%5), rnd_double()  from long_sequence(100000)", sqlExecutionContext);
+                    if (convertToParquet) {
+                        execute(
+                                compiler,
+                                "alter table price convert partition to parquet where ts >= 0",
+                                sqlExecutionContext
+                        );
+                    }
 
                     sqlExecutionContext.getBindVariableService().clear();
                     sqlExecutionContext.getBindVariableService().setStr(0, "t3");
@@ -759,5 +1168,17 @@ public class ParallelFilterTest extends AbstractCairoTest {
                 configuration,
                 LOG
         );
+    }
+
+    private static class NpeCountingAtomicBooleanCircuitBreaker extends AtomicBooleanCircuitBreaker {
+        final AtomicInteger npeCounter = new AtomicInteger();
+
+        @Override
+        public int getState() {
+            if (cancelledFlag == null) {
+                npeCounter.incrementAndGet();
+            }
+            return super.getState();
+        }
     }
 }

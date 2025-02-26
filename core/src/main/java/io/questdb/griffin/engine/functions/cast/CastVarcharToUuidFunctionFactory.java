@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -75,13 +75,13 @@ public class CastVarcharToUuidFunctionFactory implements FunctionFactory {
         public long getLong128Hi(Record rec) {
             final Utf8Sequence value = arg.getVarcharA(rec);
             if (value == null) {
-                return Numbers.LONG_NaN;
+                return Numbers.LONG_NULL;
             }
             try {
                 Uuid.checkDashesAndLength(value.asAsciiCharSequence());
                 return Uuid.parseHi(value.asAsciiCharSequence());
             } catch (NumericException e) {
-                return Numbers.LONG_NaN;
+                return Numbers.LONG_NULL;
             }
         }
 
@@ -89,13 +89,13 @@ public class CastVarcharToUuidFunctionFactory implements FunctionFactory {
         public long getLong128Lo(Record rec) {
             final Utf8Sequence value = arg.getVarcharA(rec);
             if (value == null) {
-                return Numbers.LONG_NaN;
+                return Numbers.LONG_NULL;
             }
             try {
                 Uuid.checkDashesAndLength(value.asAsciiCharSequence());
                 return Uuid.parseLo(value.asAsciiCharSequence());
             } catch (NumericException e) {
-                return Numbers.LONG_NaN;
+                return Numbers.LONG_NULL;
             }
         }
     }

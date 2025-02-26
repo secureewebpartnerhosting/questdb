@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -118,7 +118,7 @@ public class ImplicitTypeConversionsTest extends AbstractCairoTest {
 
     @Test
     public void testInsertDoubleAsInt_ReturnsMinValue() throws Exception {
-        testInsert("double", "-2147483648.0", "int", "NaN");//see Numbers.append:127
+        testInsert("double", "-2147483648.0", "int", "null");//see Numbers.append:127
     }
 
     @Test
@@ -340,7 +340,7 @@ public class ImplicitTypeConversionsTest extends AbstractCairoTest {
 
     @Test
     public void testInsertLongAsInt_ReturnsMinValue() throws Exception {
-        testInsert("long", "-2147483648", "int", "NaN"); //see Numbers.append:127
+        testInsert("long", "-2147483648", "int", "null"); //see Numbers.append:127
     }
 
     @Test
@@ -524,8 +524,8 @@ public class ImplicitTypeConversionsTest extends AbstractCairoTest {
 
     private void testInsert(String valueType, String value, String targetColumnType, String expectedValue) throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table tab(x " + targetColumnType + " );");
-            insert("insert into tab values (cast(" + value + " as " + valueType + " ));");
+            execute("create table tab(x " + targetColumnType + " );");
+            execute("insert into tab values (cast(" + value + " as " + valueType + " ));");
 
             String expected = "x\n" + expectedValue + "\n";
 
@@ -538,16 +538,14 @@ public class ImplicitTypeConversionsTest extends AbstractCairoTest {
     }
 
     private void testInsertCausesException(String valueType, String value, String targetColumnType) throws Exception {
-        try {
-            assertMemoryLeak(() -> {
-                ddl("create table tab(x " + targetColumnType + " );");
-                insert("insert into tab values (cast(" + value + " as " + valueType + " ));");
-            });
-
-            Assert.fail("SqlException should be thrown!");
-        } catch (ImplicitCastException e) {
-            TestUtils.assertContains(e.getFlyweightMessage(), "inconvertible value");
-        }
+        assertMemoryLeak(() -> {
+            try {
+                execute("create table tab(x " + targetColumnType + " );");
+                execute("insert into tab values (cast(" + value + " as " + valueType + " ));");
+                Assert.fail("SqlException should be thrown!");
+            } catch (ImplicitCastException e) {
+                TestUtils.assertContains(e.getFlyweightMessage(), "inconvertible value");
+            }
+        });
     }
-
 }

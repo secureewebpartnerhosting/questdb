@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,13 @@
 package io.questdb.test.griffin;
 
 import io.questdb.PropServerConfiguration;
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.mv.MatViewRefreshJob;
 import io.questdb.cairo.wal.ApplyWal2TableJob;
 import io.questdb.cairo.wal.CheckWalTransactionsJob;
 import io.questdb.cairo.wal.WalUtils;
@@ -46,7 +52,12 @@ import io.questdb.test.cairo.DefaultTestCairoConfiguration;
 import io.questdb.test.std.TestFilesFacadeImpl;
 import io.questdb.test.tools.TestUtils;
 import org.jetbrains.annotations.NotNull;
-import org.junit.*;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
@@ -113,7 +124,7 @@ public class TableBackupTest {
             @NotNull CairoEngine engine,
             @NotNull SqlExecutionContext context
     ) throws SqlException {
-        engine.ddl(
+        engine.execute(
                 "CREATE TABLE '" + tableName + "' AS (" +
                         selectGenerator(numRows) +
                         "), INDEX(symbol2 CAPACITY 32) TIMESTAMP(timestamp2) " +
@@ -130,7 +141,8 @@ public class TableBackupTest {
             CairoEngine engine,
             SqlExecutionContext sqlExecutionContext
     ) throws SqlException {
-        engine.insert("INSERT INTO '" + tableToken.getTableName() + "' SELECT * FROM (" + selectGenerator(size) + ')', sqlExecutionContext);
+        CharSequence insertSql = "INSERT INTO '" + tableToken.getTableName() + "' SELECT * FROM (" + selectGenerator(size) + ')';
+        engine.execute(insertSql, sqlExecutionContext);
     }
 
     public static String testTableName(String tableName, String tableNameSuffix) {
@@ -239,9 +251,9 @@ public class TableBackupTest {
         Assume.assumeTrue(PartitionBy.isPartitioned(partitionBy));
         assertMemoryLeak(() -> {
             TableToken tableToken = executeCreateTableStmt(testName.getMethodName());
-            compileAndDrainWalQueue("alter table " + tableToken.getTableName() + " add column new_g4 geohash(30b)");
-            compileAndDrainWalQueue("alter table " + tableToken.getTableName() + " add column new_g8 geohash(32b)");
-            compileAndDrainWalQueue("INSERT INTO '" + tableToken.getTableName() + "' (new_g4, new_g8, timestamp2) SELECT * FROM (" +
+            ddlAndDrainWalQueue("alter table " + tableToken.getTableName() + " add column new_g4 geohash(30b)");
+            ddlAndDrainWalQueue("alter table " + tableToken.getTableName() + " add column new_g8 geohash(32b)");
+            ddlAndDrainWalQueue("INSERT INTO '" + tableToken.getTableName() + "' (new_g4, new_g8, timestamp2) SELECT * FROM (" +
                     " SELECT" +
                     "     rnd_geohash(30)," +
                     "     rnd_geohash(32)," +
@@ -253,6 +265,23 @@ public class TableBackupTest {
             setFinalBackupPath();
             assertTables(tableToken);
             assertDatabase();
+        });
+    }
+
+    @Test
+    public void testBackupMatView() throws Exception {
+        Assume.assumeTrue(isWal);
+        assertMemoryLeak(() -> {
+            String baseTableName = "base_table";
+            String viewName = baseTableName + "_mv";
+            TableToken matViewToken = executeCreateTableAndMatViewStmt(baseTableName, viewName);
+            TableToken baseTableToken = mainEngine.verifyTableName(baseTableName);
+            backupTable(baseTableToken);
+            setFinalBackupPath();
+            assertTableOrMatView(baseTableToken);
+            backupMatView(matViewToken);
+            setFinalBackupPath(1);
+            assertTableOrMatView(matViewToken);
         });
     }
 
@@ -271,7 +300,7 @@ public class TableBackupTest {
         assertMemoryLeak(() -> {
             try {
                 TableToken tableToken = executeCreateTableStmt(testName.getMethodName());
-                compileAndDrainWalQueue("backup table .." + Files.SEPARATOR + tableToken.getTableName());
+                ddlAndDrainWalQueue("backup table .." + Files.SEPARATOR + tableToken.getTableName());
                 Assert.fail();
             } catch (SqlException ex) {
                 TestUtils.assertEquals("'.' is an invalid table name", ex.getFlyweightMessage());
@@ -297,11 +326,11 @@ public class TableBackupTest {
     public void testInvalidSql1() throws Exception {
         assertMemoryLeak(() -> {
             try {
-                compileAndDrainWalQueue("backup something");
+                ddlAndDrainWalQueue("backup something");
                 Assert.fail();
             } catch (SqlException ex) {
                 Assert.assertEquals(7, ex.getPosition());
-                TestUtils.assertEquals("expected 'table' or 'database'", ex.getFlyweightMessage());
+                TestUtils.assertEquals("expected 'table', 'materialized view' or 'database'", ex.getFlyweightMessage());
             }
         });
     }
@@ -310,7 +339,7 @@ public class TableBackupTest {
     public void testInvalidSql2() throws Exception {
         assertMemoryLeak(() -> {
             try {
-                compileAndDrainWalQueue("backup table");
+                ddlAndDrainWalQueue("backup table");
                 Assert.fail();
             } catch (SqlException e) {
                 Assert.assertEquals(12, e.getPosition());
@@ -324,10 +353,36 @@ public class TableBackupTest {
         assertMemoryLeak(() -> {
             try {
                 TableToken tableToken = executeCreateTableStmt(testName.getMethodName());
-                compileAndDrainWalQueue("backup table " + tableToken.getTableName() + " tb2");
+                ddlAndDrainWalQueue("backup table " + tableToken.getTableName() + " tb2");
                 Assert.fail();
             } catch (SqlException ex) {
                 TestUtils.assertEquals("expected ','", ex.getFlyweightMessage());
+            }
+        });
+    }
+
+    @Test
+    public void testInvalidSqlMatViews1() throws Exception {
+        assertMemoryLeak(() -> {
+            try {
+                ddlAndDrainWalQueue("backup materialized");
+                Assert.fail();
+            } catch (SqlException e) {
+                Assert.assertEquals(7, e.getPosition());
+                TestUtils.assertEquals("expected 'table', 'materialized view' or 'database'", e.getFlyweightMessage());
+            }
+        });
+    }
+
+    @Test
+    public void testInvalidSqlMatViews2() throws Exception {
+        assertMemoryLeak(() -> {
+            try {
+                ddlAndDrainWalQueue("backup materialized view");
+                Assert.fail();
+            } catch (SqlException e) {
+                Assert.assertEquals(24, e.getPosition());
+                TestUtils.assertEquals("expected a table name", e.getFlyweightMessage());
             }
         });
     }
@@ -337,7 +392,7 @@ public class TableBackupTest {
         assertMemoryLeak(() -> {
             try {
                 TableToken tableToken = executeCreateTableStmt(testName.getMethodName());
-                compileAndDrainWalQueue("backup table " + tableToken.getTableName() + ", tb2");
+                ddlAndDrainWalQueue("backup table " + tableToken.getTableName() + ", tb2");
                 Assert.fail();
             } catch (SqlException e) {
                 TestUtils.assertEquals("table does not exist [table=tb2]", e.getFlyweightMessage());
@@ -350,7 +405,7 @@ public class TableBackupTest {
         assertMemoryLeak(() -> {
             TableToken token1 = executeCreateTableStmt(testName.getMethodName());
             TableToken token2 = executeCreateTableStmt(token1.getTableName() + "_yip");
-            compileAndDrainWalQueue("backup table " + token1.getTableName() + ", " + token2.getTableName());
+            ddlAndDrainWalQueue("backup table " + token1.getTableName() + ", " + token2.getTableName());
             setFinalBackupPath();
             assertTables(token1);
             assertTables(token2);
@@ -392,7 +447,7 @@ public class TableBackupTest {
             assertTables(tableToken);
             // Check previous backup is unaffected
             selectAll(tableToken, true, sink2);
-            Assert.assertNotEquals(firstBackup, sink2);
+            Assert.assertNotEquals(sink2, firstBackup);
         });
     }
 
@@ -463,10 +518,10 @@ public class TableBackupTest {
     }
 
     private void assertDatabase() {
-        path.of(mainConfiguration.getRoot()).concat(TableUtils.TAB_INDEX_FILE_NAME).$();
-        Assert.assertTrue(Files.exists(path));
-        finalBackupPath.trimTo(finalBackupPathLen).concat(mainConfiguration.getDbDirectory()).concat(TableUtils.TAB_INDEX_FILE_NAME).$();
-        Assert.assertTrue(Files.exists(finalBackupPath));
+        path.of(mainConfiguration.getDbRoot()).concat(TableUtils.TAB_INDEX_FILE_NAME);
+        Assert.assertTrue(Files.exists(path.$()));
+        finalBackupPath.trimTo(finalBackupPathLen).concat(mainConfiguration.getDbDirectory()).concat(TableUtils.TAB_INDEX_FILE_NAME);
+        Assert.assertTrue(Files.exists(finalBackupPath.$()));
 
         finalBackupPath.trimTo(finalBackupPathLen).concat(PropServerConfiguration.CONFIG_DIRECTORY).slash$();
         final int trimLen = finalBackupPath.size();
@@ -476,10 +531,10 @@ public class TableBackupTest {
         Assert.assertTrue(Files.exists(finalBackupPath.trimTo(trimLen).concat("date.formats").$()));
 
         if (isWal) {
-            path.parent().concat(WalUtils.TABLE_REGISTRY_NAME_FILE).putAscii(".0").$();
-            Assert.assertTrue(Files.exists(path));
-            finalBackupPath.trimTo(finalBackupPathLen).concat(mainConfiguration.getDbDirectory()).concat(WalUtils.TABLE_REGISTRY_NAME_FILE).putAscii(".0").$();
-            Assert.assertTrue(Files.exists(finalBackupPath));
+            path.parent().concat(WalUtils.TABLE_REGISTRY_NAME_FILE).putAscii(".0");
+            Assert.assertTrue(Files.exists(path.$()));
+            finalBackupPath.trimTo(finalBackupPathLen).concat(mainConfiguration.getDbDirectory()).concat(WalUtils.TABLE_REGISTRY_NAME_FILE).putAscii(".0");
+            Assert.assertTrue(Files.exists(finalBackupPath.$()));
         }
     }
 
@@ -496,6 +551,12 @@ public class TableBackupTest {
         });
     }
 
+    private void assertTableOrMatView(TableToken tableToken) throws Exception {
+        selectAll(tableToken, false, sink1);
+        selectAll(tableToken, true, sink2);
+        TestUtils.assertEquals(sink1, sink2);
+    }
+
     private void assertTables(TableToken tableToken) throws Exception {
         selectAll(tableToken, false, sink1);
         selectAll(tableToken, true, sink2);
@@ -503,7 +564,7 @@ public class TableBackupTest {
 
         String sql = "INSERT INTO '" + tableToken.getTableName() + "'(timestamp2) VALUES('2123')";
         executeBackupSqlStmt(sql);
-        compileAndDrainWalQueue(sql);
+        ddlAndDrainWalQueue(sql);
 
         selectAll(tableToken, false, sink1);
         selectAll(tableToken, true, sink2);
@@ -514,12 +575,16 @@ public class TableBackupTest {
         mainCompiler.compile("BACKUP DATABASE", mainSqlExecutionContext);
     }
 
+    private void backupMatView(TableToken matViewToken) throws SqlException {
+        mainCompiler.compile("BACKUP MATERIALIZED VIEW \"" + matViewToken.getTableName() + '"', mainSqlExecutionContext);
+    }
+
     private void backupTable(TableToken tableToken) throws SqlException {
         mainCompiler.compile("BACKUP TABLE \"" + tableToken.getTableName() + '"', mainSqlExecutionContext);
     }
 
-    private void compileAndDrainWalQueue(String sql) throws SqlException {
-        mainEngine.compile(sql, mainSqlExecutionContext);
+    private void ddlAndDrainWalQueue(String sql) throws SqlException {
+        mainEngine.execute(sql, mainSqlExecutionContext);
         drainWalQueue();
     }
 
@@ -546,6 +611,31 @@ public class TableBackupTest {
             compiler.compile(sql, context).execute(null).await();
             drainWalQueue(engine);
         }
+    }
+
+    private TableToken executeCreateTableAndMatViewStmt(String tableName, String matViewName) throws SqlException {
+        mainEngine.execute("create table '" + tableName + "' (sym varchar, price double, ts timestamp) " +
+                "timestamp(ts) partition by " + PartitionBy.toString(partitionBy) + " WAL");
+        mainEngine.execute("create materialized view '" + matViewName +
+                "' as (select sym, last(price) as price, ts from '" + tableName + "' sample by 1h) partition by "
+                + PartitionBy.toString(partitionBy));
+
+        drainWalQueue();
+        mainEngine.execute("insert into '" + tableName + "' values('gbpusd', 1.320, '2024-09-10T12:01')" +
+                ",('gbpusd', 1.323, '2024-09-10T12:02')" +
+                ",('jpyusd', 103.21, '2024-09-10T12:02')" +
+                ",('gbpusd', 1.321, '2024-09-10T13:02')"
+        );
+
+        drainWalQueue();
+        try (MatViewRefreshJob refreshJob = new MatViewRefreshJob(0, mainEngine)) {
+            refreshJob.run(0);
+        }
+
+        TableToken tableToken = mainEngine.verifyTableName(matViewName);
+        Assert.assertNotNull(tableToken);
+        Assert.assertTrue(tableToken.isMatView());
+        return tableToken;
     }
 
     private TableToken executeCreateTableStmt(String tableName) throws SqlException {

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,26 +24,36 @@
 
 package io.questdb.griffin.engine.groupby;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.AbstractRecordCursorFactory;
+import io.questdb.cairo.ArrayColumnTypes;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.ListColumnFilter;
+import io.questdb.cairo.RecordSink;
+import io.questdb.cairo.RecordSinkFactory;
 import io.questdb.cairo.map.Map;
 import io.questdb.cairo.map.MapFactory;
 import io.questdb.cairo.map.MapKey;
+import io.questdb.cairo.map.MapRecordCursor;
 import io.questdb.cairo.map.MapValue;
+import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
-import io.questdb.cairo.sql.*;
+import io.questdb.cairo.sql.RecordCursor;
+import io.questdb.cairo.sql.RecordCursorFactory;
+import io.questdb.cairo.sql.RecordMetadata;
+import io.questdb.cairo.sql.SqlExecutionCircuitBreaker;
 import io.questdb.griffin.PlanSink;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.GroupByFunction;
 import io.questdb.std.BytecodeAssembler;
+import io.questdb.std.DirectLongLongHeap;
 import io.questdb.std.Misc;
 import io.questdb.std.ObjList;
 import io.questdb.std.Transient;
 import org.jetbrains.annotations.NotNull;
 
 public class GroupByRecordCursorFactory extends AbstractRecordCursorFactory {
-
-    protected final RecordCursorFactory base;
+    private final RecordCursorFactory base;
     private final GroupByRecordCursor cursor;
     private final ObjList<GroupByFunction> groupByFunctions;
     private final ObjList<Function> keyFunctions;
@@ -70,7 +80,7 @@ public class GroupByRecordCursorFactory extends AbstractRecordCursorFactory {
             this.keyFunctions = keyFunctions;
             this.recordFunctions = recordFunctions;
             // sink will be storing record columns to map key
-            this.mapSink = RecordSinkFactory.getInstance(asm, base.getMetadata(), listColumnFilter, keyFunctions, false);
+            this.mapSink = RecordSinkFactory.getInstance(asm, base.getMetadata(), listColumnFilter, keyFunctions, null);
             final GroupByFunctionsUpdater updater = GroupByFunctionsUpdaterFactory.getInstance(asm, groupByFunctions);
             this.cursor = new GroupByRecordCursor(configuration, recordFunctions, groupByFunctions, updater, keyTypes, valueTypes);
         } catch (Throwable e) {
@@ -103,12 +113,23 @@ public class GroupByRecordCursorFactory extends AbstractRecordCursorFactory {
         try {
             // init all record functions for this cursor, in case functions require metadata and/or symbol tables
             Function.init(recordFunctions, baseCursor, executionContext);
+        } catch (Throwable th) {
+            baseCursor.close();
+            throw th;
+        }
+
+        try {
             cursor.of(baseCursor, executionContext);
             return cursor;
-        } catch (Throwable e) {
-            baseCursor.close();
-            throw e;
+        } catch (Throwable th) {
+            cursor.close();
+            throw th;
         }
+    }
+
+    @Override
+    public boolean recordCursorSupportsLongTopK() {
+        return true;
     }
 
     @Override
@@ -143,7 +164,7 @@ public class GroupByRecordCursorFactory extends AbstractRecordCursorFactory {
         Misc.free(cursor);
     }
 
-    class GroupByRecordCursor extends VirtualFunctionSkewedSymbolRecordCursor {
+    private class GroupByRecordCursor extends VirtualFunctionSkewedSymbolRecordCursor {
         private final GroupByAllocator allocator;
         private final Map dataMap;
         private final GroupByFunctionsUpdater groupByFunctionsUpdater;
@@ -161,11 +182,16 @@ public class GroupByRecordCursorFactory extends AbstractRecordCursorFactory {
                 @Transient @NotNull ArrayColumnTypes valueTypes
         ) {
             super(functions);
-            this.dataMap = MapFactory.createUnorderedMap(configuration, keyTypes, valueTypes);
-            this.groupByFunctionsUpdater = groupByFunctionsUpdater;
-            this.allocator = GroupByAllocatorFactory.createThreadUnsafeAllocator(configuration);
-            GroupByUtils.setAllocator(groupByFunctions, allocator);
-            this.isOpen = true;
+            try {
+                this.isOpen = true;
+                this.dataMap = MapFactory.createUnorderedMap(configuration, keyTypes, valueTypes);
+                this.groupByFunctionsUpdater = groupByFunctionsUpdater;
+                this.allocator = GroupByAllocatorFactory.createAllocator(configuration);
+                GroupByUtils.setAllocator(groupByFunctions, allocator);
+            } catch (Throwable th) {
+                close();
+                throw th;
+            }
         }
 
         @Override
@@ -195,13 +221,21 @@ public class GroupByRecordCursorFactory extends AbstractRecordCursorFactory {
             return super.hasNext();
         }
 
+        @Override
+        public void longTopK(DirectLongLongHeap heap, int columnIndex) {
+            if (!isDataMapBuilt) {
+                buildDataMap();
+            }
+            ((MapRecordCursor) baseCursor).longTopK(heap, recordFunctions.getQuick(columnIndex));
+        }
+
         public void of(RecordCursor managedCursor, SqlExecutionContext executionContext) throws SqlException {
+            this.managedCursor = managedCursor;
             if (!isOpen) {
                 isOpen = true;
                 dataMap.reopen();
             }
             this.circuitBreaker = executionContext.getCircuitBreaker();
-            this.managedCursor = managedCursor;
             Function.init(keyFunctions, managedCursor, executionContext);
             isDataMapBuilt = false;
             rowId = 0;

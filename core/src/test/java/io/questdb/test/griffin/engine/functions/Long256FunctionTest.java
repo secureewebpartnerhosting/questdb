@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -53,8 +53,43 @@ public class Long256FunctionTest {
     };
 
     @Test(expected = UnsupportedOperationException.class)
+    public void testGetBin() {
+        function.getBin(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBinLen() {
+        function.getBinLen(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetBool() {
+        function.getBool(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetByte() {
+        function.getByte(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
     public void testGetChar() {
         function.getChar(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetDate() {
+        function.getDate(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetDouble() {
+        function.getDouble(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetFloat() {
+        function.getFloat(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -78,48 +113,23 @@ public class Long256FunctionTest {
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void testGetBin() {
-        function.getBin(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetBinLen() {
-        function.getBinLen(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetBool() {
-        function.getBool(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetByte() {
-        function.getByte(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetDate() {
-        function.getDate(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetDouble() {
-        function.getDouble(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetFloat() {
-        function.getFloat(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
     public void testGetInt() {
         function.getInt(null);
     }
 
     @Test
     public void testGetLong() {
-        Assert.assertEquals(Numbers.LONG_NaN, function.getLong(null));
+        Assert.assertEquals(Numbers.LONG_NULL, function.getLong(null));
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetLong128Hi() {
+        function.getLong128Hi(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetLong128Lo() {
+        function.getLong128Lo(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -135,11 +145,6 @@ public class Long256FunctionTest {
     @Test(expected = UnsupportedOperationException.class)
     public void testGetStr() {
         function.getStrA(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetStr2() {
-        function.getStr(null, null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -163,26 +168,6 @@ public class Long256FunctionTest {
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void testTimestamp() {
-        function.getTimestamp(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetLong128Hi() {
-        function.getLong128Hi(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetLong128Lo() {
-        function.getLong128Lo(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetVarcharUtf8Sink() {
-        function.getVarchar(null, null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
     public void testGetVarcharA() {
         function.getVarcharA(null);
     }
@@ -190,5 +175,10 @@ public class Long256FunctionTest {
     @Test(expected = UnsupportedOperationException.class)
     public void testGetVarcharB() {
         function.getVarcharB(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testTimestamp() {
+        function.getTimestamp(null);
     }
 }

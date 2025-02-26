@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,11 @@
 package io.questdb.test.cutlass.line.tcp;
 
 import io.questdb.PropertyKey;
-import io.questdb.cairo.*;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableWriter;
+import io.questdb.cairo.TableWriterAPI;
 import io.questdb.cairo.pool.PoolListener;
 import io.questdb.cairo.pool.ex.EntryLockedException;
 import io.questdb.cairo.sql.Record;
@@ -45,9 +49,17 @@ import io.questdb.log.LogFactory;
 import io.questdb.mp.SOCountDownLatch;
 import io.questdb.mp.SOUnboundedCountDownLatch;
 import io.questdb.mp.WorkerPool;
+import io.questdb.mp.WorkerPoolUtils;
 import io.questdb.network.Net;
 import io.questdb.network.NetworkFacadeImpl;
-import io.questdb.std.*;
+import io.questdb.std.CharSequenceHashSet;
+import io.questdb.std.CharSequenceIntHashMap;
+import io.questdb.std.CharSequenceObjHashMap;
+import io.questdb.std.Chars;
+import io.questdb.std.Files;
+import io.questdb.std.FilesFacade;
+import io.questdb.std.Os;
+import io.questdb.std.Rnd;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
 import io.questdb.std.datetime.microtime.Timestamps;
 import io.questdb.std.str.LPSZ;
@@ -56,10 +68,15 @@ import io.questdb.std.str.StringSink;
 import io.questdb.std.str.Utf8s;
 import io.questdb.test.AbstractCairoTest;
 import io.questdb.test.cairo.TableModel;
+import io.questdb.test.cairo.TestTableReaderRecordCursor;
 import io.questdb.test.mp.TestWorkerPool;
 import io.questdb.test.std.TestFilesFacadeImpl;
 import io.questdb.test.tools.TestUtils;
-import org.junit.*;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
@@ -254,7 +271,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             // Pre-create a partitioned table, so we can wait until it's created.
             TableModel m = new TableModel(configuration, tablePartitioned, PartitionBy.DAY);
             m.timestamp("ts").wal();
-            TestUtils.create(m, engine);
+            TestUtils.createTable(engine, m);
 
             // Send non-partitioned table rows before the partitioned table ones.
             final String lineData = tableNonPartitioned + " windspeed=2.0 631150000000000000\n" +
@@ -269,13 +286,13 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             Assert.assertTrue(isWalTable(tablePartitioned));
             String expected = "ts\twindspeed\ttimetocycle\n" +
                     "1990-01-01T02:13:20.000000Z\t3.0\t0.0\n" +
-                    "1990-01-01T05:00:00.000000Z\t4.0\tNaN\n";
+                    "1990-01-01T05:00:00.000000Z\t4.0\tnull\n";
             assertTable(expected, tablePartitioned);
 
             // WAL is not supported on non-partitioned tables, so we create a non-WAL table as a fallback.
             Assert.assertFalse(isWalTable(tableNonPartitioned));
             expected = "windspeed\ttimestamp\ttimetocycle\n" +
-                    "2.0\t1989-12-31T23:26:40.000000Z\tNaN\n" +
+                    "2.0\t1989-12-31T23:26:40.000000Z\tnull\n" +
                     "3.0\t1990-01-01T02:13:20.000000Z\t0.0\n";
             assertTable(expected, tableNonPartitioned);
         });
@@ -344,7 +361,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             private int count = 1;
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (
                         Utf8s.endsWithAscii(name, Files.SEPARATOR + "wal1" + Files.SEPARATOR + "1.lock")
                                 && Utf8s.containsAscii(name, weather)
@@ -425,9 +442,9 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
 
             String expected =
                     "windspeed\ttimestamp\ttimetocycle\n" +
-                            "2.0\t1989-12-31T23:26:40.000000Z\tNaN\n" +
+                            "2.0\t1989-12-31T23:26:40.000000Z\tnull\n" +
                             "3.0\t1990-01-01T02:13:20.000000Z\t0.0\n" +
-                            "4.0\t1990-01-01T05:00:00.000000Z\tNaN\n";
+                            "4.0\t1990-01-01T05:00:00.000000Z\tnull\n";
             assertTable(expected, "weather");
         });
     }
@@ -449,10 +466,10 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             }
             String expected =
                     "windspeed\ttimestamp\ttimetocycle\n" +
-                            "2.0\t1989-12-31T23:26:40.000000Z\tNaN\n" +
-                            "1.0\t1990-01-01T00:00:00.000000Z\tNaN\n" +
+                            "2.0\t1989-12-31T23:26:40.000000Z\tnull\n" +
+                            "1.0\t1990-01-01T00:00:00.000000Z\tnull\n" +
                             "3.0\t1990-01-01T02:13:20.000000Z\t0.0\n" +
-                            "4.0\t1990-01-01T05:00:00.000000Z\tNaN\n";
+                            "4.0\t1990-01-01T05:00:00.000000Z\tnull\n";
             assertTable(expected, "weather");
         });
     }
@@ -474,10 +491,10 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             }
             String expected =
                     "dir\twindspeed\ttimestamp\ttimetocycle\n" +
-                            "South\t2.0\t1989-12-31T23:26:40.000000Z\tNaN\n" +
-                            "NA\t1.0\t1990-01-01T00:00:00.000000Z\tNaN\n" +
+                            "South\t2.0\t1989-12-31T23:26:40.000000Z\tnull\n" +
+                            "NA\t1.0\t1990-01-01T00:00:00.000000Z\tnull\n" +
                             "North\t3.0\t1990-01-01T02:13:20.000000Z\t0.0\n" +
-                            "SSW\t4.0\t1990-01-01T05:00:00.000000Z\tNaN\n";
+                            "SSW\t4.0\t1990-01-01T05:00:00.000000Z\tnull\n";
             assertTable(expected, "weather");
         });
     }
@@ -682,7 +699,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             private final AtomicInteger count = new AtomicInteger(1);
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (
                         Utf8s.endsWithAscii(name, Files.SEPARATOR + "wal1" + Files.SEPARATOR + "1.lock")
                                 && count.decrementAndGet() == 0
@@ -710,11 +727,11 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
 
             assertEventually(() -> {
                 String expected = "location\ttemperature\ttimestamp\tsource\ttemp\n" +
-                        "west1\t10.0\t2016-06-13T17:43:50.100400Z\t\tNaN\n" +
-                        "west2\t20.0\t2016-06-13T17:43:50.100500Z\t\tNaN\n" +
-                        "east3\t30.0\t2016-06-13T17:43:50.100600Z\t\tNaN\n" +
-                        "west4\tNaN\t2016-06-13T17:43:50.100700Z\tsensor1\t40.0\n" +
-                        "south\t80.0\t2016-06-13T17:43:50.101000Z\t\tNaN\n";
+                        "west1\t10.0\t2016-06-13T17:43:50.100400Z\t\tnull\n" +
+                        "west2\t20.0\t2016-06-13T17:43:50.100500Z\t\tnull\n" +
+                        "east3\t30.0\t2016-06-13T17:43:50.100600Z\t\tnull\n" +
+                        "west4\tnull\t2016-06-13T17:43:50.100700Z\tsensor1\t40.0\n" +
+                        "south\t80.0\t2016-06-13T17:43:50.101000Z\t\tnull\n";
                 assertTable(expected, meteorology);
 
                 expected = "location\tsource\ttemp\ttimestamp\n" +
@@ -738,7 +755,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             private int count = 1;
 
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (
                         Utf8s.endsWithAscii(name, Files.SEPARATOR + "wal1" + Files.SEPARATOR + "1.lock")
                                 && Utf8s.containsAscii(name, weather)
@@ -797,39 +814,39 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
 
     @Test
     public void testShutdownWithDedicatedPoolsCloseIoPoolFirst() throws Exception {
-        long preTestErrors = engine.getMetrics().health().unhandledErrorsCount();
+        long preTestErrors = engine.getMetrics().healthMetrics().unhandledErrorsCount();
 
         assertMemoryLeak(() -> {
             WorkerPool writerPool = new TestWorkerPool("writer", 2, engine.getMetrics());
             WorkerPool ioPool = new TestWorkerPool("io", 2, engine.getMetrics());
             shutdownReceiverWhileSenderIsSendingData(ioPool, writerPool);
 
-            Assert.assertEquals(0, engine.getMetrics().health().unhandledErrorsCount() - preTestErrors);
+            Assert.assertEquals(0, engine.getMetrics().healthMetrics().unhandledErrorsCount() - preTestErrors);
         });
     }
 
     @Test
     public void testShutdownWithDedicatedPoolsCloseWriterPoolFirst() throws Exception {
-        long preTestErrors = engine.getMetrics().health().unhandledErrorsCount();
+        long preTestErrors = engine.getMetrics().healthMetrics().unhandledErrorsCount();
 
         assertMemoryLeak(() -> {
             WorkerPool writerPool = new TestWorkerPool("writer", 2, engine.getMetrics());
             WorkerPool ioPool = new TestWorkerPool("io", 2, engine.getMetrics());
             shutdownReceiverWhileSenderIsSendingData(ioPool, writerPool);
 
-            Assert.assertEquals(0, engine.getMetrics().health().unhandledErrorsCount() - preTestErrors);
+            Assert.assertEquals(0, engine.getMetrics().healthMetrics().unhandledErrorsCount() - preTestErrors);
         });
     }
 
     @Test
     public void testShutdownWithSharedPool() throws Exception {
-        long preTestErrors = engine.getMetrics().health().unhandledErrorsCount();
+        long preTestErrors = engine.getMetrics().healthMetrics().unhandledErrorsCount();
 
         assertMemoryLeak(() -> {
             WorkerPool sharedPool = new TestWorkerPool("shared", 2, engine.getMetrics());
             shutdownReceiverWhileSenderIsSendingData(sharedPool, sharedPool);
 
-            Assert.assertEquals(0, engine.getMetrics().health().unhandledErrorsCount() - preTestErrors);
+            Assert.assertEquals(0, engine.getMetrics().healthMetrics().unhandledErrorsCount() - preTestErrors);
         });
     }
 
@@ -1032,7 +1049,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
     @Test
     public void testTableTableIdChangedOnRecreate() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table weather as (" +
                             "select x as windspeed," +
                             "x*2 as timetocycle, " +
@@ -1048,7 +1065,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
                             "2\t4\t1970-01-01T00:00:00.000002Z\n", sink);
                 }
 
-                drop("drop table weather");
+                execute("drop table weather");
 
                 runInContext((receiver) -> {
                     String lineData =
@@ -1075,7 +1092,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
     @Test
     public void testTcpIPv4() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test (" +
+            execute("create table test (" +
                     "col ipv4, " +
                     "ts timestamp " +
                     ") timestamp(ts) partition by day");
@@ -1106,7 +1123,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
     @Test
     public void testTcpIPv4Duplicate() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test (" +
+            execute("create table test (" +
                     "col ipv4, " +
                     "ts timestamp " +
                     ") timestamp(ts) partition by day");
@@ -1134,7 +1151,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
     @Test
     public void testTcpIPv4MultiCol() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test (" +
+            execute("create table test (" +
                     "col ipv4, " +
                     "coll ipv4, " +
                     "ts timestamp " +
@@ -1166,7 +1183,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
     @Test
     public void testTcpIPv4NoMagicNumbers() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test (" +
+            execute("create table test (" +
                     "col ipv4, " +
                     "ts timestamp " +
                     ") timestamp(ts) partition by day");
@@ -1195,7 +1212,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
     @Test
     public void testTcpIPv4Null() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test (" +
+            execute("create table test (" +
                     "col ipv4, " +
                     "ts timestamp " +
                     ") timestamp(ts) partition by day");
@@ -1226,7 +1243,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
     @Test
     public void testTcpIPv4Null2() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test (" +
+            execute("create table test (" +
                     "col ipv4, " +
                     "ts timestamp " +
                     ") timestamp(ts) partition by day");
@@ -1355,7 +1372,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
         if (walEnabled) {
             m.wal();
         }
-        TestUtils.create(m, engine);
+        TestUtils.createTable(engine, m);
 
         engine.releaseInactive();
         runInContext((receiver) -> {
@@ -1408,7 +1425,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             if (walEnabled) {
                 m.wal();
             }
-            TestUtils.create(m, engine);
+            TestUtils.createTable(engine, m);
 
             sendLinger(lineData, "table_a");
 
@@ -1438,10 +1455,10 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             }
             String expected =
                     "out\ttimestamp\tin\n" +
-                            "1.0\t1989-12-31T23:26:40.000000Z\tNaN\n" +
-                            "NaN\t1990-01-01T00:00:00.000000Z\t2.0\n" +
-                            "NaN\t1990-01-01T02:13:20.000000Z\t3.0\n" +
-                            "NaN\t1990-01-01T05:00:00.000000Z\t4.0\n";
+                            "1.0\t1989-12-31T23:26:40.000000Z\tnull\n" +
+                            "null\t1990-01-01T00:00:00.000000Z\t2.0\n" +
+                            "null\t1990-01-01T02:13:20.000000Z\t3.0\n" +
+                            "null\t1990-01-01T05:00:00.000000Z\t4.0\n";
             assertTable(expected, "up");
         });
     }
@@ -1522,7 +1539,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
 
     @Test
     public void testWriterAllLongs() throws Exception {
-        currentMicros = 1;
+        setCurrentMicros(1);
         String lineData = "messages id=843530699759026177i,author=820703963477180437i,guild=820704412095479830i,channel=820704412095479833i,flags=6i\n";
         runInContext((receiver) -> {
             TableModel m = new TableModel(configuration, "messages", PartitionBy.MONTH);
@@ -1535,7 +1552,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             if (walEnabled) {
                 m.wal();
             }
-            TestUtils.create(m, engine);
+            TestUtils.createTable(engine, m);
 
             send(lineData, "messages");
             String expected = "ts\tid\tauthor\tguild\tchannel\tflags\n" +
@@ -1610,7 +1627,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
                         }
                     }
                 }
-                TableUtils.clearThreadLocals();
+                Path.clearThreadLocals();
                 doneLatch.countDown();
             }).start();
 
@@ -1631,9 +1648,11 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
                 mayDrainWalQueue();
 
                 CharSequenceIntHashMap symbolCounts = new CharSequenceIntHashMap();
-                try (TableReader reader = getReader(tableName)) {
-                    Assert.assertEquals(2 * symbols, reader.size());
-                    RecordCursor cursor = reader.getCursor();
+                try (
+                        TableReader reader = getReader(tableName);
+                        TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+                ) {
+                    Assert.assertEquals(2 * symbols, cursor.size());
                     Record record = cursor.getRecord();
                     while (cursor.hasNext()) {
                         symbolCounts.increment(record.getSymA(1));
@@ -1802,13 +1821,13 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
                 Assert.assertTrue(isWalTable("doubles"));
             }
             String expected = "d0\td1\td2\td3\td4\td5\td6\tdNaN\tdmNan\tdInf\tdmInf\ttimestamp\n" +
-                    "0.0\t1.23E-10\t0.00123\t1.23E10\t12.3\t1.23E10\t12.3\tNaN\tNaN\tInfinity\t-Infinity\t1970-01-01T00:00:00.000000Z\n";
+                    "0.0\t1.23E-10\t0.00123\t1.23E10\t12.3\t1.23E10\t12.3\tnull\tnull\tnull\tnull\t1970-01-01T00:00:00.000000Z\n";
             assertTable(expected, "doubles");
         });
     }
 
     private void dropWeatherTable() {
-        engine.drop(path, engine.verifyTableName("weather"));
+        engine.dropTableOrMatView(path, engine.verifyTableName("weather"));
     }
 
     private void mayDrainWalQueue() {
@@ -1818,7 +1837,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
     }
 
     private void renameTable(CharSequence from, CharSequence to) {
-        try (MemoryMARW mem = Vm.getMARWInstance(); Path otherPath = new Path()) {
+        try (MemoryMARW mem = Vm.getCMARWInstance(); Path otherPath = new Path()) {
             engine.rename(securityContext, path, mem, from, otherPath, to);
         }
     }
@@ -1866,7 +1885,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
         LineTcpReceiver receiver = new LineTcpReceiver(lineConfiguration, engine, ioPool, writerPool);
 
         if (ioPool == writerPool) {
-            O3Utils.setupWorkerPool(ioPool, engine, null);
+            WorkerPoolUtils.setupWriterJobs(ioPool, engine);
         }
         ioPool.start(LOG);
         if (ioPool != writerPool) {
@@ -1888,7 +1907,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
                     ioPool.halt();
 
                     long start = System.currentTimeMillis();
-                    while (engine.getMetrics().health().unhandledErrorsCount() == 0) {
+                    while (engine.getMetrics().healthMetrics().unhandledErrorsCount() == 0) {
                         Os.sleep(10);
                         if (System.currentTimeMillis() - start > 1000) {
                             break;
@@ -1920,7 +1939,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
             //expected
         } finally {
             finished.await();
-            TableUtils.clearThreadLocals();
+            Path.clearThreadLocals();
         }
     }
 
@@ -2041,8 +2060,10 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
                         for (int n = 0; n < tables.size(); n++) {
                             CharSequence tableName = tables.get(n);
                             while (true) {
-                                try (TableReader reader = getReader(tableName)) {
-                                    TableReaderRecordCursor cursor = reader.getCursor();
+                                try (
+                                        TableReader reader = getReader(tableName);
+                                        TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor().of(reader)
+                                ) {
                                     while (cursor.hasNext()) {
                                         nRowsWritten++;
                                     }
@@ -2052,6 +2073,7 @@ public class LineTcpReceiverTest extends AbstractLineTcpReceiverTest {
                                     Os.pause();
                                 }
                             }
+                            mayDrainWalQueue();
                         }
                     } while (nRowsWritten < nRows);
                     LOG.info().$(nRowsWritten).$(" rows written").$();

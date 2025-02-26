@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -71,10 +71,10 @@ public class AbstractTest {
 
     public static void createTestPath() {
         final Path path = Path.getThreadLocal(root);
-        if (Files.exists(path)) {
+        if (Files.exists(path.$())) {
             return;
         }
-        Files.mkdirs(path.of(root).slash$(), 509);
+        Files.mkdirs(path.of(root).slash(), 509);
     }
 
     public static Rnd generateRandom() {
@@ -93,7 +93,7 @@ public class AbstractTest {
         final Path path = Path.getThreadLocal(root);
         FilesFacade ff = FilesFacadeImpl.INSTANCE;
         path.slash$();
-        Assert.assertTrue("Test dir cleanup error", !ff.exists(path) || ff.rmdir(path.slash$()));
+        Assert.assertTrue("Test dir cleanup error", !ff.exists(path.$()) || ff.rmdir(path.slash()));
     }
 
     @BeforeClass
@@ -113,7 +113,9 @@ public class AbstractTest {
 
     public void assertSql(CairoEngine engine, CharSequence sql, CharSequence expectedResult) throws SqlException {
         engine.print(sql, sink);
-        Assert.assertTrue(Chars.equals(sink, expectedResult));
+        if (!Chars.equals(sink, expectedResult)) {
+            Assert.assertEquals(expectedResult, sink);
+        }
     }
 
     @Before

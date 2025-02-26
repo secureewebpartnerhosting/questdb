@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -80,28 +80,6 @@ import java.util.concurrent.TimeUnit;
  * Error-handling: Most errors throw an instance of {@link LineSenderException}.
  */
 public interface Sender extends Closeable {
-
-    /**
-     * Transport to use for communication with a QuestDB server.
-     */
-    enum Transport {
-        /**
-         * Use HTTP transport to communicate with a QuestDB server.
-         * <p>
-         * This transport is suitable for most use-cases. It provides stronger transactional guarantees and better
-         * feedback in case of errors.
-         */
-        HTTP,
-
-        /**
-         * Use TCP transport to communicate with a QuestDB server.
-         * <p>
-         * Most users should not need to use this transport. It's left for compatibility with older versions of QuestDB
-         * and for use-cases where HTTP transport is not suitable, when communicating with a QuestDB server over a high-latency
-         * network
-         */
-        TCP
-    }
 
     /**
      * Create a Sender builder instance from a configuration string.
@@ -238,6 +216,17 @@ public interface Sender extends Closeable {
     Sender boolColumn(CharSequence name, boolean value);
 
     /**
+     * Cancel the current row. This method is useful when you want to discard a row that you started, but
+     * you don't want to send it to a server.
+     * <br>
+     * After calling this method you can start a new row by calling {@link #table(CharSequence)} again.
+     * <br>
+     * This is only used when communicating over HTTP transport, and it's illegal to call this method when
+     * communicating over TCP transport.
+     */
+    void cancelRow();
+
+    /**
      * Close this Sender.
      * <br>
      * This must be called before dereferencing Sender, otherwise resources might leak.
@@ -305,6 +294,11 @@ public interface Sender extends Closeable {
     /**
      * Select the table for a new row. This is always the first method to start an error. It's an error to call other
      * methods without calling this method first.
+     * <br>
+     * After calling this method you can start adding columns to the row and then call {@link #atNow()} or {@link #at(Instant)}
+     * to finalize the row. You can then start a new row by calling this method again.
+     * <br>
+     * If you want to cancel the current row, you can call {@link #cancelRow()}.
      *
      * @param table name of the table
      * @return this instance for method chaining
@@ -348,6 +342,28 @@ public interface Sender extends Closeable {
          * Useful in test environments with self-signed certificates.
          */
         INSECURE
+    }
+
+    /**
+     * Transport to use for communication with a QuestDB server.
+     */
+    enum Transport {
+        /**
+         * Use HTTP transport to communicate with a QuestDB server.
+         * <p>
+         * This transport is suitable for most use-cases. It provides stronger transactional guarantees and better
+         * feedback in case of errors.
+         */
+        HTTP,
+
+        /**
+         * Use TCP transport to communicate with a QuestDB server.
+         * <p>
+         * Most users should not need to use this transport. It's left for compatibility with older versions of QuestDB
+         * and for use-cases where HTTP transport is not suitable, when communicating with a QuestDB server over a high-latency
+         * network
+         */
+        TCP
     }
 
     /**
@@ -410,6 +426,7 @@ public interface Sender extends Closeable {
         private int autoFlushRows = PARAMETER_NOT_SET_EXPLICITLY;
         private int bufferCapacity = PARAMETER_NOT_SET_EXPLICITLY;
         private String host;
+        private String httpPath;
         private int httpTimeout = PARAMETER_NOT_SET_EXPLICITLY;
         private String httpToken;
         private String keyId;
@@ -532,11 +549,12 @@ public interface Sender extends Closeable {
          * @return this instance for method chaining
          */
         public LineSenderBuilder autoFlushIntervalMillis(int autoFlushIntervalMillis) {
-            if (this.autoFlushIntervalMillis != PARAMETER_NOT_SET_EXPLICITLY) {
+            if (this.autoFlushIntervalMillis != PARAMETER_NOT_SET_EXPLICITLY && this.autoFlushIntervalMillis != Integer.MAX_VALUE) {
                 throw new LineSenderException("auto flush interval was already configured ")
                         .put("[autoFlushIntervalMillis=").put(this.autoFlushIntervalMillis).put("]");
-            } else if (this.autoFlushRows == AUTO_FLUSH_DISABLED) {
-                throw new LineSenderException("cannot set auto flush interval when auto-flush is disabled");
+            }
+            if (this.autoFlushIntervalMillis == Integer.MAX_VALUE && autoFlushIntervalMillis != Integer.MAX_VALUE) {
+                throw new LineSenderException("cannot set auto flush interval when interval based auto-flush is already disabled");
             }
             if (autoFlushIntervalMillis <= 0) {
                 throw new LineSenderException("auto flush interval cannot be negative ")
@@ -559,6 +577,8 @@ public interface Sender extends Closeable {
          * Setting this to 1 means that the Sender will send each row to a server immediately after it is added. This
          * effectively disables batching and may lead to a significant performance degradation.
          * <br>
+         * Setting this to 0 disables row-based auto-flush. Interval-based auto-flush remains enabled.
+         * <p>
          * You cannot set this value when auto-flush is disabled. See {@link #disableAutoFlush()}.
          *
          * @param autoFlushRows maximum number of rows that can be buffered locally before they are sent to a server.
@@ -569,14 +589,14 @@ public interface Sender extends Closeable {
          * @see #autoFlushIntervalMillis(int)
          */
         public LineSenderBuilder autoFlushRows(int autoFlushRows) {
-            if (this.autoFlushRows > 0) {
+            if (this.autoFlushRows != PARAMETER_NOT_SET_EXPLICITLY && this.autoFlushRows != AUTO_FLUSH_DISABLED) {
                 throw new LineSenderException("auto flush rows was already configured ")
                         .put("[autoFlushRows=").put(this.autoFlushRows).put("]");
-            } else if (this.autoFlushRows == AUTO_FLUSH_DISABLED) {
-                throw new LineSenderException("cannot set auto flush rows when auto-flush is disabled");
+            } else if (this.autoFlushRows == AUTO_FLUSH_DISABLED && autoFlushRows != AUTO_FLUSH_DISABLED) {
+                throw new LineSenderException("cannot set auto flush rows when auto-flush is already disabled");
             }
-            if (autoFlushRows < 1) {
-                throw new LineSenderException("auto flush rows has to be positive ")
+            if (autoFlushRows < 0) {
+                throw new LineSenderException("auto flush rows cannot be negative ")
                         .put("[autoFlushRows=").put(autoFlushRows).put("]");
             }
             this.autoFlushRows = autoFlushRows;
@@ -627,7 +647,7 @@ public interface Sender extends Closeable {
                 long actualMaxRetriesNanos = retryTimeoutMillis == PARAMETER_NOT_SET_EXPLICITLY ? DEFAULT_MAX_RETRY_NANOS : retryTimeoutMillis * 1_000_000L;
                 long actualMinRequestThroughput = minRequestThroughput == PARAMETER_NOT_SET_EXPLICITLY ? DEFAULT_MIN_REQUEST_THROUGHPUT : minRequestThroughput;
                 long actualAutoFlushIntervalMillis;
-                if (autoFlushRows == AUTO_FLUSH_DISABLED) {
+                if (autoFlushIntervalMillis == Integer.MAX_VALUE) {
                     actualAutoFlushIntervalMillis = Long.MAX_VALUE;
                 } else {
                     actualAutoFlushIntervalMillis = TimeUnit.MILLISECONDS.toNanos(autoFlushIntervalMillis == PARAMETER_NOT_SET_EXPLICITLY ? DEFAULT_AUTO_FLUSH_INTERVAL_MILLIS : autoFlushIntervalMillis);
@@ -637,7 +657,7 @@ public interface Sender extends Closeable {
                     assert (trustStorePath == null) == (trustStorePassword == null); //either both null or both non-null
                     tlsConfig = new ClientTlsConfiguration(trustStorePath, trustStorePassword, tlsValidationMode == TlsValidationMode.DEFAULT ? ClientTlsConfiguration.TLS_VALIDATION_MODE_FULL : ClientTlsConfiguration.TLS_VALIDATION_MODE_NONE);
                 }
-                return new LineHttpSender(host, port, httpClientConfiguration, tlsConfig, actualAutoFlushRows, httpToken, username, password, actualMaxRetriesNanos, actualMinRequestThroughput, actualAutoFlushIntervalMillis);
+                return new LineHttpSender(host, port, httpPath, httpClientConfiguration, tlsConfig, actualAutoFlushRows, httpToken, username, password, actualMaxRetriesNanos, actualMinRequestThroughput, actualAutoFlushIntervalMillis);
             }
             assert protocol == PROTOCOL_TCP;
             LineChannel channel = new PlainTcpLineChannel(nf, host, port, bufferCapacity * 2);
@@ -698,11 +718,17 @@ public interface Sender extends Closeable {
          * @see #maxBufferCapacity(int)
          */
         public LineSenderBuilder disableAutoFlush() {
-            if (this.autoFlushRows != -1) {
+            if (this.autoFlushRows != PARAMETER_NOT_SET_EXPLICITLY && this.autoFlushRows != AUTO_FLUSH_DISABLED) {
                 throw new LineSenderException("auto flush rows was already configured ")
                         .put("[autoFlushRows=").put(this.autoFlushRows).put("]");
             }
+            if (this.autoFlushIntervalMillis != PARAMETER_NOT_SET_EXPLICITLY && this.autoFlushIntervalMillis != Integer.MAX_VALUE) {
+                throw new LineSenderException("auto flush interval was already configured ")
+                        .put("[autoFlushIntervalMillis=").put(this.autoFlushIntervalMillis).put("]");
+            }
+
             this.autoFlushRows = AUTO_FLUSH_DISABLED;
+            this.autoFlushIntervalMillis = Integer.MAX_VALUE;
             return this;
         }
 
@@ -743,217 +769,24 @@ public interface Sender extends Closeable {
         }
 
         /**
-         * Configure SenderBuilder from a configuration string.
+         * Path component of the HTTP URL.
          * <br>
-         * This allows to use a configuration string as a template and amend it with additional configuration options.
-         * <br>
-         * It does not allow to override already configured options and throws an exception if you try to do so.
-         * <br>
+         * This is only used when communicating over HTTP transport.
          *
-         * @param configurationString configuration string
+         * @param path HTTP path
          * @return this instance for method chaining
-         * @see #fromConfig(CharSequence)
          */
-        private LineSenderBuilder fromConfig(CharSequence configurationString) {
-            if (Chars.isBlank(configurationString)) {
-                throw new LineSenderException("configuration string cannot be empty nor null");
+        public LineSenderBuilder httpPath(String path) {
+            if (this.httpPath != null) {
+                throw new LineSenderException("path was already configured");
             }
-            StringSink sink = new StringSink();
-            int pos = ConfStringParser.of(configurationString, sink);
-            if (pos < 0) {
-                throw new LineSenderException("invalid configuration string: ").put(sink);
+            if (Chars.isBlank(path)) {
+                throw new LineSenderException("path cannot be empty nor null");
             }
-            if (protocol != PARAMETER_NOT_SET_EXPLICITLY) {
-                throw new LineSenderException("protocol was already configured ")
-                        .put("[protocol=")
-                        .put(protocol == PROTOCOL_HTTP ? "http" : "tcp").put("]");
+            if (!Chars.startsWith(path, '/')) {
+                throw new LineSenderException("the path has to start with '/'");
             }
-            if (host != null) {
-                throw new LineSenderException("server address was already configured ")
-                        .put("[address=").put(host).put("]");
-            }
-            if (port != PARAMETER_NOT_SET_EXPLICITLY) {
-                throw new LineSenderException("server port was already configured ")
-                        .put("[port=").put(port).put("]");
-            }
-            if (Chars.equals("http", sink)) {
-                if (tlsEnabled) {
-                    throw new LineSenderException("cannot use http protocol when TLS is enabled. use https instead");
-                }
-                http();
-            } else if (Chars.equals("tcp", sink)) {
-                if (tlsEnabled) {
-                    throw new LineSenderException("cannot use tcp protocol when TLS is enabled. use tcps instead");
-                }
-                tcp();
-            } else if (Chars.equals("https", sink)) {
-                http();
-                tlsEnabled = true;
-            } else if (Chars.equals("tcps", sink)) {
-                tcp();
-                tlsEnabled = true;
-            } else {
-                throw new LineSenderException("invalid schema [schema=").put(sink).put(", supported-schemas=[http, https, tcp, tcps]]");
-            }
-
-            String tcpToken = null;
-            String user = null;
-            String password = null;
-            while (ConfStringParser.hasNext(configurationString, pos)) {
-                pos = ConfStringParser.nextKey(configurationString, pos, sink);
-                if (pos < 0) {
-                    throw new LineSenderException("invalid configuration string [error=").put(sink).put(']');
-                }
-                if (Chars.equals("addr", sink)) {
-                    pos = getValue(configurationString, pos, sink, "address");
-                    address(sink);
-                    if (port == PARAMETER_NOT_SET_EXPLICITLY) {
-                        port(protocol == PROTOCOL_TCP ? DEFAULT_TCP_PORT : DEFAULT_HTTP_PORT);
-                    }
-                } else if (Chars.equals("user", sink)) {
-                    // deprecated key: user, new key: username
-                    pos = getValue(configurationString, pos, sink, "user");
-                    user = sink.toString();
-                } else if (Chars.equals("username", sink)) {
-                    pos = getValue(configurationString, pos, sink, "username");
-                    user = sink.toString();
-                } else if (Chars.equals("pass", sink)) {
-                    // deprecated key: pass, new key: password
-                    pos = getValue(configurationString, pos, sink, "pass");
-                    if (protocol == PROTOCOL_TCP) {
-                        throw new LineSenderException("password is not supported for TCP protocol");
-                    }
-                    password = sink.toString();
-                } else if (Chars.equals("password", sink)) {
-                    pos = getValue(configurationString, pos, sink, "password");
-                    if (protocol == PROTOCOL_TCP) {
-                        throw new LineSenderException("password is not supported for TCP protocol");
-                    }
-                    password = sink.toString();
-                } else if (Chars.equals("tls_verify", sink)) {
-                    pos = getValue(configurationString, pos, sink, "tls_verify");
-                    if (tlsValidationMode != null) {
-                        throw new LineSenderException("tls_verify was already configured");
-                    }
-                    if (Chars.equals("on", sink)) {
-                        tlsValidationMode = TlsValidationMode.DEFAULT;
-                    } else if (Chars.equals("unsafe_off", sink)) {
-                        tlsValidationMode = TlsValidationMode.INSECURE;
-                    } else {
-                        throw new LineSenderException("invalid tls_verify [value=").put(sink).put(", allowed-values=[on, unsafe_off]]");
-                    }
-                } else if (Chars.equals("tls_roots", sink)) {
-                    pos = getValue(configurationString, pos, sink, "tls_roots");
-                    if (trustStorePath != null) {
-                        throw new LineSenderException("tls_roots was already configured");
-                    }
-                    trustStorePath = sink.toString();
-                } else if (Chars.equals("tls_roots_password", sink)) {
-                    pos = getValue(configurationString, pos, sink, "tls_roots_password");
-                    if (trustStorePassword != null) {
-                        throw new LineSenderException("tls_roots_password was already configured");
-                    }
-                    trustStorePassword = new char[sink.length()];
-                    for (int i = 0, n = sink.length(); i < n; i++) {
-                        trustStorePassword[i] = sink.charAt(i);
-                    }
-                } else if (Chars.equals("token", sink)) {
-                    pos = getValue(configurationString, pos, sink, "token");
-                    if (protocol == PROTOCOL_TCP) {
-                        tcpToken = sink.toString();
-                        // will configure later, we need to know a keyId first
-                    } else if (protocol == PROTOCOL_HTTP) {
-                        httpToken(sink.toString());
-                    } else {
-                        throw new AssertionError();
-                    }
-                } else if (Chars.equals("retry_timeout", sink)) {
-                    pos = getValue(configurationString, pos, sink, "retry_timeout");
-                    int timeout = parseIntValue(sink, "retry_timeout");
-                    retryTimeoutMillis(timeout);
-                } else if (Chars.equals("max_buf_size", sink)) {
-                    pos = getValue(configurationString, pos, sink, "max_buf_size");
-                    int maxBufferSize = parseIntValue(sink, "max_buf_size");
-                    maxBufferCapacity(maxBufferSize);
-                } else if (Chars.equals("init_buf_size", sink)) {
-                    pos = getValue(configurationString, pos, sink, "init_buf_size");
-                    int initBufferSize = parseIntValue(sink, "init_buf_size");
-                    bufferCapacity(initBufferSize);
-                } else if (Chars.equals("auto_flush_rows", sink)) {
-                    pos = getValue(configurationString, pos, sink, "auto_flush_rows");
-                    int autoFlushRows = parseIntValue(sink, "auto_flush_rows");
-                    if (autoFlushRows < 1) {
-                        throw new LineSenderException("invalid auto_flush_rows [value=").put(autoFlushRows).put("]");
-                    }
-                    autoFlushRows(autoFlushRows);
-                } else if (Chars.equals("auto_flush_interval", sink)) {
-                    pos = getValue(configurationString, pos, sink, "auto_flush_interval");
-                    int autoFlushInterval = parseIntValue(sink, "auto_flush_interval");
-                    if (autoFlushInterval < 1) {
-                        throw new LineSenderException("invalid auto_flush_interval [value=").put(autoFlushInterval).put("]");
-                    }
-                    autoFlushIntervalMillis(autoFlushInterval);
-                } else if (Chars.equals("auto_flush", sink)) {
-                    pos = getValue(configurationString, pos, sink, "auto_flush");
-                    if (Chars.equalsIgnoreCase("off", sink)) {
-                        disableAutoFlush();
-                    } else if (!Chars.equalsIgnoreCase("on", sink)) {
-                        throw new LineSenderException("invalid auto_flush [value=").put(sink).put(", allowed-values=[on, off]]");
-                    }
-                } else if (Chars.equals("request_timeout", sink)) {
-                    pos = getValue(configurationString, pos, sink, "request_timeout");
-                    int requestTimeout = parseIntValue(sink, "request_timeout");
-                    httpTimeoutMillis(requestTimeout);
-                } else if (Chars.equals("request_min_throughput", sink)) {
-                    pos = getValue(configurationString, pos, sink, "request_min_throughput");
-                    int requestMinThroughput = parseIntValue(sink, "request_min_throughput");
-                    minRequestThroughput(requestMinThroughput);
-                } else {
-                    // ignore unknown keys, unless they are malformed
-                    if ((pos = ConfStringParser.value(configurationString, pos, sink)) < 0) {
-                        throw new LineSenderException("invalid parameter [error=").put(sink).put("]");
-                    }
-                }
-            }
-            if (host == null) {
-                throw new LineSenderException("addr is missing");
-            }
-            if (trustStorePath != null) {
-                if (trustStorePassword == null) {
-                    throw new LineSenderException("tls_roots was configured, but tls_roots_password is missing");
-                }
-            } else if (trustStorePassword != null) {
-                throw new LineSenderException("tls_roots_password was configured, but tls_roots is missing");
-            }
-            if (protocol == PROTOCOL_HTTP) {
-                if (user != null) {
-                    httpUsernamePassword(user, password);
-                } else if (password != null) {
-                    throw new LineSenderException("HTTP password is configured, but username is missing");
-                }
-            } else {
-                if (user != null) {
-                    enableAuth(user).authToken(tcpToken);
-                } else if (tcpToken != null) {
-                    throw new LineSenderException("TCP token is configured, but user is missing");
-                }
-            }
-            return this;
-        }
-
-        /**
-         * Use HTTP protocol as transport.
-         * <br>
-         * Configures the Sender to use the HTTP protocol.
-         *
-         * @return an instance of {@link LineSenderBuilder} for further configuration
-         */
-        private LineSenderBuilder http() {
-            if (protocol != PARAMETER_NOT_SET_EXPLICITLY) {
-                throw new LineSenderException("protocol was already configured ")
-                        .put("[protocol=").put(protocol).put("]");
-            }
-            protocol = PROTOCOL_HTTP;
+            this.httpPath = path;
             return this;
         }
 
@@ -1144,14 +977,6 @@ public interface Sender extends Closeable {
             return this;
         }
 
-        private void tcp() {
-            if (protocol != PARAMETER_NOT_SET_EXPLICITLY) {
-                throw new LineSenderException("protocol was already configured ")
-                        .put("[protocol=").put(protocol).put("]");
-            }
-            protocol = PROTOCOL_TCP;
-        }
-
         private static int getValue(CharSequence configurationString, int pos, StringSink sink, String name) {
             if ((pos = ConfStringParser.value(configurationString, pos, sink)) < 0) {
                 throw new LineSenderException("invalid ").put(name).put(" [error=").put(sink).put("]");
@@ -1193,6 +1018,268 @@ public interface Sender extends Closeable {
             if (tlsValidationMode == null) {
                 tlsValidationMode = TlsValidationMode.DEFAULT;
             }
+        }
+
+        /**
+         * Configure SenderBuilder from a configuration string.
+         * <br>
+         * This allows to use a configuration string as a template and amend it with additional configuration options.
+         * <br>
+         * It does not allow to override already configured options and throws an exception if you try to do so.
+         * <br>
+         *
+         * @param configurationString configuration string
+         * @return this instance for method chaining
+         * @see #fromConfig(CharSequence)
+         */
+        private LineSenderBuilder fromConfig(CharSequence configurationString) {
+            if (Chars.isBlank(configurationString)) {
+                throw new LineSenderException("configuration string cannot be empty nor null");
+            }
+            StringSink sink = new StringSink();
+            int pos = ConfStringParser.of(configurationString, sink);
+            if (pos < 0) {
+                throw new LineSenderException("invalid configuration string: ").put(sink);
+            }
+            if (protocol != PARAMETER_NOT_SET_EXPLICITLY) {
+                throw new LineSenderException("protocol was already configured ")
+                        .put("[protocol=")
+                        .put(protocol == PROTOCOL_HTTP ? "http" : "tcp").put("]");
+            }
+            if (host != null) {
+                throw new LineSenderException("server address was already configured ")
+                        .put("[address=").put(host).put("]");
+            }
+            if (port != PARAMETER_NOT_SET_EXPLICITLY) {
+                throw new LineSenderException("server port was already configured ")
+                        .put("[port=").put(port).put("]");
+            }
+            if (Chars.equals("http", sink)) {
+                if (tlsEnabled) {
+                    throw new LineSenderException("cannot use http protocol when TLS is enabled. use https instead");
+                }
+                http();
+            } else if (Chars.equals("tcp", sink)) {
+                if (tlsEnabled) {
+                    throw new LineSenderException("cannot use tcp protocol when TLS is enabled. use tcps instead");
+                }
+                tcp();
+            } else if (Chars.equals("https", sink)) {
+                http();
+                tlsEnabled = true;
+            } else if (Chars.equals("tcps", sink)) {
+                tcp();
+                tlsEnabled = true;
+            } else {
+                throw new LineSenderException("invalid schema [schema=").put(sink).put(", supported-schemas=[http, https, tcp, tcps]]");
+            }
+
+            String tcpToken = null;
+            String user = null;
+            String password = null;
+
+            // We need the autoFlushBytesSet and initBufSizeSet flags, because auto_flush_bytes and init_buf_size params
+            // share the same SenderBuilder field. TCP transport allows both to be set as long as they have the same
+            // value. At the same time, we want to fail when the same parameter is set twice.
+            boolean initBufSizeSet = false;
+            boolean autoFlushBytesSet = false;
+            while (ConfStringParser.hasNext(configurationString, pos)) {
+                pos = ConfStringParser.nextKey(configurationString, pos, sink);
+                if (pos < 0) {
+                    throw new LineSenderException("invalid configuration string [error=").put(sink).put(']');
+                }
+                if (Chars.equals("addr", sink)) {
+                    pos = getValue(configurationString, pos, sink, "address");
+                    address(sink);
+                    if (port == PARAMETER_NOT_SET_EXPLICITLY) {
+                        port(protocol == PROTOCOL_TCP ? DEFAULT_TCP_PORT : DEFAULT_HTTP_PORT);
+                    }
+                } else if (Chars.equals("user", sink)) {
+                    // deprecated key: user, new key: username
+                    pos = getValue(configurationString, pos, sink, "user");
+                    user = sink.toString();
+                } else if (Chars.equals("username", sink)) {
+                    pos = getValue(configurationString, pos, sink, "username");
+                    user = sink.toString();
+                } else if (Chars.equals("pass", sink)) {
+                    // deprecated key: pass, new key: password
+                    pos = getValue(configurationString, pos, sink, "pass");
+                    if (protocol == PROTOCOL_TCP) {
+                        throw new LineSenderException("password is not supported for TCP protocol");
+                    }
+                    password = sink.toString();
+                } else if (Chars.equals("password", sink)) {
+                    pos = getValue(configurationString, pos, sink, "password");
+                    if (protocol == PROTOCOL_TCP) {
+                        throw new LineSenderException("password is not supported for TCP protocol");
+                    }
+                    password = sink.toString();
+                } else if (Chars.equals("tls_verify", sink)) {
+                    pos = getValue(configurationString, pos, sink, "tls_verify");
+                    if (tlsValidationMode != null) {
+                        throw new LineSenderException("tls_verify was already configured");
+                    }
+                    if (Chars.equals("on", sink)) {
+                        tlsValidationMode = TlsValidationMode.DEFAULT;
+                    } else if (Chars.equals("unsafe_off", sink)) {
+                        tlsValidationMode = TlsValidationMode.INSECURE;
+                    } else {
+                        throw new LineSenderException("invalid tls_verify [value=").put(sink).put(", allowed-values=[on, unsafe_off]]");
+                    }
+                } else if (Chars.equals("tls_roots", sink)) {
+                    pos = getValue(configurationString, pos, sink, "tls_roots");
+                    if (trustStorePath != null) {
+                        throw new LineSenderException("tls_roots was already configured");
+                    }
+                    trustStorePath = sink.toString();
+                } else if (Chars.equals("tls_roots_password", sink)) {
+                    pos = getValue(configurationString, pos, sink, "tls_roots_password");
+                    if (trustStorePassword != null) {
+                        throw new LineSenderException("tls_roots_password was already configured");
+                    }
+                    trustStorePassword = new char[sink.length()];
+                    for (int i = 0, n = sink.length(); i < n; i++) {
+                        trustStorePassword[i] = sink.charAt(i);
+                    }
+                } else if (Chars.equals("token", sink)) {
+                    pos = getValue(configurationString, pos, sink, "token");
+                    if (protocol == PROTOCOL_TCP) {
+                        tcpToken = sink.toString();
+                        // will configure later, we need to know a keyId first
+                    } else if (protocol == PROTOCOL_HTTP) {
+                        httpToken(sink.toString());
+                    } else {
+                        throw new AssertionError();
+                    }
+                } else if (Chars.equals("retry_timeout", sink)) {
+                    pos = getValue(configurationString, pos, sink, "retry_timeout");
+                    int timeout = parseIntValue(sink, "retry_timeout");
+                    retryTimeoutMillis(timeout);
+                } else if (Chars.equals("max_buf_size", sink)) {
+                    pos = getValue(configurationString, pos, sink, "max_buf_size");
+                    int maxBufferSize = parseIntValue(sink, "max_buf_size");
+                    maxBufferCapacity(maxBufferSize);
+                } else if (Chars.equals("init_buf_size", sink)) {
+                    pos = getValue(configurationString, pos, sink, "init_buf_size");
+                    int initBufSize = parseIntValue(sink, "init_buf_size");
+                    if (autoFlushBytesSet) {
+                        assert protocol == PROTOCOL_TCP;
+                        if (initBufSize != bufferCapacity) {
+                            throw new LineSenderException("TCP transport requires init_buf_size and auto_flush_bytes to be set to the same value [init_buf_size=").put(initBufSize).put(", auto_flush_bytes=").put(bufferCapacity).put(']');
+                        }
+                    } else {
+                        bufferCapacity(initBufSize);
+                    }
+                    initBufSizeSet = true;
+                } else if (Chars.equals("auto_flush_rows", sink)) {
+                    pos = getValue(configurationString, pos, sink, "auto_flush_rows");
+                    int autoFlushRows;
+                    if (Chars.equalsIgnoreCase("off", sink)) {
+                        autoFlushRows = 0;
+                    } else {
+                        autoFlushRows = parseIntValue(sink, "auto_flush_rows");
+                        if (autoFlushRows < 1) {
+                            throw new LineSenderException("invalid auto_flush_rows [value=").put(autoFlushRows).put("]");
+                        }
+                    }
+                    autoFlushRows(autoFlushRows);
+                } else if (Chars.equals("auto_flush_interval", sink)) {
+                    pos = getValue(configurationString, pos, sink, "auto_flush_interval");
+                    int autoFlushInterval;
+                    if (Chars.equalsIgnoreCase("off", sink)) {
+                        autoFlushInterval = Integer.MAX_VALUE;
+                    } else {
+                        autoFlushInterval = parseIntValue(sink, "auto_flush_interval");
+                        if (autoFlushInterval < 1) {
+                            throw new LineSenderException("invalid auto_flush_interval [value=").put(autoFlushInterval).put("]");
+                        }
+                    }
+                    autoFlushIntervalMillis(autoFlushInterval);
+                } else if (Chars.equals("auto_flush_bytes", sink)) {
+                    if (protocol != PROTOCOL_TCP) {
+                        throw new LineSenderException("auto_flush_bytes is only supported for TCP transport");
+                    }
+                    pos = getValue(configurationString, pos, sink, "auto_flush_bytes");
+                    if (Chars.equalsIgnoreCase("off", sink)) {
+                        throw new LineSenderException("TCP transport must have auto_flush_bytes enabled");
+                    } else {
+                        int autoFlushBytes = parseIntValue(sink, "auto_flush_bytes");
+                        if (initBufSizeSet) {
+                            if (autoFlushBytes != bufferCapacity) {
+                                throw new LineSenderException("TCP transport requires init_buf_size and auto_flush_bytes to be set to the same value [init_buf_size=").put(bufferCapacity).put(", auto_flush_bytes=").put(autoFlushBytes).put(']');
+                            }
+                        } else {
+                            bufferCapacity(autoFlushBytes);
+                        }
+                    }
+                    autoFlushBytesSet = true;
+                } else if (Chars.equals("auto_flush", sink)) {
+                    pos = getValue(configurationString, pos, sink, "auto_flush");
+                    if (Chars.equalsIgnoreCase("off", sink)) {
+                        disableAutoFlush();
+                    } else if (!Chars.equalsIgnoreCase("on", sink)) {
+                        throw new LineSenderException("invalid auto_flush [value=").put(sink).put(", allowed-values=[on, off]]");
+                    }
+                } else if (Chars.equals("request_timeout", sink)) {
+                    pos = getValue(configurationString, pos, sink, "request_timeout");
+                    int requestTimeout = parseIntValue(sink, "request_timeout");
+                    httpTimeoutMillis(requestTimeout);
+                } else if (Chars.equals("request_min_throughput", sink)) {
+                    pos = getValue(configurationString, pos, sink, "request_min_throughput");
+                    int requestMinThroughput = parseIntValue(sink, "request_min_throughput");
+                    minRequestThroughput(requestMinThroughput);
+                } else {
+                    // ignore unknown keys, unless they are malformed
+                    if ((pos = ConfStringParser.value(configurationString, pos, sink)) < 0) {
+                        throw new LineSenderException("invalid parameter [error=").put(sink).put("]");
+                    }
+                }
+            }
+            if (host == null) {
+                throw new LineSenderException("addr is missing");
+            }
+            if (trustStorePath != null) {
+                if (trustStorePassword == null) {
+                    throw new LineSenderException("tls_roots was configured, but tls_roots_password is missing");
+                }
+            } else if (trustStorePassword != null) {
+                throw new LineSenderException("tls_roots_password was configured, but tls_roots is missing");
+            }
+            if (protocol == PROTOCOL_HTTP) {
+                if (user != null) {
+                    httpUsernamePassword(user, password);
+                } else if (password != null) {
+                    throw new LineSenderException("HTTP password is configured, but username is missing");
+                }
+            } else {
+                if (user != null) {
+                    enableAuth(user).authToken(tcpToken);
+                } else if (tcpToken != null) {
+                    throw new LineSenderException("TCP token is configured, but user is missing");
+                }
+            }
+            return this;
+        }
+
+        /**
+         * Use HTTP protocol as transport.
+         * <br>
+         * Configures the Sender to use the HTTP protocol.
+         */
+        private void http() {
+            if (protocol != PARAMETER_NOT_SET_EXPLICITLY) {
+                throw new LineSenderException("protocol was already configured ")
+                        .put("[protocol=").put(protocol).put("]");
+            }
+            protocol = PROTOCOL_HTTP;
+        }
+
+        private void tcp() {
+            if (protocol != PARAMETER_NOT_SET_EXPLICITLY) {
+                throw new LineSenderException("protocol was already configured ")
+                        .put("[protocol=").put(protocol).put("]");
+            }
+            protocol = PROTOCOL_TCP;
         }
 
         private void validateParameters() {

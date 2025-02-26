@@ -1,9 +1,31 @@
-/**
- * Written by Gil Tene of Azul Systems, and released to the public domain,
- * as explained at http://creativecommons.org/publicdomain/zero/1.0/
+/*******************************************************************************
+ *     ___                  _   ____  ____
+ *    / _ \ _   _  ___  ___| |_|  _ \| __ )
+ *   | | | | | | |/ _ \/ __| __| | | |  _ \
+ *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
+ *    \__\_\\__,_|\___||___/\__|____/|____/
  *
- * @author Gil Tene
- */
+ *  Copyright (c) 2014-2019 Appsicle
+ *  Copyright (c) 2019-2024 QuestDB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+
+// Written by Gil Tene of Azul Systems, and released to the public domain,
+// as explained at http://creativecommons.org/publicdomain/zero/1.0/
+//
+// @author Gil Tene
 
 package io.questdb.std.histogram.org.HdrHistogram;
 
@@ -98,16 +120,16 @@ public class HistogramLogReader implements Closeable {
         @Override
         public boolean onHistogram(String tag, double timestamp, double length,
                                    HistogramLogScanner.EncodableHistogramSupplier lazyReader) {
-            final double logTimeStampInSec = timestamp; // Timestamp is expected to be in seconds
+            // Timestamp is expected to be in seconds
 
             if (!observedStartTime) {
                 // No explicit start time noted. Use 1st observed time:
-                startTimeSec = logTimeStampInSec;
+                startTimeSec = timestamp;
                 observedStartTime = true;
             }
             if (!observedBaseTime) {
                 // No explicit base time noted. Deduce from 1st observed time (compared to start time):
-                if (logTimeStampInSec < startTimeSec - (365 * 24 * 3600.0)) {
+                if (timestamp < startTimeSec - (365 * 24 * 3600.0)) {
                     // Criteria Note: if log timestamp is more than a year in the past (compared to
                     // StartTime), we assume that timestamps in the log are not absolute
                     baseTimeSec = startTimeSec;
@@ -118,11 +140,11 @@ public class HistogramLogReader implements Closeable {
                 observedBaseTime = true;
             }
 
-            final double absoluteStartTimeStampSec = logTimeStampInSec + baseTimeSec;
+            final double absoluteStartTimeStampSec = timestamp + baseTimeSec;
             final double offsetStartTimeStampSec = absoluteStartTimeStampSec - startTimeSec;
 
-            final double intervalLengthSec = length; // Timestamp length is expect to be in seconds
-            final double absoluteEndTimeStampSec = absoluteStartTimeStampSec + intervalLengthSec;
+            // Timestamp length is expect to be in seconds
+            final double absoluteEndTimeStampSec = absoluteStartTimeStampSec + length;
 
             final double startTimeStampToCheckRangeOn = absolute ? absoluteStartTimeStampSec : offsetStartTimeStampSec;
 

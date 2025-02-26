@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
     @Before
     public void setUp() {
         iteration = 1;
-        currentMicros = 0;
+        setCurrentMicros(0);
         node1.setProperty(PropertyKey.CAIRO_SQL_COLUMN_PURGE_RETRY_DELAY, 1);
         node1.setProperty(PropertyKey.CAIRO_SQL_COLUMN_PURGE_QUEUE_CAPACITY, 2);
         super.setUp();
@@ -71,7 +71,7 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
 
         FilesFacade ff = new TestFilesFacadeImpl() {
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (purgeJobInstance.get() != null && (Utf8s.endsWithAscii(name, "/1970-01-05/sym1.d.2") || Utf8s.endsWithAscii(name, "\\1970-01-05\\sym1.d.2"))) {
                     try {
                         runTableVacuum("testPurge");
@@ -85,7 +85,7 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
         };
         assertMemoryLeak(ff, () -> {
             try (ColumnPurgeJob purgeJob = createPurgeJob()) {
-                ddl(
+                execute(
                         "create table testPurge as" +
                                 " (select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                                 " x," +
@@ -95,22 +95,24 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                                 " from long_sequence(5)), index(sym2)" +
                                 " timestamp(ts) PARTITION BY DAY"
                 );
-                compile("alter table testPurge drop column x");
+                execute("alter table testPurge drop column x");
 
                 purgeJobInstance.set(purgeJob);
                 update("UPDATE testPurge SET sym1='123'");
 
-                assertSql("ts\tstr\tsym1\tsym2\n" +
-                        "1970-01-01T00:00:00.000000Z\ta\t123\t2\n" +
-                        "1970-01-02T00:00:00.000000Z\td\t123\t4\n" +
-                        "1970-01-03T00:00:00.000000Z\tc\t123\t3\n" +
-                        "1970-01-04T00:00:00.000000Z\ta\t123\t1\n" +
-                        "1970-01-05T00:00:00.000000Z\tc\t123\t2\n", "testPurge");
+                assertSql(
+                        "ts\tstr\tsym1\tsym2\n" +
+                                "1970-01-01T00:00:00.000000Z\ta\t123\t2\n" +
+                                "1970-01-02T00:00:00.000000Z\td\t123\t4\n" +
+                                "1970-01-03T00:00:00.000000Z\tc\t123\t3\n" +
+                                "1970-01-04T00:00:00.000000Z\ta\t123\t1\n" +
+                                "1970-01-05T00:00:00.000000Z\tc\t123\t2\n",
+                        "testPurge"
+                );
 
                 String[] partitions = new String[]{"1970-01-01", "1970-01-02", "1970-01-03", "1970-01-04", "1970-01-05"};
                 String[] files = {"sym1.d"};
                 assertFilesExist(partitions, "testPurge", files, "", false);
-
             }
         });
     }
@@ -119,7 +121,7 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
     public void testVacuumPurgesColumnVersionsAfterColumnDrop() throws Exception {
         assertMemoryLeak(() -> {
             try (ColumnPurgeJob purgeJob = createPurgeJob()) {
-                ddl(
+                execute(
                         "create table testPurge as" +
                                 " (select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                                 " x," +
@@ -129,7 +131,7 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                                 " from long_sequence(5)), index(sym2)" +
                                 " timestamp(ts) PARTITION BY DAY"
                 );
-                compile("alter table testPurge drop column x");
+                execute("alter table testPurge drop column x");
 
                 try (TableReader rdr = getReader("testPurge")) {
                     update("UPDATE testPurge SET sym1='123', str='abcd', sym2='EE' WHERE ts >= '1970-01-02'");
@@ -153,7 +155,7 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
     public void testVacuumPurgesColumnVersionsAsync() throws Exception {
         assertMemoryLeak(() -> {
             try (ColumnPurgeJob purgeJob = createPurgeJob()) {
-                ddl(
+                execute(
                         "create table testPurge as" +
                                 " (select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                                 " x," +
@@ -204,10 +206,9 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
     @Test
     public void testVacuumSync() throws Exception {
         assertMemoryLeak(() -> {
-            currentMicros = 0;
-
+            setCurrentMicros(0);
             try (ColumnPurgeJob purgeJob = createPurgeJob()) {
-                ddl(
+                execute(
                         "create table testPurge as" +
                                 " (select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                                 " x," +
@@ -239,10 +240,9 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
     @Test
     public void testVacuumSync2Tables() throws Exception {
         assertMemoryLeak(() -> {
-            currentMicros = 0;
-
+            setCurrentMicros(0);
             try (ColumnPurgeJob purgeJob = createPurgeJob()) {
-                ddl(
+                execute(
                         "create table testPurge1 as" +
                                 " (select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                                 " x," +
@@ -253,7 +253,7 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                                 " timestamp(ts) PARTITION BY DAY"
                 );
 
-                ddl(
+                execute(
                         "create table testPurge2 as" +
                                 " (select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                                 " x," +
@@ -290,7 +290,7 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
     @Test
     public void testVacuumSyncFailsQueueSize() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table testPurge as" +
                             " (select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                             " x," +
@@ -325,10 +325,9 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
     @Test
     public void testVacuumWhenColumnReAdded() throws Exception {
         assertMemoryLeak(() -> {
-            currentMicros = 0;
-
+            setCurrentMicros(0);
             try (ColumnPurgeJob purgeJob = createPurgeJob()) {
-                ddl(
+                execute(
                         "create table testPurge as" +
                                 " (select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                                 " x," +
@@ -338,9 +337,9 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                                 " from long_sequence(5)), index(sym2)" +
                                 " timestamp(ts) PARTITION BY DAY"
                 );
-                compile("alter table testPurge drop column x");
-                compile("alter table testPurge add column x int");
-                insert("insert into testPurge(str,sym1,sym2,x,ts) values('str', 'sym1', 'sym2', 123, '1970-02-01')");
+                execute("alter table testPurge drop column x");
+                execute("alter table testPurge add column x int");
+                execute("insert into testPurge(str,sym1,sym2,x,ts) values('str', 'sym1', 'sym2', 123, '1970-02-01')");
 
                 try (TableReader rdr = getReader("testPurge")) {
                     update("UPDATE testPurge SET str='abcd', sym2='EE',x=1 WHERE ts >= '1970-01-02'");
@@ -366,12 +365,12 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                 String tableName = "testPurge2";
                 String[] partitions = update3ColumnsWithOpenReader(purgeJob, tableName);
 
-                Path path = Path.getThreadLocal(configuration.getRoot());
+                Path path = Path.getThreadLocal(configuration.getDbRoot());
                 TableToken tableToken = engine.verifyTableName(tableName);
                 path.concat(tableToken).concat(partitions[0]).concat("invalid_file.d");
                 FilesFacade ff = configuration.getFilesFacade();
                 ff.touch(path.$());
-                path.of(configuration.getRoot()).concat(tableToken).concat(partitions[0]).concat("x.d.abcd");
+                path.of(configuration.getDbRoot()).concat(tableToken).concat(partitions[0]).concat("x.d.abcd");
                 ff.touch(path.$());
 
                 String[] files = {"x.d"};
@@ -381,10 +380,10 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                 assertFilesExist(partitions, tableName, files, ".2", false);
                 Assert.assertEquals(0, purgeJob.getOutstandingPurgeTasks());
 
-                path.of(configuration.getRoot()).concat(tableToken).concat(partitions[0]).concat("x.d.abcd");
+                path.of(configuration.getDbRoot()).concat(tableToken).concat(partitions[0]).concat("x.d.abcd");
                 Assert.assertTrue(ff.exists(path.$()));
 
-                path.of(configuration.getRoot()).concat(tableToken).concat(partitions[0]).concat("invalid_file.d");
+                path.of(configuration.getDbRoot()).concat(tableToken).concat(partitions[0]).concat("invalid_file.d");
                 Assert.assertTrue(ff.exists(path.$()));
             }
         });
@@ -397,14 +396,14 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                 String tableName = "testPurge3";
                 String[] partitions = update3ColumnsWithOpenReader(purgeJob, tableName);
 
-                Path path = Path.getThreadLocal(configuration.getRoot());
+                Path path = Path.getThreadLocal(configuration.getDbRoot());
                 TableToken tableToken = engine.verifyTableName(tableName);
                 path.concat(tableToken).concat("abcd").put(Files.SEPARATOR);
                 FilesFacade ff = configuration.getFilesFacade();
-                ff.mkdirs(path.$(), configuration.getMkDirMode());
+                ff.mkdirs(path, configuration.getMkDirMode());
 
-                path.of(configuration.getRoot()).concat(tableToken).concat("2020-01-04.abcd").put(Files.SEPARATOR);
-                ff.mkdirs(path.$(), configuration.getMkDirMode());
+                path.of(configuration.getDbRoot()).concat(tableToken).concat("2020-01-04.abcd").put(Files.SEPARATOR);
+                ff.mkdirs(path, configuration.getMkDirMode());
 
                 String[] files = {"x.d"};
                 assertFilesExist(partitions, tableName, files, ".2", true);
@@ -413,11 +412,11 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                 assertFilesExist(partitions, tableName, files, ".2", false);
                 Assert.assertEquals(0, purgeJob.getOutstandingPurgeTasks());
 
-                path = Path.getThreadLocal(configuration.getRoot());
+                path = Path.getThreadLocal(configuration.getDbRoot());
                 path.concat(tableToken).concat("abcd").put(Files.SEPARATOR);
                 Assert.assertTrue(ff.exists(path.$()));
 
-                path.of(configuration.getRoot()).concat(tableToken).concat("2020-01-04.abcd").put(Files.SEPARATOR);
+                path.of(configuration.getDbRoot()).concat(tableToken).concat("2020-01-04.abcd").put(Files.SEPARATOR);
                 Assert.assertTrue(ff.exists(path.$()));
             }
         });
@@ -431,13 +430,13 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
     }
 
     private void assertFilesExist(String tableName, String partition, String[] files, String colSuffix, boolean exist) {
-        Path path = Path.getThreadLocal(configuration.getRoot());
+        Path path = Path.getThreadLocal(configuration.getDbRoot());
         TableToken tableToken = engine.verifyTableName(tableName);
 
         for (int i = files.length - 1; i > -1; i--) {
             String file = files[i];
-            path.of(configuration.getRoot()).concat(tableToken).concat(partition).concat(file).put(colSuffix).$();
-            Assert.assertEquals(Utf8s.toString(path), exist, TestFilesFacadeImpl.INSTANCE.exists(path));
+            path.of(configuration.getDbRoot()).concat(tableToken).concat(partition).concat(file).put(colSuffix).$();
+            Assert.assertEquals(Utf8s.toString(path), exist, TestFilesFacadeImpl.INSTANCE.exists(path.$()));
         }
     }
 
@@ -448,9 +447,9 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
 
     private void runPurgeJob(ColumnPurgeJob purgeJob) {
         engine.releaseInactive();
-        currentMicros += 10L * iteration++;
+        setCurrentMicros(currentMicros + 10L * iteration++);
         purgeJob.run(0);
-        currentMicros += 10L * iteration++;
+        setCurrentMicros(currentMicros + 10L * iteration++);
         purgeJob.run(0);
     }
 
@@ -458,11 +457,11 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
         if (Os.isWindows()) {
             engine.releaseInactive();
         }
-        compile("VACUUM TABLE " + tableName);
+        execute("VACUUM TABLE " + tableName);
     }
 
     private String[] update3ColumnsWithOpenReader(ColumnPurgeJob purgeJob, String tableName) throws SqlException {
-        compile(
+        execute(
                 "create table " + tableName + " as" +
                         " (select timestamp_sequence('1970-01-01T00:01', 24 * 60 * 60 * 1000000L) ts," +
                         " x," +
@@ -472,10 +471,10 @@ public class VacuumColumnVersionTest extends AbstractCairoTest {
                         " from long_sequence(5)), index(sym2)" +
                         " timestamp(ts) PARTITION BY DAY"
         );
-        compile("alter table " + tableName + " drop column x");
-        compile("alter table " + tableName + " add column x int");
+        execute("alter table " + tableName + " drop column x");
+        execute("alter table " + tableName + " add column x int");
         try (TableReader rdr = getReader(tableName)) {
-            compile("insert into " + tableName + "(ts, x, str,sym1,sym2) " +
+            execute("insert into " + tableName + "(ts, x, str,sym1,sym2) " +
                     "select timestamp_sequence('1970-01-01', 24 * 60 * 60 * 1000000L) ts," +
                     " x," +
                     " rnd_str('a', 'b', 'c', 'd') str," +

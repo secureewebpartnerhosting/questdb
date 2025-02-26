@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,7 +36,6 @@ import io.questdb.griffin.engine.functions.VarcharFunction;
 import io.questdb.griffin.engine.groupby.GroupByAllocator;
 import io.questdb.griffin.engine.groupby.GroupByUtf8Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 import io.questdb.std.str.Utf8s;
 
 public final class MaxVarcharGroupByFunction extends VarcharFunction implements GroupByFunction, UnaryFunction {
@@ -44,7 +43,6 @@ public final class MaxVarcharGroupByFunction extends VarcharFunction implements 
     private final GroupByUtf8Sink sinkA = new GroupByUtf8Sink();
     private final GroupByUtf8Sink sinkB = new GroupByUtf8Sink();
     private int valueIndex;
-
 
     public MaxVarcharGroupByFunction(Function arg) {
         this.arg = arg;
@@ -57,7 +55,7 @@ public final class MaxVarcharGroupByFunction extends VarcharFunction implements 
     }
 
     @Override
-    public void computeFirst(MapValue mapValue, Record record, long rowid) {
+    public void computeFirst(MapValue mapValue, Record record, long rowId) {
         final Utf8Sequence val = arg.getVarcharA(record);
         if (val == null) {
             mapValue.putLong(valueIndex, 0);
@@ -69,7 +67,7 @@ public final class MaxVarcharGroupByFunction extends VarcharFunction implements 
 
 
     @Override
-    public void computeNext(MapValue mapValue, Record record, long rowid) {
+    public void computeNext(MapValue mapValue, Record record, long rowId) {
         final Utf8Sequence val = arg.getVarcharA(record);
         if (val != null) {
             final long ptr = mapValue.getLong(valueIndex);
@@ -99,15 +97,6 @@ public final class MaxVarcharGroupByFunction extends VarcharFunction implements 
     }
 
     @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        final long ptr = rec.getLong(valueIndex);
-        if (ptr != 0) {
-            sinkA.of(ptr);
-            utf8Sink.put(sinkA);
-        }
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(Record rec) {
         final long ptr = rec.getLong(valueIndex);
         return ptr == 0 ? null : sinkA.of(ptr);
@@ -118,6 +107,16 @@ public final class MaxVarcharGroupByFunction extends VarcharFunction implements 
         return getVarcharA(rec);
     }
 
+    @Override
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        columnTypes.add(ColumnType.LONG);
+    }
 
     @Override
     public boolean isConstant() {
@@ -125,7 +124,7 @@ public final class MaxVarcharGroupByFunction extends VarcharFunction implements 
     }
 
     @Override
-    public boolean isReadThreadSafe() {
+    public boolean isThreadSafe() {
         return false;
     }
 
@@ -147,12 +146,6 @@ public final class MaxVarcharGroupByFunction extends VarcharFunction implements 
     }
 
     @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        columnTypes.add(ColumnType.LONG);
-    }
-
-    @Override
     public void setAllocator(GroupByAllocator allocator) {
         sinkA.setAllocator(allocator);
         sinkB.setAllocator(allocator);
@@ -161,11 +154,6 @@ public final class MaxVarcharGroupByFunction extends VarcharFunction implements 
     @Override
     public void setNull(MapValue mapValue) {
         mapValue.putLong(valueIndex, 0);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override

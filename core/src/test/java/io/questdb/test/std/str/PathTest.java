@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@
 package io.questdb.test.std.str;
 
 import io.questdb.cairo.TableToken;
-import io.questdb.cairo.TableUtils;
 import io.questdb.mp.SOCountDownLatch;
 import io.questdb.std.*;
 import io.questdb.std.str.*;
@@ -34,7 +33,6 @@ import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
-import java.nio.file.FileSystems;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,7 +45,6 @@ public class PathTest {
 
     @Rule
     public final TemporaryFolder temp = new TemporaryFolder();
-    private final char separator = FileSystems.getDefault().getSeparator().charAt(0);
     private Path path;
 
     @Before
@@ -89,19 +86,19 @@ public class PathTest {
 
     @Test
     public void testConcatNoSlash() {
-        TestUtils.assertEquals("xyz" + separator + "123", path.of("xyz").concat("123").$());
+        TestUtils.assertEquals("xyz" + Files.SEPARATOR + "123", path.of("xyz").concat("123").$());
         Assert.assertTrue(path.isAscii());
     }
 
     @Test
     public void testConcatNoSlashNonAscii() {
-        TestUtils.assertEquals("xyz" + separator + "раздватри", path.of("xyz").concat("раздватри").$());
+        TestUtils.assertEquals("xyz" + Files.SEPARATOR + "раздватри", path.of("xyz").concat("раздватри").$());
         Assert.assertFalse(path.isAscii());
     }
 
     @Test
     public void testConcatSlash() {
-        TestUtils.assertEquals("xyz" + separator + "123", path.of("xyz").slash().concat("123").$());
+        TestUtils.assertEquals("xyz" + Files.SEPARATOR + "123", path.of("xyz").slash().concat("123").$());
     }
 
     @Test
@@ -127,10 +124,10 @@ public class PathTest {
     @Test
     public void testConcatWithExtend() {
         try (
-                Path p0 = new Path().put("sumerians").$();
+                Path p0 = new Path().put("sumerians");
                 Path p1 = new Path(1)
         ) {
-            p1.concat(p0.ptr());
+            p1.concat(p0.$().ptr());
             Assert.assertTrue(p0.isAscii());
             Assert.assertFalse(p1.isAscii());
             Assert.assertEquals(p0.toString(), p1.toString());
@@ -140,10 +137,10 @@ public class PathTest {
     @Test
     public void testConcatWithExtendNonAscii() {
         try (
-                Path p0 = new Path().put("тест").$();
+                Path p0 = new Path().put("тест");
                 Path p1 = new Path(1)
         ) {
-            p1.concat(p0.ptr());
+            p1.concat(p0.$().ptr());
             Assert.assertFalse(p0.isAscii());
             Assert.assertFalse(p1.isAscii());
             Assert.assertEquals(p0.toString(), p1.toString());
@@ -152,7 +149,7 @@ public class PathTest {
 
     @Test
     public void testConcatWithSlash() {
-        TestUtils.assertEquals("xyz" + separator + "123", path.of("xyz/").concat("123").$());
+        TestUtils.assertEquals("xyz" + Files.SEPARATOR + "123", path.of("xyz/").concat("123").$());
     }
 
     @Test
@@ -194,7 +191,7 @@ public class PathTest {
         final long src = 0;
         try {
             try (Path p0 = new Path()) {
-                p0.putUtf8(src, src + threeGiB);
+                p0.putNonAscii(src, src + threeGiB);
                 Assert.fail("Expected exception");
             }
         } catch (IllegalArgumentException iae) {
@@ -211,14 +208,14 @@ public class PathTest {
             try (Path p = new Path()) {
                 p.of("/xyz/").concat(p1.ptr()).$();
                 Assert.assertFalse(p.isAscii());
-                Assert.assertEquals(separator + "xyz" + separator + "abc" + separator + "123", p.toString());
+                Assert.assertEquals(Files.SEPARATOR + "xyz" + Files.SEPARATOR + "abc" + Files.SEPARATOR + "123", p.toString());
             }
         }
     }
 
     @Test
     public void testOfAnotherPath() {
-        try (Path p0 = new Path().of("root").$()) {
+        try (Path p0 = new Path().of("root")) {
             path.of(p0).$();
             Assert.assertTrue(p0.isAscii());
             Assert.assertTrue(path.isAscii());
@@ -228,7 +225,7 @@ public class PathTest {
 
     @Test
     public void testOfAnotherPathAsUtf8Sequence() {
-        try (Path p0 = new Path().put("root").$()) {
+        try (Path p0 = new Path().put("root")) {
             path.of((Utf8Sequence) p0);
             Assert.assertTrue(p0.isAscii());
             Assert.assertTrue(path.isAscii());
@@ -238,7 +235,7 @@ public class PathTest {
 
     @Test
     public void testOfAnotherPathNonAscii() {
-        try (Path p0 = new Path().of("грут").$()) {
+        try (Path p0 = new Path().of("грут")) {
             path.of(p0).$();
             Assert.assertFalse(p0.isAscii());
             Assert.assertFalse(path.isAscii());
@@ -248,7 +245,7 @@ public class PathTest {
 
     @Test
     public void testOfCharSequence() {
-        try (Path p0 = new Path().of("sumerians", 2, 7).$()) {
+        try (Path p0 = new Path().of("sumerians", 2, 7)) {
             Assert.assertEquals("meria", p0.toString());
             Assert.assertTrue(p0.isAscii());
         }
@@ -256,7 +253,7 @@ public class PathTest {
 
     @Test
     public void testOfCharSequenceNonAscii() {
-        try (Path p0 = new Path().of("грут", 1, 4).$()) {
+        try (Path p0 = new Path().of("грут", 1, 4)) {
             Assert.assertEquals("рут", p0.toString());
             Assert.assertFalse(p0.isAscii());
         }
@@ -291,7 +288,7 @@ public class PathTest {
 
         try (Path p = new Path()) {
             TestUtils.assertEquals(
-                    "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999" + System.getProperty("file.separator") + "xyz",
+                    "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999" + Files.SEPARATOR + "xyz",
                     p.of(b).concat("xyz").$()
             );
             Assert.assertTrue(p.isAscii());
@@ -360,7 +357,7 @@ public class PathTest {
 
     @Test
     public void testPrefix() {
-        try (Path p0 = new Path(4).putAscii("foobar").$()) {
+        try (Path p0 = new Path(4).putAscii("foobar")) {
             path.of("baz").prefix(p0, p0.size()).$();
             Assert.assertTrue(p0.isAscii());
             Assert.assertTrue(path.isAscii());
@@ -370,7 +367,7 @@ public class PathTest {
 
     @Test
     public void testPrefixNonAscii() {
-        try (Path p0 = new Path(4).put("раздва").$()) {
+        try (Path p0 = new Path(4).put("раздва")) {
             path.of("три").prefix(p0, p0.size()).$();
             Assert.assertFalse(p0.isAscii());
             Assert.assertFalse(path.isAscii());
@@ -508,7 +505,7 @@ public class PathTest {
                         path.concat("table").slash$();
                         Assert.assertEquals(expected1, path.toString());
                         Assert.assertEquals(22, path.size());
-                        Assert.assertFalse(Files.exists(path));
+                        Assert.assertFalse(Files.exists(path.$()));
                         path.concat("partition").slash$();
                         Assert.assertEquals(expected2, path.toString());
                         Assert.assertEquals(32, path.size());
@@ -522,7 +519,7 @@ public class PathTest {
                     Assert.fail(err.getMessage());
                 } finally {
                     completed.countDown();
-                    TableUtils.clearThreadLocals();
+                    Path.clearThreadLocals();
                 }
             });
         }
@@ -537,7 +534,7 @@ public class PathTest {
                 path.concat("banana").slash$();
                 Assert.assertEquals(expected1, path.toString());
                 Assert.assertEquals(8, path.size());
-                Assert.assertFalse(Files.exists(path));
+                Assert.assertFalse(Files.exists(path.$()));
                 path.concat("party").slash$();
                 Assert.assertEquals(expected2, path.toString());
                 Assert.assertEquals(14, path.size());
@@ -587,7 +584,7 @@ public class PathTest {
 
     @Test
     public void testZeroPad() {
-        try (Path p0 = new Path(1).of("a").$()) {
+        try (Path p0 = new Path(1).of("a")) {
             final int len = 16;
             p0.zeroPad(len);
             Assert.assertEquals(17, p0.capacity());

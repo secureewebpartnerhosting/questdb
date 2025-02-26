@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -74,6 +74,13 @@ public class LineProtocolException extends CairoException {
                 .put("table: ").put(tableNameUtf16)
                 .put(", column: ").put(columnName)
                 .put(" does not exist, creating new columns is disabled");
+    }
+
+    public static LineProtocolException designatedTimestampMustBePositive(String tableNameUtf16, long timestamp) {
+        return instance()
+                .put("table: ").put(tableNameUtf16)
+                .put(", timestamp: ").put(timestamp)
+                .put("; designated timestamp before 1970-01-01 is not allowed");
     }
 
     public LineProtocolException put(@Nullable Utf8Sequence us) {

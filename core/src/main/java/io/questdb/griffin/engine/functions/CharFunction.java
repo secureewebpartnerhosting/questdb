@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,7 +31,10 @@ import io.questdb.cairo.sql.RecordCursorFactory;
 import io.questdb.cairo.sql.ScalarFunction;
 import io.questdb.std.BinarySequence;
 import io.questdb.std.Long256;
-import io.questdb.std.str.*;
+import io.questdb.std.str.CharSink;
+import io.questdb.std.str.StringSink;
+import io.questdb.std.str.Utf8Sequence;
+import io.questdb.std.str.Utf8StringSink;
 
 public abstract class CharFunction implements ScalarFunction {
     private final StringSink utf16SinkA = new StringSink();
@@ -157,14 +160,6 @@ public abstract class CharFunction implements ScalarFunction {
     }
 
     @Override
-    public final void getStr(Record rec, Utf16Sink utf16Sink) {
-        final char value = getChar(rec);
-        if (value != 0) {
-            utf16Sink.put(value);
-        }
-    }
-
-    @Override
     public final CharSequence getStrB(Record rec) {
         final char value = getChar(rec);
         if (value == 0) {
@@ -205,32 +200,35 @@ public abstract class CharFunction implements ScalarFunction {
     }
 
     @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        final char value = getChar(rec);
-        if (value != 0) {
-            utf8Sink.put(value);
-        }
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(Record rec) {
         final char value = getChar(rec);
-        if (value == 0) {
-            return null;
+        if (value != 0) {
+            utf8SinkA.clear();
+            utf8SinkA.put(getChar(rec));
+            return utf8SinkA;
         }
-        utf8SinkA.clear();
-        utf8SinkA.put(getChar(rec));
-        return utf8SinkA;
+        return null;
     }
 
     @Override
     public Utf8Sequence getVarcharB(Record rec) {
         final char value = getChar(rec);
-        if (value == 0) {
-            return null;
+        if (value != 0) {
+            utf8SinkB.clear();
+            utf8SinkB.put(getChar(rec));
+            return utf8SinkB;
         }
-        utf8SinkB.clear();
-        utf8SinkB.put(getChar(rec));
-        return utf8SinkB;
+        return null;
+    }
+
+    @Override
+    public final int getVarcharSize(Record rec) {
+        final char value = getChar(rec);
+        if (value == 0) {
+            return TableUtils.NULL_LEN;
+        }
+        utf8SinkA.clear();
+        utf8SinkA.put(getChar(rec));
+        return utf8SinkA.size();
     }
 }

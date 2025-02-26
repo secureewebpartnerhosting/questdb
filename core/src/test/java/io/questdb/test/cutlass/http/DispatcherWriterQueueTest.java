@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,10 @@
 
 package io.questdb.test.cutlass.http;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableWriter;
 import io.questdb.cairo.sql.InvalidColumnException;
 import io.questdb.cairo.sql.OperationFuture;
 import io.questdb.cairo.sql.TableRecordMetadata;
@@ -37,6 +40,7 @@ import io.questdb.std.str.LPSZ;
 import io.questdb.std.str.StringSink;
 import io.questdb.std.str.Utf8s;
 import io.questdb.test.AbstractCairoTest;
+import io.questdb.test.cairo.TestTableReaderRecordCursor;
 import io.questdb.test.std.TestFilesFacadeImpl;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
@@ -45,13 +49,11 @@ import org.junit.Test;
 import org.junit.rules.Timeout;
 
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class DispatcherWriterQueueTest extends AbstractCairoTest {
-    private static final String UTF_8 = "UTF-8";
     @Rule
     public Timeout timeout = Timeout.builder()
             .withTimeout(10 * 60 * 1000, TimeUnit.MILLISECONDS)
@@ -61,20 +63,23 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
 
     @Test
     public void testAlterTableAddCacheAlterCache() throws Exception {
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndex("s");
                     Assert.assertTrue("Column s must exist", columnIndex >= 0);
-                    Assert.assertTrue(rdr.getSymbolMapReader(columnIndex).isCached());
+                    Assert.assertTrue(reader.getSymbolMapReader(columnIndex).isCached());
                 },
                 1,
                 0,
-                "alter+table+<x>+alter+column+s+cache");
+                "alter+table+<x>+alter+column+s+cache"
+        );
     }
 
     @Test
     public void testAlterTableAddColumn() throws Exception {
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndex("y");
                     Assert.assertEquals(2, columnIndex);
@@ -82,7 +87,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 },
                 1,
                 0,
-                "alter+table+<x>+add+column+y+int");
+                "alter+table+<x>+add+column+y+int"
+        );
     }
 
     @Test
@@ -101,7 +107,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 .withAlterTableMaxWaitTimeout(50_000)
                 .withFilesFacade(new TestFilesFacadeImpl() {
                     @Override
-                    public int openRW(LPSZ name, long opts) {
+                    public long openRW(LPSZ name, long opts) {
                         if (Utf8s.endsWithAscii(name, "default/s.v") || Utf8s.endsWithAscii(name, "default\\s.v")) {
                             alterAckReceived.await();
                             disconnectLatch.countDown();
@@ -110,7 +116,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                     }
                 });
 
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     // Wait command execution
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndex("s");
@@ -123,12 +130,14 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 0,
                 queryTestBuilder,
                 disconnectLatch,
-                "alter+table+<x>+alter+column+s+add+index");
+                "alter+table+<x>+alter+column+s+add+index"
+        );
     }
 
     @Test
     public void testAlterTableAddIndex() throws Exception {
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndex("y");
                     Assert.assertEquals(2, columnIndex);
@@ -136,7 +145,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 },
                 1,
                 0,
-                "alter+table+<x>+add+column+y+int");
+                "alter+table+<x>+add+column+y+int"
+        );
     }
 
     @Test
@@ -153,7 +163,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 .withAlterTableMaxWaitTimeout(50_000)
                 .withFilesFacade(new TestFilesFacadeImpl() {
                     @Override
-                    public int openRW(LPSZ name, long opts) {
+                    public long openRW(LPSZ name, long opts) {
                         if (Utf8s.endsWithAscii(name, "/default/s.v") || Utf8s.endsWithAscii(name, "default\\s.v")) {
                             alterAckReceived.await();
                         }
@@ -161,7 +171,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                     }
                 });
 
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndex("s");
                     Assert.assertTrue(metadata.isColumnIndexed(columnIndex));
@@ -169,7 +180,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 0,
                 queryTestBuilder,
                 null,
-                "alter+table+<x>+alter+column+s+add+index");
+                "alter+table+<x>+alter+column+s+add+index"
+        );
     }
 
     @Test
@@ -187,7 +199,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 .withQueryFutureUpdateListener(waitUntilCommandStarted(alterAckReceived))
                 .withFilesFacade(new TestFilesFacadeImpl() {
                     @Override
-                    public int openRW(LPSZ name, long opts) {
+                    public long openRW(LPSZ name, long opts) {
                         if (Utf8s.endsWithAscii(name, "/default/s.v") || Utf8s.endsWithAscii(name, "\\default\\s.v")) {
                             alterAckReceived.await();
                             Os.sleep(500);
@@ -196,7 +208,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                     }
                 });
 
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndex("s");
                     Assert.assertTrue(metadata.isColumnIndexed(columnIndex));
@@ -204,42 +217,75 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 1,
                 queryTestBuilder,
                 null,
-                "alter+table+<x>+alter+column+s+add+index");
+                "alter+table+<x>+alter+column+s+add+index"
+        );
     }
 
     @Test
     public void testAlterTableAddNocacheAlterCache() throws Exception {
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndex("s");
                     Assert.assertTrue("Column s must exist", columnIndex >= 0);
-                    Assert.assertFalse(rdr.getSymbolMapReader(columnIndex).isCached());
+                    Assert.assertFalse(reader.getSymbolMapReader(columnIndex).isCached());
                 },
                 1,
                 0,
-                "alter+table+<x>+alter+column+s+nocache");
+                "alter+table+<x>+alter+column+s+nocache"
+        );
     }
 
     @Test
     public void testAlterTableAddRenameColumn() throws Exception {
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndex("y");
                     Assert.assertTrue("Column y must exist", columnIndex > 0);
                     int columnIndex2 = metadata.getColumnIndex("s2");
                     Assert.assertTrue("Column s2 must exist", columnIndex2 > 0);
                     Assert.assertTrue(metadata.isColumnIndexed(columnIndex2));
-                    Assert.assertFalse(rdr.getSymbolMapReader(columnIndex2).isCached());
+                    Assert.assertFalse(reader.getSymbolMapReader(columnIndex2).isCached());
                 },
                 2,
                 0,
                 "alter+table+<x>+add+column+y+int",
-                "alter+table+<x>+add+column+s2+symbol+capacity+512+nocache+index");
+                "alter+table+<x>+add+column+s2+symbol+capacity+512+nocache+index"
+        );
+    }
+
+    @Test
+    public void testAlterTableCacheAndNocache() throws Exception {
+        assertMemoryLeak(() -> {
+            execute("CREATE TABLE foo ( a SYMBOL )");
+            drainWalQueue();
+
+            String header = "column\ttype\tindexed\tindexBlockCapacity\tsymbolCached\tsymbolCapacity\tdesignated\tupsertKey\n";
+            String left = "a\tSYMBOL\tfalse\t256\t";
+            String right = "\t128\tfalse\tfalse\n";
+
+            // check its true by default
+            assertSql(header + left + "true" + right, "table_columns('foo')");
+
+            execute("ALTER TABLE foo ALTER COLUMN a NOCACHE");
+            drainWalQueue();
+            // check its false now
+            assertSql(header + left + "false" + right, "table_columns('foo')");
+
+            execute("ALTER TABLE foo ALTER COLUMN a CACHE");
+            drainWalQueue();
+
+            // check its true again
+            assertSql(header + left + "true" + right, "table_columns('foo')");
+
+        });
     }
 
     @Test
     public void testAlterTableFailsToUpgradeConcurrently() throws Exception {
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndexQuiet("y");
                     int columnIndex2 = metadata.getColumnIndexQuiet("x");
@@ -250,12 +296,14 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 2,
                 1,
                 "alter+table+<x>+rename+column+s+to+y",
-                "alter+table+<x>+rename+column+s+to+x");
+                "alter+table+<x>+rename+column+s+to+x"
+        );
     }
 
     @Test
     public void testCanReuseSameJsonContextForMultipleAlterRuns() throws Exception {
-        runAlterOnBusyTable((writer, rdr) -> {
+        runAlterOnBusyTable(
+                (writer, reader) -> {
                     TableRecordMetadata metadata = writer.getMetadata();
                     int columnIndex = metadata.getColumnIndexQuiet("y");
                     int columnIndex2 = metadata.getColumnIndexQuiet("x");
@@ -266,7 +314,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 1,
                 0,
                 "alter+table+<x>+add+y+long256,x+timestamp",
-                "alter+table+<x>+drop+column+s");
+                "alter+table+<x>+drop+column+s"
+        );
     }
 
     @Test
@@ -279,34 +328,36 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 )
                 .withAlterTableStartWaitTimeout(30_000);
 
-        runUpdateOnBusyTable((writer, rdr) ->
-                        TestUtils.assertReader(
-                                "s\tx\tts\n" +
-                                        "b\t10\t1970-01-01T00:00:00.000001Z\n" +
-                                        "c\t2\t1970-01-01T00:00:00.000002Z\n" +
-                                        "a\t1\t1970-01-01T00:00:00.000003Z\n" +
-                                        "b\t10\t1970-01-01T00:00:00.000004Z\n" +
-                                        "c\t5\t1970-01-01T00:00:00.000005Z\n" +
-                                        "a\t1\t1970-01-01T00:00:00.000006Z\n" +
-                                        "b\t10\t1970-01-01T00:00:00.000007Z\n" +
-                                        "c\t8\t1970-01-01T00:00:00.000008Z\n" +
-                                        "a\t1\t1970-01-01T00:00:00.000009Z\n",
-                                rdr,
-                                new StringSink()
-                        ),
+        // this is JDK8 thing:
+        //noinspection CharsetObjectCanBeUsed
+        runUpdateOnBusyTable(
+                (writer, reader) -> TestUtils.assertReader(
+                        "s\tx\tts\n" +
+                                "b\t10\t1970-01-01T00:00:00.000001Z\n" +
+                                "c\t2\t1970-01-01T00:00:00.000002Z\n" +
+                                "a\t1\t1970-01-01T00:00:00.000003Z\n" +
+                                "b\t10\t1970-01-01T00:00:00.000004Z\n" +
+                                "c\t5\t1970-01-01T00:00:00.000005Z\n" +
+                                "a\t1\t1970-01-01T00:00:00.000006Z\n" +
+                                "b\t10\t1970-01-01T00:00:00.000007Z\n" +
+                                "c\t8\t1970-01-01T00:00:00.000008Z\n" +
+                                "a\t1\t1970-01-01T00:00:00.000009Z\n",
+                        reader,
+                        new StringSink()
+                ),
                 writer -> {
                 },
-                0,
                 queryTestBuilder,
                 null,
                 null,
                 -1L,
                 3,
-                URLEncoder.encode("update x set x=1 where s = 'a'", UTF_8),
-                URLEncoder.encode("update x set x=10 where s = 'b'", UTF_8)
+                URLEncoder.encode("update x set x=1 where s = 'a'", "UTF8"),
+                URLEncoder.encode("update x set x=10 where s = 'b'", "UTF8")
         );
     }
 
+    @SuppressWarnings("CharsetObjectCanBeUsed")
     @Test
     public void testUpdateConnectionDropOnColumnRewrite() throws Exception {
         SOCountDownLatch disconnectLatch = new SOCountDownLatch(1);
@@ -320,7 +371,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 .withAlterTableStartWaitTimeout(30_000)
                 .withFilesFacade(new TestFilesFacadeImpl() {
                     @Override
-                    public int openRW(LPSZ name, long opts) {
+                    public long openRW(LPSZ name, long opts) {
                         if (Utf8s.endsWithAscii(name, "x.d.1")) {
                             disconnectLatch.countDown();
                         }
@@ -328,18 +379,18 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                     }
                 });
 
-        runUpdateOnBusyTable((wrt, rdr) -> {
+        runUpdateOnBusyTable(
+                (wrt, rdr) -> {
                     // Test no resources leak, update can go through or not, it is not deterministic
                 },
                 writer -> {
                 },
-                0,
                 queryTestBuilder,
                 disconnectLatch,
                 null,
                 1000,
                 0,
-                URLEncoder.encode("update x set x=1 from tables()", UTF_8)
+                URLEncoder.encode("update x set x=1 from tables()", "UTF8")
         );
     }
 
@@ -375,11 +426,11 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
             SOCountDownLatch waitToDisconnect,
             final String... httpAlterQueries
     ) throws Exception {
-        queryTestBuilder.run((engine) -> {
+        queryTestBuilder.run((engine, sqlExecutionContext) -> {
             TableWriter writer = null;
             try {
                 String tableName = "x";
-                engine.ddl(
+                engine.execute(
                         "create table IF NOT EXISTS " + tableName + " as (" +
                                 " select rnd_symbol('a', 'b', 'c') as s," +
                                 " cast(x as timestamp) ts" +
@@ -398,7 +449,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                         try {
                             barrier.await();
                             if (waitToDisconnect != null) {
-                                int fd = new SendAndReceiveRequestBuilder()
+                                long fd = new SendAndReceiveRequestBuilder()
                                         .connectAndSendRequest(
                                                 "GET /query?query=" + httpAlterQuery + " HTTP/1.1\r\n"
                                                         + SendAndReceiveRequestBuilder.RequestHeaders
@@ -442,8 +493,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 Assert.assertEquals(errorsExpected, errors.get());
                 Assert.assertEquals(0, finished.getCount());
                 engine.releaseInactive();
-                try (TableReader rdr = engine.getReader(tableName)) {
-                    alterVerifyAction.run(writer, rdr);
+                try (TableReader reader = engine.getReader(tableName)) {
+                    alterVerifyAction.run(writer, reader);
                 }
             } finally {
                 if (writer != null) {
@@ -473,7 +524,6 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
     private void runUpdateOnBusyTable(
             AlterVerifyAction alterVerifyAction,
             OnTickAction onTick,
-            int errorsExpected,
             HttpQueryTestBuilder queryTestBuilder,
             SOCountDownLatch waitToDisconnect,
             String errorHeader,
@@ -481,11 +531,11 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
             int updatedCount,
             final String... httpUpdateQueries
     ) throws Exception {
-        queryTestBuilder.run((engine) -> {
+        queryTestBuilder.run((engine, sqlExecutionContext) -> {
             TableWriter writer = null;
             try {
                 String tableName = "x";
-                engine.ddl("create table IF NOT EXISTS " + tableName + " as (" +
+                engine.execute("create table IF NOT EXISTS " + tableName + " as (" +
                                 " select case when x%3 = 0 then 'a' when x%3 = 1 then 'b' else 'c' end as s," +
                                 " x," +
                                 " cast(x as timestamp) ts" +
@@ -504,7 +554,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                         try {
                             barrier.await();
                             if (waitToDisconnect != null) {
-                                int fd = new SendAndReceiveRequestBuilder()
+                                long fd = new SendAndReceiveRequestBuilder()
                                         .withStatementTimeout(statementTimeout)
                                         .connectAndSendRequestWithHeaders(
                                                 "GET /query?query=" + httpUpdateQuery + " HTTP/1.1\r\n"
@@ -525,16 +575,14 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                                             .executeWithStandardHeaders(
                                                     "GET /query?query=" + httpUpdateQuery + " HTTP/1.1\r\n",
                                                     "18\r\n" +
-                                                            "{\"ddl\":\"OK\",\"updated\":" + updatedCount + "}\r\n" +
+                                                            "{\"dml\":\"OK\",\"updated\":" + updatedCount + "}\r\n" +
                                                             "00\r\n" +
                                                             "\r\n"
                                             );
                                 }
                             }
                         } catch (Error e) {
-                            if (errorsExpected == 0) {
-                                error = e;
-                            }
+                            error = e;
                             errors.getAndIncrement();
                         } catch (Throwable e) {
                             errors.getAndIncrement();
@@ -548,7 +596,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 MicrosecondClock microsecondClock = engine.getConfiguration().getMicrosecondClock();
                 long startTimeMicro = microsecondClock.getTicks();
                 // Wait 1 min max for completion
-                while (microsecondClock.getTicks() - startTimeMicro < 60_000_000 && finished.getCount() > 0 && errors.get() <= errorsExpected) {
+                while (microsecondClock.getTicks() - startTimeMicro < 60_000_000 && finished.getCount() > 0 && errors.get() <= 0) {
                     onTick.run(writer);
                     writer.tick(true);
                     finished.await(1_000_000);
@@ -557,11 +605,11 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 if (error != null) {
                     throw error;
                 }
-                Assert.assertEquals(errorsExpected, errors.get());
+                Assert.assertEquals(0, errors.get());
                 Assert.assertEquals(0, finished.getCount());
                 engine.releaseAllReaders();
-                try (TableReader rdr = engine.getReader(tableName)) {
-                    alterVerifyAction.run(writer, rdr);
+                try (TableReader reader = engine.getReader(tableName)) {
+                    alterVerifyAction.run(writer, reader);
                 }
             } finally {
                 if (writer != null) {
@@ -571,6 +619,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
         });
     }
 
+    // JDK8 related
+    @SuppressWarnings("CharsetObjectCanBeUsed")
     private void testUpdateAfterReaderOutOfDateException(
             AlterVerifyAction alterVerifyAction,
             OnTickAction onTick,
@@ -593,7 +643,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 .withAlterTableMaxWaitTimeout(50_000L)
                 .withFilesFacade(new TestFilesFacadeImpl() {
                     @Override
-                    public int openRW(LPSZ name, long opts) {
+                    public long openRW(LPSZ name, long opts) {
                         if (Utf8s.endsWithAscii(name, "default/ts.d.2") || Utf8s.endsWithAscii(name, "default\\ts.d.2")) {
                             updateAckReceived.await();
                         }
@@ -601,17 +651,15 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                     }
                 });
 
-        //noinspection CharsetObjectCanBeUsed
         runUpdateOnBusyTable(
                 alterVerifyAction,
                 onTick,
-                0,
                 queryTestBuilder,
                 null,
                 errorHeader,
                 statementTimeout,
                 updatedCount,
-                URLEncoder.encode("update x set ts=123", StandardCharsets.UTF_8.toString())
+                URLEncoder.encode("update x set ts=123", "UTF8")
         );
     }
 
@@ -626,8 +674,7 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                     try {
                         reader.getMetadata().getColumnIndex("ts");
                         Assert.fail("InvalidColumnException is expected");
-                    } catch (InvalidColumnException e) {
-                        //ignored
+                    } catch (InvalidColumnException ignored) {
                     } catch (Throwable th) {
                         Assert.fail("InvalidColumnException is expected instead");
                     }
@@ -661,7 +708,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                         "00\r\n" +
                         "\r\n",
                 -1L,
-                0);
+                0
+        );
     }
 
     private void testUpdateSucceedsAfterReaderOutOfDateException(
@@ -672,11 +720,13 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
 
         testUpdateAfterReaderOutOfDateException(
                 (writer, reader) -> {
-                    TableReaderRecordCursor cursor = reader.getCursor();
-                    int colIndex = reader.getMetadata().getColumnIndex("ts");
-                    while (cursor.hasNext()) {
-                        long value = cursor.getRecord().getLong(colIndex);
-                        Assert.assertEquals(123L, value);
+                    try (TestTableReaderRecordCursor cursor = new TestTableReaderRecordCursor()) {
+                        cursor.of(reader);
+                        int colIndex = reader.getMetadata().getColumnIndex("ts");
+                        while (cursor.hasNext()) {
+                            long value = cursor.getRecord().getLong(colIndex);
+                            Assert.assertEquals(123L, value);
+                        }
                     }
                 },
                 new OnTickAction() {
@@ -698,7 +748,8 @@ public class DispatcherWriterQueueTest extends AbstractCairoTest {
                 startWaitTimeout,
                 null,
                 120_000_000L,
-                9);
+                9
+        );
     }
 
     private QueryFutureUpdateListener waitUntilCommandStarted(SOCountDownLatch ackReceived) {

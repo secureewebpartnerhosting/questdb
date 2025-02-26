@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ package io.questdb.griffin;
 
 import io.questdb.log.Log;
 import io.questdb.log.LogFactory;
+import io.questdb.std.BufferWindowCharSequence;
 import io.questdb.std.Mutable;
 import io.questdb.std.Numbers;
 import io.questdb.std.ObjectPool;
@@ -111,7 +112,7 @@ public class CharacterStore implements CharacterStoreEntry, Mutable, Utf16Sink {
         LOG.info().$("resize [capacity=").$(capacity).$(']').$();
     }
 
-    public class NameAssemblerCharSequence extends AbstractCharSequence implements Mutable {
+    public class NameAssemblerCharSequence extends AbstractCharSequence implements Mutable, BufferWindowCharSequence {
         int hi;
         int lo;
 
@@ -127,6 +128,11 @@ public class CharacterStore implements CharacterStoreEntry, Mutable, Utf16Sink {
         @Override
         public int length() {
             return hi - lo;
+        }
+
+        @Override
+        public void shiftLo(int positiveOffset) {
+            lo += positiveOffset;
         }
 
         @Override

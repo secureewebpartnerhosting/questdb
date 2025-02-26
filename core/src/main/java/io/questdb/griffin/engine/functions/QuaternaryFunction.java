@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,6 +38,14 @@ public interface QuaternaryFunction extends Function {
         getFunc1().close();
         getFunc2().close();
         getFunc3().close();
+    }
+
+    @Override
+    default void cursorClosed() {
+        getFunc0().cursorClosed();
+        getFunc1().cursorClosed();
+        getFunc2().cursorClosed();
+        getFunc3().cursorClosed();
     }
 
     Function getFunc0();
@@ -73,26 +81,34 @@ public interface QuaternaryFunction extends Function {
     }
 
     @Override
-    default boolean isReadThreadSafe() {
-        return getFunc0().isReadThreadSafe()
-                && getFunc1().isReadThreadSafe()
-                && getFunc2().isReadThreadSafe()
-                && getFunc3().isReadThreadSafe();
+    default boolean isNonDeterministic() {
+        return getFunc0().isNonDeterministic()
+                || getFunc1().isNonDeterministic()
+                || getFunc2().isNonDeterministic()
+                || getFunc3().isNonDeterministic();
     }
 
     @Override
     default boolean isRuntimeConstant() {
-        boolean arc = getFunc0().isRuntimeConstant();
-        boolean brc = getFunc1().isRuntimeConstant();
-        boolean crc = getFunc2().isRuntimeConstant();
-        boolean drc = getFunc3().isRuntimeConstant();
+        final boolean arc = getFunc0().isRuntimeConstant();
+        final boolean brc = getFunc1().isRuntimeConstant();
+        final boolean crc = getFunc2().isRuntimeConstant();
+        final boolean drc = getFunc3().isRuntimeConstant();
 
-        boolean ac = getFunc0().isConstant();
-        boolean bc = getFunc1().isConstant();
-        boolean cc = getFunc2().isConstant();
-        boolean dc = getFunc3().isConstant();
+        final boolean ac = getFunc0().isConstant();
+        final boolean bc = getFunc1().isConstant();
+        final boolean cc = getFunc2().isConstant();
+        final boolean dc = getFunc3().isConstant();
 
         return (ac || arc) && (bc || brc) && (cc || crc) && (dc || drc) && (arc || brc || crc || drc);
+    }
+
+    @Override
+    default boolean isThreadSafe() {
+        return getFunc0().isThreadSafe()
+                && getFunc1().isThreadSafe()
+                && getFunc2().isThreadSafe()
+                && getFunc3().isThreadSafe();
     }
 
     @Override

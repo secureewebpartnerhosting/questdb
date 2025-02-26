@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,14 @@
 
 package io.questdb.cutlass.text;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.TableWriter;
 import io.questdb.griffin.SqlCompiler;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContextImpl;
@@ -67,44 +74,48 @@ public class CopyRequestJob extends SynchronizedJob implements Closeable {
     private final ParallelCsvFileImporter.PhaseStatusReporter updateStatusRef = this::updateStatus;
 
     public CopyRequestJob(final CairoEngine engine, int workerCount) throws SqlException {
-        this.requestQueue = engine.getMessageBus().getTextImportRequestQueue();
-        this.requestSubSeq = engine.getMessageBus().getTextImportRequestSubSeq();
-        this.parallelImporter = new ParallelCsvFileImporter(engine, workerCount);
-        this.serialImporter = new SerialCsvFileImporter(engine);
+        try {
+            this.requestQueue = engine.getMessageBus().getTextImportRequestQueue();
+            this.requestSubSeq = engine.getMessageBus().getTextImportRequestSubSeq();
+            this.parallelImporter = new ParallelCsvFileImporter(engine, workerCount);
+            this.serialImporter = new SerialCsvFileImporter(engine);
 
-        CairoConfiguration configuration = engine.getConfiguration();
-        this.clock = configuration.getMicrosecondClock();
+            CairoConfiguration configuration = engine.getConfiguration();
+            this.clock = configuration.getMicrosecondClock();
 
-        this.sqlExecutionContext = new SqlExecutionContextImpl(engine, 1);
-        this.sqlExecutionContext.with(configuration.getFactoryProvider().getSecurityContextFactory().getRootContext(), null, null);
-        final String statusTableName = configuration.getSystemTableNamePrefix() + "text_import_log";
-        try (SqlCompiler compiler = engine.getSqlCompiler()) {
-            this.statusTableToken = compiler.query()
-                    .$("CREATE TABLE IF NOT EXISTS \"")
-                    .$(statusTableName)
-                    .$("\" (" +
-                            "ts timestamp, " + // 0
-                            "id string, " + // 1
-                            "table_name symbol, " + // 2
-                            "file symbol, " + // 3
-                            "phase symbol, " + // 4
-                            "status symbol, " + // 5
-                            "message string," + // 6
-                            "rows_handled long," + // 7
-                            "rows_imported long," + // 8
-                            "errors long" + // 9
-                            ") timestamp(ts) partition by DAY BYPASS WAL"
-                    )
-                    .compile(sqlExecutionContext)
-                    .getTableToken();
+            this.sqlExecutionContext = new SqlExecutionContextImpl(engine, 1);
+            this.sqlExecutionContext.with(configuration.getFactoryProvider().getSecurityContextFactory().getRootContext(), null, null);
+            final String statusTableName = configuration.getSystemTableNamePrefix() + "text_import_log";
+            try (SqlCompiler compiler = engine.getSqlCompiler()) {
+                this.statusTableToken = compiler.query()
+                        .$("CREATE TABLE IF NOT EXISTS \"")
+                        .$(statusTableName)
+                        .$("\" (" +
+                                "ts timestamp, " + // 0
+                                "id string, " + // 1
+                                "table_name symbol, " + // 2
+                                "file symbol, " + // 3
+                                "phase symbol, " + // 4
+                                "status symbol, " + // 5
+                                "message string," + // 6
+                                "rows_handled long," + // 7
+                                "rows_imported long," + // 8
+                                "errors long" + // 9
+                                ") timestamp(ts) partition by DAY BYPASS WAL"
+                        )
+                        .createTable(sqlExecutionContext);
+            }
+
+            this.writer = engine.getWriter(statusTableToken, "QuestDB system");
+            this.logRetentionDays = configuration.getSqlCopyLogRetentionDays();
+            this.copyContext = engine.getCopyContext();
+            this.path = new Path();
+            this.engine = engine;
+            enforceLogRetention();
+        } catch (Throwable t) {
+            close();
+            throw t;
         }
-
-        this.writer = engine.getWriter(statusTableToken, "QuestDB system");
-        this.logRetentionDays = configuration.getSqlCopyLogRetentionDays();
-        this.copyContext = engine.getCopyContext();
-        this.path = new Path();
-        this.engine = engine;
-        enforceLogRetention();
     }
 
     @Override

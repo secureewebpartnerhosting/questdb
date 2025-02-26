@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 package io.questdb.cairo.sql;
 
 import io.questdb.cairo.DataUnavailableException;
+import io.questdb.std.DirectLongLongHeap;
 
 import java.io.Closeable;
 
@@ -119,6 +120,17 @@ public interface RecordCursor extends Closeable, SymbolTableSource {
      */
     default boolean isUsingIndex() {
         return false;
+    }
+
+    /**
+     * When supported, runs optimized top K (ORDER BY + LIMIT N) loop.
+     *
+     * @param heap        min or max heap to store records
+     * @param columnIndex index of order by column
+     * @see RecordCursorFactory#recordCursorSupportsLongTopK()
+     */
+    default void longTopK(DirectLongLongHeap heap, int columnIndex) {
+        throw new UnsupportedOperationException();
     }
 
     /**

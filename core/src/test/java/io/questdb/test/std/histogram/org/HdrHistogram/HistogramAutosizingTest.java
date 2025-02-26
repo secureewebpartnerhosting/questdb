@@ -1,14 +1,40 @@
-/**
- * HistogramTest.java
- * Written by Gil Tene of Azul Systems, and released to the public domain,
- * as explained at http://creativecommons.org/publicdomain/zero/1.0/
+/*******************************************************************************
+ *     ___                  _   ____  ____
+ *    / _ \ _   _  ___  ___| |_|  _ \| __ )
+ *   | | | | | | |/ _ \/ __| __| | | |  _ \
+ *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
+ *    \__\_\\__,_|\___||___/\__|____/|____/
  *
- * @author Gil Tene
- */
+ *  Copyright (c) 2014-2019 Appsicle
+ *  Copyright (c) 2019-2024 QuestDB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+
+// Written by Gil Tene of Azul Systems, and released to the public domain,
+// as explained at http://creativecommons.org/publicdomain/zero/1.0/
+//
+// @author Gil Tene
 
 package io.questdb.test.std.histogram.org.HdrHistogram;
 
-import io.questdb.std.histogram.org.HdrHistogram.*;
+import io.questdb.std.histogram.org.HdrHistogram.AbstractHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.DoubleHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.Histogram;
+import io.questdb.std.histogram.org.HdrHistogram.IntCountsHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.PackedHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.ShortCountsHistogram;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -39,7 +65,7 @@ public class HistogramAutosizingTest {
     }
 
     @Test
-    public void testAutoSizingAdd() throws Exception {
+    public void testAutoSizingAdd() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -63,7 +89,7 @@ public class HistogramAutosizingTest {
     }
 
     @Test
-    public void testAutoSizingAddDouble() throws Exception {
+    public void testAutoSizingAddDouble() {
         Class<?>[] testClasses = new Class[]{
                 DoubleHistogram.class
         };
@@ -84,7 +110,7 @@ public class HistogramAutosizingTest {
     }
 
     @Test
-    public void testDoubleHistogramAutoSizingDown() throws Exception {
+    public void testDoubleHistogramAutoSizingDown() {
         Class<?>[] testClasses = new Class[]{
                 DoubleHistogram.class
         };
@@ -99,14 +125,13 @@ public class HistogramAutosizingTest {
     }
 
     @Test
-    public void testDoubleHistogramAutoSizingEdges() throws Exception {
+    public void testDoubleHistogramAutoSizingEdges() {
         Class<?>[] testClasses = new Class[]{
                 DoubleHistogram.class
         };
 
         for (Class<?> histoClass : testClasses) {
             DoubleHistogram histogram = constructDoubleHistogram(histoClass, 3);
-            ;
             histogram.recordValue(1);
             histogram.recordValue(1L << 48);
             histogram.recordValue((1L << 52) - 1);
@@ -117,7 +142,6 @@ public class HistogramAutosizingTest {
             Assert.assertEquals(55296, histogram.integerValuesHistogram().countsArrayLength());
 
             DoubleHistogram histogram2 = constructDoubleHistogram(histoClass, 2);
-            ;
             histogram2.recordValue(1);
             histogram2.recordValue(1L << 48);
             histogram2.recordValue((1L << 54) - 1);
@@ -128,7 +152,6 @@ public class HistogramAutosizingTest {
             Assert.assertEquals(7296, histogram2.integerValuesHistogram().countsArrayLength());
 
             DoubleHistogram histogram3 = constructDoubleHistogram(histoClass, 2);
-            ;
             histogram3.recordValue(1E50);
             histogram3.recordValue((1L << 48) * 1E50);
             histogram3.recordValue(((1L << 54) - 1) * 1E50);
@@ -141,7 +164,7 @@ public class HistogramAutosizingTest {
     }
 
     @Test
-    public void testDoubleHistogramAutoSizingUp() throws Exception {
+    public void testDoubleHistogramAutoSizingUp() {
         Class<?>[] testClasses = new Class[]{
                 DoubleHistogram.class
         };
@@ -156,7 +179,7 @@ public class HistogramAutosizingTest {
     }
 
     @Test
-    public void testHistogramAutoSizing() throws Exception {
+    public void testHistogramAutoSizing() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -176,7 +199,7 @@ public class HistogramAutosizingTest {
     }
 
     @Test
-    public void testHistogramAutoSizingEdges() throws Exception {
+    public void testHistogramAutoSizingEdges() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -196,7 +219,7 @@ public class HistogramAutosizingTest {
     }
 
     @Test
-    public void testHistogramEqualsAfterResizing() throws Exception {
+    public void testHistogramEqualsAfterResizing() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,

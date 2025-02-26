@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,10 +32,24 @@ import io.questdb.network.IOOperation;
 import io.questdb.network.NetworkFacade;
 import io.questdb.network.Socket;
 import io.questdb.network.SocketFactory;
-import io.questdb.std.*;
-import io.questdb.std.str.*;
+import io.questdb.std.BinarySequence;
+import io.questdb.std.Chars;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Misc;
+import io.questdb.std.Mutable;
+import io.questdb.std.Numbers;
+import io.questdb.std.ObjectPool;
+import io.questdb.std.QuietCloseable;
+import io.questdb.std.Unsafe;
+import io.questdb.std.Vect;
+import io.questdb.std.str.DirectUtf8String;
+import io.questdb.std.str.Utf8Sequence;
+import io.questdb.std.str.Utf8Sink;
+import io.questdb.std.str.Utf8StringSink;
+import io.questdb.std.str.Utf8s;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 import java.net.HttpURLConnection;
 
@@ -51,6 +65,7 @@ public abstract class HttpClient implements QuietCloseable {
     private final HttpClientCookieHandler cookieHandler;
     private final ObjectPool<DirectUtf8String> csPool = new ObjectPool<>(DirectUtf8String.FACTORY, 64);
     private final int defaultTimeout;
+    private final boolean fixBrokenConnection;
     private final int maxBufferSize;
     private final Request request = new Request();
     private final ResponseHeaders responseHeaders;
@@ -71,6 +86,7 @@ public abstract class HttpClient implements QuietCloseable {
         this.bufferSize = configuration.getInitialRequestBufferSize();
         this.maxBufferSize = configuration.getMaximumRequestBufferSize();
         this.responseParserBufSize = configuration.getResponseBufferSize();
+        this.fixBrokenConnection = configuration.fixBrokenConnection();
         this.bufLo = Unsafe.malloc(bufferSize, MemoryTag.NATIVE_DEFAULT);
         this.responseParserBufLo = Unsafe.malloc(responseParserBufSize, MemoryTag.NATIVE_DEFAULT);
         this.responseHeaders = new ResponseHeaders(responseParserBufLo, responseParserBufSize, defaultTimeout, 4096, csPool);
@@ -91,6 +107,11 @@ public abstract class HttpClient implements QuietCloseable {
 
     public void disconnect() {
         Misc.free(socket);
+    }
+
+    @TestOnly
+    public ResponseHeaders getResponseHeaders() {
+        return responseHeaders;
     }
 
     public Request newRequest(CharSequence host, int port) {
@@ -303,6 +324,14 @@ public abstract class HttpClient implements QuietCloseable {
             return this;
         }
 
+        public int getContentLength() {
+            if (contentStart > -1) {
+                return (int) (ptr - contentStart);
+            } else {
+                return 0;
+            }
+        }
+
         public Request header(CharSequence name, CharSequence value) {
             beforeHeader();
             put(name).putAsciiInternal(": ").put(value);
@@ -363,17 +392,17 @@ public abstract class HttpClient implements QuietCloseable {
         }
 
         @Override
-        public Request putQuoted(@NotNull CharSequence cs) {
-            putAsciiInternal('\"').put(cs).putAsciiInternal('\"');
-            return this;
-        }
-
-        @Override
-        public Request putUtf8(long lo, long hi) {
+        public Request putNonAscii(long lo, long hi) {
             final long size = hi - lo;
             checkCapacity(size);
             Vect.memcpy(ptr, lo, size);
             ptr += size;
+            return this;
+        }
+
+        @Override
+        public Request putQuoted(@NotNull CharSequence cs) {
+            putAsciiInternal('\"').put(cs).putAsciiInternal('\"');
             return this;
         }
 
@@ -402,7 +431,7 @@ public abstract class HttpClient implements QuietCloseable {
             assert state == STATE_URL_DONE || state == STATE_QUERY || state == STATE_HEADER || state == STATE_CONTENT;
             if (socket == null || socket.isClosed()) {
                 connect(host, port);
-            } else if (nf.testConnection(socket.getFd(), responseParserBufLo, 1)) {
+            } else if (fixBrokenConnection && nf.testConnection(socket.getFd(), responseParserBufLo, 1)) {
                 socket.close();
                 connect(host, port);
             }
@@ -444,12 +473,8 @@ public abstract class HttpClient implements QuietCloseable {
             return this;
         }
 
-        public int getContentLength() {
-            if (contentStart > -1) {
-                return (int) (ptr - contentStart);
-            } else {
-                return 0;
-            }
+        public void trimContentToLen(int contentLen) {
+            ptr = contentStart + contentLen;
         }
 
         public Request url(CharSequence url) {
@@ -500,7 +525,7 @@ public abstract class HttpClient implements QuietCloseable {
         }
 
         private void connect(CharSequence host, int port) {
-            int fd = nf.socketTcp(true);
+            long fd = nf.socketTcp(true);
             if (fd < 0) {
                 throw new HttpClientException("could not allocate a file descriptor").errno(nf.errno());
             }

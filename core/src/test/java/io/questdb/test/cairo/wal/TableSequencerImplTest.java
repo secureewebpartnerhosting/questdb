@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,10 @@
 package io.questdb.test.cairo.wal;
 
 import io.questdb.PropertyKey;
-import io.questdb.cairo.*;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.sql.TableRecordMetadata;
 import io.questdb.cairo.wal.WalUtils;
 import io.questdb.cairo.wal.WalWriter;
 import io.questdb.cairo.wal.seq.TableTransactionLog;
@@ -52,12 +55,12 @@ public class TableSequencerImplTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testCanReadStructureVersionV1() throws Exception {
+    public void testCanReadStructureVersionV1() {
         testTableTransactionLogCanReadStructureVersion();
     }
 
     @Test
-    public void testCanReadStructureVersionV2() throws Exception {
+    public void testCanReadStructureVersionV2() {
         Rnd rnd = TestUtils.generateRandom(LOG);
         node1.setProperty(PropertyKey.CAIRO_DEFAULT_SEQ_PART_TXN_COUNT, rnd.nextInt(20) + 10);
         testTableTransactionLogCanReadStructureVersion();
@@ -74,18 +77,21 @@ public class TableSequencerImplTest extends AbstractCairoTest {
         runAddColumnRace(
                 barrier, tableName, iterations, 1, exception,
                 () -> {
-                    try (GenericTableRecordMetadata metadata = new GenericTableRecordMetadata()) {
+                    try {
                         TestUtils.await(barrier);
 
                         TableToken tableToken = engine.verifyTableName(tableName);
+                        int metadataColumnCount;
                         do {
-                            engine.getTableSequencerAPI().getTableMetadata(tableToken, metadata);
-                            Assert.assertEquals(metadata.getColumnCount() - initialColumnCount, metadata.getMetadataVersion());
-                        } while (metadata.getColumnCount() < initialColumnCount + iterations && exception.get() == null);
+                            try (TableRecordMetadata metadata = engine.getSequencerMetadata(tableToken)) {
+                                Assert.assertEquals(metadata.getColumnCount() - initialColumnCount, metadata.getMetadataVersion());
+                                metadataColumnCount = metadata.getColumnCount();
+                            }
+                        } while (metadataColumnCount < initialColumnCount + iterations && exception.get() == null);
                     } catch (Throwable e) {
                         exception.set(e);
                     } finally {
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                     }
                 }
         );
@@ -130,7 +136,7 @@ public class TableSequencerImplTest extends AbstractCairoTest {
                     } catch (Throwable e) {
                         exception.set(e);
                     } finally {
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                     }
                 }
         );
@@ -155,7 +161,7 @@ public class TableSequencerImplTest extends AbstractCairoTest {
                     } catch (Throwable e) {
                         exception.set(e);
                     } finally {
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                     }
                 }
         );
@@ -186,7 +192,7 @@ public class TableSequencerImplTest extends AbstractCairoTest {
                     } catch (Throwable e) {
                         exception.set(e);
                     } finally {
-                        TableUtils.clearThreadLocals();
+                        Path.clearThreadLocals();
                     }
                 }
         );
@@ -243,17 +249,20 @@ public class TableSequencerImplTest extends AbstractCairoTest {
                 .wal();
         createTable(model);
 
-        try (GenericTableRecordMetadata metadata = new GenericTableRecordMetadata();
-             Path path = new Path();
-             WalWriter ww = engine.getWalWriter(engine.verifyTableName(tableName))) {
+        TableToken tableToken = engine.verifyTableName(tableName);
+        try (
+                Path path = new Path();
+                WalWriter ww = engine.getWalWriter(tableToken)
+        ) {
 
-            path.concat(engine.getConfiguration().getRoot()).concat(ww.getTableToken()).concat(WalUtils.SEQ_DIR);
+            path.concat(engine.getConfiguration().getDbRoot()).concat(ww.getTableToken()).concat(WalUtils.SEQ_DIR);
             for (int i = 0; i < iterations; i++) {
                 addColumn(ww, "newCol" + i, ColumnType.INT);
-                engine.getTableSequencerAPI().getTableMetadata(ww.getTableToken(), metadata);
-                Assert.assertEquals(i + 1, metadata.getMetadataVersion());
-                long seqMeta = TableTransactionLog.readMaxStructureVersion(engine.getConfiguration().getFilesFacade(), path);
-                Assert.assertEquals(metadata.getMetadataVersion(), seqMeta);
+                try (TableRecordMetadata metadata = engine.getSequencerMetadata(tableToken)) {
+                    Assert.assertEquals(i + 1, metadata.getMetadataVersion());
+                    long seqMeta = TableTransactionLog.readMaxStructureVersion(engine.getConfiguration().getFilesFacade(), path);
+                    Assert.assertEquals(metadata.getMetadataVersion(), seqMeta);
+                }
             }
         }
     }

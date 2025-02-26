@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,11 +39,9 @@ import io.questdb.std.NumericException;
 import io.questdb.std.ObjList;
 import io.questdb.std.datetime.DateFormat;
 import io.questdb.std.datetime.DateLocale;
-import io.questdb.std.datetime.millitime.DateFormatCompiler;
+import io.questdb.std.datetime.millitime.DateFormatFactory;
 
 public class ToDateFunctionFactory implements FunctionFactory {
-    private static final ThreadLocal<DateFormatCompiler> tlCompiler = ThreadLocal.withInitial(DateFormatCompiler::new);
-
     @Override
     public String getSignature() {
         return "to_date(Ss)";
@@ -56,11 +54,10 @@ public class ToDateFunctionFactory implements FunctionFactory {
         if (pattern == null) {
             throw SqlException.$(argPositions.getQuick(1), "pattern is required");
         }
-        return new ToDateFunction(arg, tlCompiler.get().compile(pattern), configuration.getDefaultDateLocale(), pattern);
+        return new ToDateFunction(arg, DateFormatFactory.INSTANCE.get(pattern), configuration.getDefaultDateLocale(), pattern);
     }
 
     private static final class ToDateFunction extends DateFunction implements UnaryFunction {
-
         private final Function arg;
         private final DateFormat dateFormat;
         private final DateLocale locale;
@@ -87,7 +84,7 @@ public class ToDateFunctionFactory implements FunctionFactory {
                 }
             } catch (NumericException ignore) {
             }
-            return Numbers.LONG_NaN;
+            return Numbers.LONG_NULL;
         }
 
         @Override

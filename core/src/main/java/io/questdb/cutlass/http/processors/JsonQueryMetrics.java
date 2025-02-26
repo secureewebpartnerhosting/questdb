@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,22 +24,23 @@
 
 package io.questdb.cutlass.http.processors;
 
+import io.questdb.metrics.AtomicLongGauge;
 import io.questdb.metrics.Counter;
 import io.questdb.metrics.LongGauge;
 import io.questdb.metrics.MetricsRegistry;
+import io.questdb.std.Mutable;
 import org.jetbrains.annotations.TestOnly;
 
-public class JsonQueryMetrics {
-
+public class JsonQueryMetrics implements Mutable {
     private final Counter cacheHitCounter;
     private final Counter cacheMissCounter;
     private final LongGauge cachedQueriesGauge;
     private final Counter completedQueriesCounter;
-    private final LongGauge connectionCountGauge;
+    private final AtomicLongGauge connectionCountGauge;
     private final Counter startedQueriesCounter;
 
     public JsonQueryMetrics(MetricsRegistry metricsRegistry) {
-        this.connectionCountGauge = metricsRegistry.newLongGauge("http_connections");
+        this.connectionCountGauge = metricsRegistry.newAtomicLongGauge("json_queries_connections");
         this.startedQueriesCounter = metricsRegistry.newCounter("json_queries");
         this.completedQueriesCounter = metricsRegistry.newCounter("json_queries_completed");
         this.cachedQueriesGauge = metricsRegistry.newLongGauge("json_queries_cached");
@@ -59,12 +60,22 @@ public class JsonQueryMetrics {
         return cachedQueriesGauge;
     }
 
+    @Override
+    public void clear() {
+        connectionCountGauge.setValue(0);
+        cacheHitCounter.reset();
+        cacheMissCounter.reset();
+        cachedQueriesGauge.setValue(0);
+        completedQueriesCounter.reset();
+        startedQueriesCounter.reset();
+    }
+
     @TestOnly
     public long completedQueriesCount() {
         return completedQueriesCounter.getValue();
     }
 
-    public LongGauge connectionCountGauge() {
+    public AtomicLongGauge connectionCountGauge() {
         return connectionCountGauge;
     }
 

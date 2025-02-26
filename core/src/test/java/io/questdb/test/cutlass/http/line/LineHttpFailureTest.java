@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -184,7 +184,7 @@ public class LineHttpFailureTest extends AbstractBootstrapTest {
             SOCountDownLatch pong = new SOCountDownLatch(1);
             final FilesFacade filesFacade = new TestFilesFacadeImpl() {
                 @Override
-                public int openRW(LPSZ name, long opts) {
+                public long openRW(LPSZ name, long opts) {
                     if (Utf8s.endsWithAscii(name, "field1.d") && Utf8s.containsAscii(name, "wal")) {
                         ping.await();
                         httpClientRef.get().disconnect();
@@ -244,7 +244,7 @@ public class LineHttpFailureTest extends AbstractBootstrapTest {
             final FilesFacade filesFacade = new TestFilesFacadeImpl() {
 
                 @Override
-                public long append(int fd, long buf, int len) {
+                public long append(long fd, long buf, long len) {
                     if (fd == this.fd && counter.decrementAndGet() == 0) {
                         ping.await();
                         httpClientRef.get().disconnect();
@@ -257,8 +257,8 @@ public class LineHttpFailureTest extends AbstractBootstrapTest {
                 }
 
                 @Override
-                public int openRW(LPSZ name, long opts) {
-                    int fd = super.openRW(name, opts);
+                public long openRW(LPSZ name, long opts) {
+                    long fd = super.openRW(name, opts);
                     if (Utf8s.endsWithAscii(name, Files.SEPARATOR + EVENT_INDEX_FILE_NAME)
                             && Utf8s.containsAscii(name, "second_table")) {
                         this.fd = fd;
@@ -330,7 +330,7 @@ public class LineHttpFailureTest extends AbstractBootstrapTest {
                         // Table is create but no line should be committed
                         TableToken tt = serverMain.getEngine().getTableTokenIfExists("line");
                         Assert.assertNotNull(tt);
-                        Assert.assertEquals(-1, getSeqTxn(serverMain, tt));
+                        Assert.assertEquals(0, getSeqTxn(serverMain, tt));
 
                         // Assert no Wal Writers are left in ILP http TUD cache
                         Assert.assertEquals(0, walWriterTaken.get());
@@ -359,7 +359,7 @@ public class LineHttpFailureTest extends AbstractBootstrapTest {
     @Test
     public void testPutAndGetAreNotSupported() throws Exception {
         TestUtils.assertMemoryLeak(() -> {
-            try (final ServerMain serverMain = ServerMain.create(root, new HashMap<String, String>() {{
+            try (final ServerMain serverMain = ServerMain.create(root, new HashMap<>() {{
                 put(DEBUG_FORCE_SEND_FRAGMENTATION_CHUNK_SIZE.getEnvVarName(), "5");
             }})
             ) {

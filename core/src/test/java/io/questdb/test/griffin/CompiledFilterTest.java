@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testAllBindVariableTypes() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table x as (select" +
                             " rnd_boolean() aboolean," +
                             " rnd_byte(2,50) abyte," +
@@ -138,7 +138,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
 
             final String query = "select * from t1 where x = $1";
             final String expected = "x\tts\tj\n" +
-                    "3\t1970-01-01T00:00:02.000000Z\tNaN\n" +
+                    "3\t1970-01-01T00:00:02.000000Z\tnull\n" +
                     "3\t1970-01-01T00:01:42.000000Z\t7746536061816329025\n";
 
             testFilterWithColTops(query, expected, SqlJitMode.JIT_MODE_ENABLED, false);
@@ -148,7 +148,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testDeferredSymbolConstants() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table x as (select" +
+            execute("create table x as (select" +
                     " timestamp_sequence(400000000000, 500000000) ts," +
                     " x l," +
                     " rnd_symbol('A','B','C') sym" +
@@ -163,7 +163,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
             assertSql(expected, query);
             assertSqlRunWithJit(query);
 
-            ddl("insert into x select " +
+            execute("insert into x select " +
                     " timestamp_sequence(500000000000, 500000000) ts," +
                     " (x+5) l," +
                     " rnd_symbol('D','E','F') sym " +
@@ -183,7 +183,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testIndexBindVariableReplacedContext() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table x as (select" +
+            execute("create table x as (select" +
                     " x l," +
                     " timestamp_sequence(400000000000, 500000000) ts" +
                     " from long_sequence(100)) timestamp(ts)");
@@ -201,7 +201,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             node1.setProperty(PropertyKey.CAIRO_SQL_PARALLEL_FILTER_PRETOUCH_ENABLED, true);
 
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     " x," +
                     " timestamp_sequence(to_timestamp('1970-01-01', 'yyyy-MM-dd'), 100000L) ts " +
                     "from long_sequence(10)) timestamp(ts) partition by day");
@@ -226,12 +226,12 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testMultiplePartitionsOrderBy() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     " x," +
                     " timestamp_sequence(to_timestamp('1970-01-01', 'yyyy-MM-dd'), 100000L) ts " +
                     "from long_sequence(1000)) timestamp(ts) partition by day");
 
-            ddl("insert into t1 select " +
+            execute("insert into t1 select " +
                     " x," +
                     " timestamp_sequence(to_timestamp('1970-01-02', 'yyyy-MM-dd'), 100000L) ts " +
                     "from long_sequence(1000)");
@@ -251,7 +251,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testNameBindVariableReplacedContext() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table x as (select" +
+            execute("create table x as (select" +
                     " x l," +
                     " timestamp_sequence(400000000000, 500000000) ts" +
                     " from long_sequence(100)) timestamp(ts)");
@@ -270,7 +270,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
         setProperty(PropertyKey.CAIRO_SQL_PAGE_FRAME_MAX_ROWS, pageFrameMaxRows);
         final long N = 8 * pageFrameMaxRows + 1;
         assertMemoryLeak(() -> {
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     " x," +
                     " timestamp_sequence(to_timestamp('1970-01-01', 'yyyy-MM-dd'), 100000L) ts " +
                     "from long_sequence(" + N + ")) timestamp(ts) partition by day");
@@ -288,7 +288,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testRandomAccessAfterToTop() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table x as (select" +
+            execute("create table x as (select" +
                     " x l," +
                     " timestamp_sequence(400000000000, 500000000) ts" +
                     " from long_sequence(5)) timestamp(ts)");
@@ -332,14 +332,14 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testRandomAccessWithColTops() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table x as (select" +
+            execute("create table x as (select" +
                     " x l," +
                     " timestamp_sequence(400000000000, 500000000) ts" +
                     " from long_sequence(5)) timestamp(ts)");
 
-            ddl("alter table x add column j long", sqlExecutionContext);
+            execute("alter table x add column j long", sqlExecutionContext);
 
-            ddl("insert into x select " +
+            execute("insert into x select " +
                     " (x+5) l," +
                     " timestamp_sequence(500000000000, 500000000) ts," +
                     " rnd_long() j " +
@@ -347,8 +347,8 @@ public class CompiledFilterTest extends AbstractCairoTest {
 
             final String query = "select * from x where l > 3 and j = null";
             final String expected = "l\tts\tj\n" +
-                    "4\t1970-01-05T15:31:40.000000Z\tNaN\n" +
-                    "5\t1970-01-05T15:40:00.000000Z\tNaN\n";
+                    "4\t1970-01-05T15:31:40.000000Z\tnull\n" +
+                    "5\t1970-01-05T15:40:00.000000Z\tnull\n";
 
             assertSql(expected, query);
             assertSqlRunWithJit(query);
@@ -443,7 +443,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testSymbolBindVariable() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table x as (select" +
+            execute("create table x as (select" +
                     " rnd_symbol('A','B','C') sym," +
                     " timestamp_sequence(400000000000, 500000000) ts" +
                     " from long_sequence(5)) timestamp(ts)");
@@ -482,8 +482,8 @@ public class CompiledFilterTest extends AbstractCairoTest {
     @Test
     public void testSymbolComparison() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test (s symbol)");
-            insert("insert into test values ('C'), ('B'), ('A')");
+            execute("create table test (s symbol)");
+            execute("insert into test values ('C'), ('B'), ('A')");
 
             assertSql("s\nB\nA\n", "select s from test where s <  'C'");
             assertSql("s\nC\nB\nA\n", "select s from test where s <= 'C'");
@@ -579,17 +579,17 @@ public class CompiledFilterTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             sqlExecutionContext.setJitMode(jitMode);
             final long value = 42;
-            ddl("create table x as (select" +
+            execute("create table x as (select" +
                     " " + value + " l," +
                     " to_timestamp('1971', 'yyyy') ts" +
                     " from long_sequence(1)) timestamp(ts)");
 
             bindVariableService.clear();
-            bindVariableService.setLong("l", Numbers.LONG_NaN);
+            bindVariableService.setLong("l", Numbers.LONG_NULL);
 
             // Here we expect a NULL value on the left side of the predicate,
             // so no rows should be returned
-            final String query = "select * from x where l + :l = " + (Numbers.LONG_NaN + value);
+            final String query = "select * from x where l + :l = " + (Numbers.LONG_NULL + value);
             final String expected = "l\tts\n";
 
             assertSql(expected, query);
@@ -602,14 +602,14 @@ public class CompiledFilterTest extends AbstractCairoTest {
             sqlExecutionContext.setJitMode(jitMode);
             node1.setProperty(PropertyKey.CAIRO_SQL_PARALLEL_FILTER_PRETOUCH_ENABLED, preTouch);
 
-            ddl("create table t1 as (select " +
+            execute("create table t1 as (select " +
                     " x," +
                     " timestamp_sequence(0, 1000000) ts " +
                     "from long_sequence(20)) timestamp(ts)");
 
-            ddl("alter table t1 add column j long");
+            execute("alter table t1 add column j long");
 
-            ddl("insert into t1 select " +
+            execute("insert into t1 select " +
                     " x," +
                     " timestamp_sequence(100000000, 1000000) ts," +
                     " rnd_long() j " +
@@ -623,8 +623,8 @@ public class CompiledFilterTest extends AbstractCairoTest {
     private void testSelectAllBothPageFramesFilterWithColTops(int jitMode, boolean preTouch) throws Exception {
         final String query = "select * from t1 where x >= 3 and x <= 4";
         final String expected = "x\tts\tj\n" +
-                "3\t1970-01-01T00:00:02.000000Z\tNaN\n" +
-                "4\t1970-01-01T00:00:03.000000Z\tNaN\n" +
+                "3\t1970-01-01T00:00:02.000000Z\tnull\n" +
+                "4\t1970-01-01T00:00:03.000000Z\tnull\n" +
                 "3\t1970-01-01T00:01:42.000000Z\t7746536061816329025\n" +
                 "4\t1970-01-01T00:01:43.000000Z\t-6945921502384501475\n";
 
@@ -708,7 +708,7 @@ public class CompiledFilterTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             sqlExecutionContext.setJitMode(jitMode);
 
-            ddl("create table x as (select" +
+            execute("create table x as (select" +
                     " rnd_long() l," +
                     " timestamp_sequence(400000000000, 500000000) ts" +
                     " from long_sequence(100)) timestamp(ts)");

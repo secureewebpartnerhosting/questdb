@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,14 +25,18 @@
 package io.questdb.cairo.map;
 
 import io.questdb.cairo.DataUnavailableException;
+import io.questdb.cairo.sql.Function;
 import io.questdb.cairo.sql.Record;
 import io.questdb.cairo.sql.RecordCursor;
 import io.questdb.cairo.sql.SqlExecutionCircuitBreaker;
-import io.questdb.std.*;
+import io.questdb.std.BinarySequence;
+import io.questdb.std.DirectLongLongHeap;
+import io.questdb.std.IntList;
+import io.questdb.std.Long256;
+import io.questdb.std.Misc;
+import io.questdb.std.ObjList;
 import io.questdb.std.str.CharSink;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 public class ShardedMapCursor implements MapRecordCursor {
     private final ShardedMapRecord recordA = new ShardedMapRecord(true);
@@ -78,6 +82,13 @@ public class ShardedMapCursor implements MapRecordCursor {
             }
         }
         return false;
+    }
+
+    @Override
+    public void longTopK(DirectLongLongHeap heap, Function recordFunction) {
+        for (int i = 0, n = shardCursors.size(); i < n; i++) {
+            shardCursors.getQuick(i).longTopK(heap, recordFunction);
+        }
     }
 
     public void of(ObjList<Map> shards) {
@@ -256,11 +267,6 @@ public class ShardedMapCursor implements MapRecordCursor {
         }
 
         @Override
-        public void getStr(int columnIndex, Utf16Sink utf16Sink) {
-            baseRecord.getStr(columnIndex, utf16Sink);
-        }
-
-        @Override
         public CharSequence getStrB(int columnIndex) {
             return baseRecord.getStrB(columnIndex);
         }
@@ -286,11 +292,6 @@ public class ShardedMapCursor implements MapRecordCursor {
         }
 
         @Override
-        public void getVarchar(int col, Utf8Sink utf8Sink) {
-            baseRecord.getVarchar(col, utf8Sink);
-        }
-
-        @Override
         public Utf8Sequence getVarcharA(int col) {
             return baseRecord.getVarcharA(col);
         }
@@ -301,7 +302,12 @@ public class ShardedMapCursor implements MapRecordCursor {
         }
 
         @Override
-        public int keyHashCode() {
+        public int getVarcharSize(int columnIndex) {
+            return baseRecord.getVarcharSize(columnIndex);
+        }
+
+        @Override
+        public long keyHashCode() {
             return baseRecord.keyHashCode();
         }
 

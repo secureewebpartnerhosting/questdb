@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,9 @@
 package io.questdb.cairo.wal;
 
 import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoException;
 import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.CommitMode;
 import io.questdb.cairo.VarcharTypeDriver;
 import io.questdb.cairo.sql.BindVariableService;
 import io.questdb.cairo.sql.Function;
@@ -41,17 +43,17 @@ import java.io.Closeable;
 import static io.questdb.cairo.wal.WalUtils.*;
 
 class WalEventWriter implements Closeable {
-    private final MemoryMARW eventMem = Vm.getMARWInstance();
+    private final CairoConfiguration configuration;
+    private final MemoryMARW eventMem = Vm.getCMARWInstance();
     private final FilesFacade ff;
     private final StringSink sink = new StringSink();
-    private int indexFd;
+    private long indexFd;
     private AtomicIntList initialSymbolCounts;
     private long longBuffer;
     private long startOffset = 0;
     private BoolList symbolMapNullFlags;
     private int txn = 0;
     private ObjList<CharSequenceIntHashMap> txnSymbolMaps;
-    private final CairoConfiguration configuration;
 
     WalEventWriter(CairoConfiguration configuration) {
         this.configuration = configuration;
@@ -65,7 +67,7 @@ class WalEventWriter implements Closeable {
 
     public void close(boolean truncate, byte truncateMode) {
         eventMem.close(truncate, truncateMode);
-        Unsafe.free(longBuffer, Long.BYTES, MemoryTag.MMAP_TABLE_WAL_WRITER);
+        Unsafe.free(longBuffer, Long.BYTES, MemoryTag.NATIVE_TABLE_WAL_WRITER);
         longBuffer = 0L;
         ff.close(indexFd);
         indexFd = -1;
@@ -76,6 +78,30 @@ class WalEventWriter implements Closeable {
      */
     public long size() {
         return eventMem.getAppendOffset();
+    }
+
+    private void appendBindVariableValuesByIndex(BindVariableService bindVariableService) {
+        final int count = bindVariableService != null ? bindVariableService.getIndexedVariableCount() : 0;
+        eventMem.putInt(count);
+        for (int i = 0; i < count; i++) {
+            appendFunctionValue(bindVariableService.getFunction(i));
+        }
+    }
+
+    private void appendBindVariableValuesByName(BindVariableService bindVariableService) {
+        final int count = bindVariableService != null ? bindVariableService.getNamedVariables().size() : 0;
+        eventMem.putInt(count);
+
+        if (count > 0) {
+            final ObjList<CharSequence> namedVariables = bindVariableService.getNamedVariables();
+            for (int i = 0; i < count; i++) {
+                final CharSequence name = namedVariables.get(i);
+                eventMem.putStr(name);
+                sink.clear();
+                sink.put(':').put(name);
+                appendFunctionValue(bindVariableService.getFunction(sink));
+            }
+        }
     }
 
     private void appendFunctionValue(Function function) {
@@ -132,7 +158,7 @@ class WalEventWriter implements Closeable {
                 eventMem.putStr(function.getStrA(null));
                 break;
             case ColumnType.VARCHAR:
-                VarcharTypeDriver.appendValue(eventMem, function.getVarcharA(null));
+                VarcharTypeDriver.appendPlainValue(eventMem, function.getVarcharA(null));
                 break;
             case ColumnType.BINARY:
                 eventMem.putBin(function.getBin(null));
@@ -147,7 +173,9 @@ class WalEventWriter implements Closeable {
 
     private void appendIndex(long value) {
         Unsafe.getUnsafe().putLong(longBuffer, value);
-        ff.append(indexFd, longBuffer, Long.BYTES);
+        if (ff.append(indexFd, longBuffer, Long.BYTES) != Long.BYTES) {
+            throw CairoException.critical(ff.errno()).put("could not append WAL invent index value [value=").put(value).put(']');
+        }
     }
 
     private void init() {
@@ -157,30 +185,6 @@ class WalEventWriter implements Closeable {
 
         appendIndex(WALE_HEADER_SIZE);
         txn = 0;
-    }
-
-    private void appendBindVariableValuesByIndex(BindVariableService bindVariableService) {
-        final int count = bindVariableService != null ? bindVariableService.getIndexedVariableCount() : 0;
-        eventMem.putInt(count);
-        for (int i = 0; i < count; i++) {
-            appendFunctionValue(bindVariableService.getFunction(i));
-        }
-    }
-
-    private void appendBindVariableValuesByName(BindVariableService bindVariableService) {
-        final int count = bindVariableService != null ? bindVariableService.getNamedVariables().size() : 0;
-        eventMem.putInt(count);
-
-        if (count > 0) {
-            final ObjList<CharSequence> namedVariables = bindVariableService.getNamedVariables();
-            for (int i = 0; i < count; i++) {
-                final CharSequence name = namedVariables.get(i);
-                eventMem.putStr(name);
-                sink.clear();
-                sink.put(':').put(name);
-                appendFunctionValue(bindVariableService.getFunction(sink));
-            }
-        }
     }
 
     private void writeSymbolMapDiffs() {
@@ -276,12 +280,12 @@ class WalEventWriter implements Closeable {
                 path.trimTo(pathLen).concat(EVENT_FILE_NAME).$(),
                 systemTable ? configuration.getSystemWalEventAppendPageSize() : configuration.getWalEventAppendPageSize(),
                 -1,
-                MemoryTag.MMAP_TABLE_WAL_WRITER,
+                MemoryTag.NATIVE_TABLE_WAL_WRITER,
                 CairoConfiguration.O_NONE,
                 Files.POSIX_MADV_RANDOM
         );
         indexFd = ff.openRW(path.trimTo(pathLen).concat(EVENT_INDEX_FILE_NAME).$(), CairoConfiguration.O_NONE);
-        longBuffer = Unsafe.malloc(Long.BYTES, MemoryTag.MMAP_TABLE_WAL_WRITER);
+        longBuffer = Unsafe.malloc(Long.BYTES, MemoryTag.NATIVE_TABLE_WAL_WRITER);
         init();
     }
 
@@ -294,8 +298,11 @@ class WalEventWriter implements Closeable {
     }
 
     void sync() {
-        eventMem.sync(false);
-        ff.fsync(indexFd);
+        int commitMode = configuration.getCommitMode();
+        if (commitMode != CommitMode.NOSYNC) {
+            eventMem.sync(commitMode == CommitMode.ASYNC);
+            ff.fsync(indexFd);
+        }
     }
 
     int truncate() {

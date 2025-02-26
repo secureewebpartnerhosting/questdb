@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,18 +29,18 @@ import io.questdb.cairo.sql.RecordCursor;
 import io.questdb.cairo.sql.RecordMetadata;
 import io.questdb.log.Log;
 import io.questdb.log.LogRecord;
-import io.questdb.std.Chars;
-import io.questdb.std.Numbers;
-import io.questdb.std.Uuid;
+import io.questdb.std.*;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
 import io.questdb.std.datetime.millitime.DateFormatUtils;
 import io.questdb.std.str.CharSink;
 import io.questdb.std.str.MutableCharSink;
+import io.questdb.std.str.Utf8Sequence;
 
 import static io.questdb.std.Numbers.IPv4_NULL;
 
 public class CursorPrinter {
     private static final char COLUMN_DELIMITER = '\t';
+    public static int FLOAT_SCALE = 4;
 
     public static void printColumn(Record r, RecordMetadata m, int columnIndex, CharSink<?> sink, boolean printTypes) {
         printColumn(r, m, columnIndex, sink, false, printTypes);
@@ -60,10 +60,20 @@ public class CursorPrinter {
                 TimestampFormatUtils.appendDateTimeUSec(sink, record.getTimestamp(columnIndex));
                 break;
             case ColumnType.DOUBLE:
-                sink.put(record.getDouble(columnIndex), Numbers.MAX_SCALE);
+                double v = record.getDouble(columnIndex);
+                if (Numbers.isFinite(v)) {
+                    sink.put(v);
+                } else {
+                    sink.put("null");
+                }
                 break;
             case ColumnType.FLOAT:
-                sink.put(record.getFloat(columnIndex), 4);
+                float f = record.getFloat(columnIndex);
+                if (Numbers.isFinite(f)) {
+                    sink.put(f, FLOAT_SCALE);
+                } else {
+                    sink.put("null");
+                }
                 break;
             case ColumnType.INT:
                 sink.put(record.getInt(columnIndex));
@@ -73,7 +83,8 @@ public class CursorPrinter {
                 break;
             case ColumnType.STRING:
                 if (!symbolAsString | metadata.getColumnType(columnIndex) != ColumnType.SYMBOL) {
-                    sink.put(record.getStrA(columnIndex));
+                    CharSequence val = record.getStrA(columnIndex);
+                    sink.put(val != null ? val : nullStringValue);
                     break;
                 } // Fall down to SYMBOL
             case ColumnType.SYMBOL:
@@ -112,7 +123,12 @@ public class CursorPrinter {
                 sink.put(record.getBool(columnIndex));
                 break;
             case ColumnType.BINARY:
-                Chars.toSink(record.getBin(columnIndex), sink);
+                BinarySequence bin = record.getBin(columnIndex);
+                if (bin != null) {
+                    Chars.toSink(bin, sink);
+                } else {
+                    sink.put(nullStringValue);
+                }
                 break;
             case ColumnType.LONG256:
                 record.getLong256(columnIndex, sink);
@@ -135,7 +151,18 @@ public class CursorPrinter {
                 break;
             }
             case ColumnType.VARCHAR:
-                sink.put(record.getVarcharA(columnIndex));
+                Utf8Sequence varchar = record.getVarcharA(columnIndex);
+                if (varchar != null) {
+                    sink.put(varchar);
+                } else {
+                    sink.put(nullStringValue);
+                }
+                break;
+            case ColumnType.INTERVAL:
+                Interval interval = record.getInterval(columnIndex);
+                if (!Interval.NULL.equals(interval)) {
+                    interval.toSink(sink);
+                }
                 break;
             default:
                 break;

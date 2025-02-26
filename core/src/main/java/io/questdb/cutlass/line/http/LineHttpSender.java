@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,12 +30,20 @@ import io.questdb.HttpClientConfiguration;
 import io.questdb.cairo.TableUtils;
 import io.questdb.client.Sender;
 import io.questdb.cutlass.http.HttpConstants;
-import io.questdb.cutlass.http.client.*;
+import io.questdb.cutlass.http.client.Fragment;
+import io.questdb.cutlass.http.client.HttpClient;
+import io.questdb.cutlass.http.client.HttpClientException;
+import io.questdb.cutlass.http.client.HttpClientFactory;
+import io.questdb.cutlass.http.client.Response;
 import io.questdb.cutlass.json.JsonException;
 import io.questdb.cutlass.json.JsonLexer;
 import io.questdb.cutlass.json.JsonParser;
 import io.questdb.cutlass.line.LineSenderException;
-import io.questdb.std.*;
+import io.questdb.std.Chars;
+import io.questdb.std.Misc;
+import io.questdb.std.NanosecondClockImpl;
+import io.questdb.std.Os;
+import io.questdb.std.Rnd;
 import io.questdb.std.datetime.microtime.MicrosecondClockImpl;
 import io.questdb.std.datetime.microtime.Timestamps;
 import io.questdb.std.str.DirectUtf8Sequence;
@@ -61,6 +69,7 @@ public final class LineHttpSender implements Sender {
     private final long maxRetriesNanos;
     private final long minRequestThroughput;
     private final String password;
+    private final String path;
     private final int port;
     private final CharSequence questdbVersion;
     private final Rnd rnd = new Rnd(NanosecondClockImpl.INSTANCE.getTicks(), MicrosecondClockImpl.INSTANCE.getTicks());
@@ -73,24 +82,57 @@ public final class LineHttpSender implements Sender {
     private JsonErrorParser jsonErrorParser;
     private long pendingRows;
     private HttpClient.Request request;
+    private int rowBookmark;
     private RequestState state = RequestState.EMPTY;
 
-    public LineHttpSender(String host,
-                          int port,
-                          HttpClientConfiguration clientConfiguration,
-                          ClientTlsConfiguration tlsConfig,
-                          int autoFlushRows,
-                          String authToken,
-                          String username,
-                          String password,
-                          long maxRetriesNanos,
-                          long minRequestThroughput,
-                          long flushIntervalNanos
+    public LineHttpSender(
+            String host,
+            int port,
+            HttpClientConfiguration clientConfiguration,
+            ClientTlsConfiguration tlsConfig,
+            int autoFlushRows,
+            String authToken,
+            String username,
+            String password,
+            long maxRetriesNanos,
+            long minRequestThroughput,
+            long flushIntervalNanos
+    ) {
+        this(
+                host,
+                port,
+                PATH,
+                clientConfiguration,
+                tlsConfig,
+                autoFlushRows,
+                authToken,
+                username,
+                password,
+                maxRetriesNanos,
+                minRequestThroughput,
+                flushIntervalNanos
+        );
+    }
+
+    public LineHttpSender(
+            String host,
+            int port,
+            String path,
+            HttpClientConfiguration clientConfiguration,
+            ClientTlsConfiguration tlsConfig,
+            int autoFlushRows,
+            String authToken,
+            String username,
+            String password,
+            long maxRetriesNanos,
+            long minRequestThroughput,
+            long flushIntervalNanos
     ) {
         assert authToken == null || (username == null && password == null);
         this.maxRetriesNanos = maxRetriesNanos;
         this.host = host;
         this.port = port;
+        this.path = path != null ? path : PATH;
         this.autoFlushRows = autoFlushRows;
         this.authToken = authToken;
         this.username = username;
@@ -100,10 +142,10 @@ public final class LineHttpSender implements Sender {
         this.baseTimeoutMillis = clientConfiguration.getTimeout();
         if (tlsConfig != null) {
             this.client = HttpClientFactory.newTlsInstance(clientConfiguration, tlsConfig);
-            this.url = "https://" + host + ":" + port + PATH;
+            this.url = "https://" + host + ":" + port + this.path;
         } else {
             this.client = HttpClientFactory.newPlainTextInstance(clientConfiguration);
-            this.url = "http://" + host + ":" + port + PATH;
+            this.url = "http://" + host + ":" + port + this.path;
         }
         this.questdbVersion = new BuildInformationHolder().getSwVersion();
         this.request = newRequest();
@@ -111,14 +153,14 @@ public final class LineHttpSender implements Sender {
 
     @Override
     public void at(long timestamp, ChronoUnit unit) {
-        request.putAscii(' ').put(timestamp * unitToNanos(unit));
+        request.putAscii(' ').put(Timestamps.toMicros(timestamp, unit)).put('t');
         atNow();
     }
 
     @Override
     public void at(Instant timestamp) {
-        long nanos = timestamp.getEpochSecond() * Timestamps.SECOND_NANOS + timestamp.getNano();
-        request.putAscii(' ').put(nanos);
+        long micros = timestamp.getEpochSecond() * Timestamps.SECOND_MICROS + timestamp.getNano() / 1_000;
+        request.putAscii(' ').put(micros).put('t');
         atNow();
     }
 
@@ -138,6 +180,7 @@ public final class LineHttpSender implements Sender {
         if (rowAdded()) {
             flush();
         }
+        rowBookmark = request.getContentLength();
     }
 
     @Override
@@ -148,13 +191,21 @@ public final class LineHttpSender implements Sender {
     }
 
     @Override
+    public void cancelRow() {
+        validateNotClosed();
+        request.trimContentToLen(rowBookmark);
+        state = RequestState.EMPTY;
+    }
+
+    @Override
     public void close() {
         if (closed) {
             return;
         }
         try {
-            if (autoFlushRows != 0) {
-                // autoFlushRows == 0 means that auto-flush is disabled
+            if (autoFlushRows != 0 || flushIntervalNanos != Long.MAX_VALUE) {
+                // either row-based or time-based auto flushing is enabled
+                // => let's auto-flush on close
                 flush0(true);
             }
         } finally {
@@ -245,14 +296,14 @@ public final class LineHttpSender implements Sender {
     @Override
     public Sender timestampColumn(CharSequence name, long value, ChronoUnit unit) {
         // micros
-        writeFieldName(name).put(value * unitToNanos(unit) / 1000).put('t');
+        writeFieldName(name).put(Timestamps.toMicros(value, unit)).put('t');
         return this;
     }
 
     @Override
     public Sender timestampColumn(CharSequence name, Instant value) {
         // micros
-        writeFieldName(name).put((value.getEpochSecond() * Timestamps.SECOND_NANOS + value.getNano()) / 1000).put('t');
+        writeFieldName(name).put((value.getEpochSecond() * Timestamps.SECOND_MICROS + value.getNano() / 1000L)).put('t');
         return this;
     }
 
@@ -263,7 +314,7 @@ public final class LineHttpSender implements Sender {
         Response chunkedRsp = response.getResponse();
         Fragment fragment;
         while ((fragment = chunkedRsp.recv()) != null) {
-            sink.putUtf8(fragment.lo(), fragment.hi());
+            sink.putNonAscii(fragment.lo(), fragment.hi());
         }
     }
 
@@ -274,21 +325,6 @@ public final class LineHttpSender implements Sender {
     private static boolean keepAliveDisabled(HttpClient.ResponseHeaders response) {
         DirectUtf8Sequence connectionHeader = response.getHeader(HttpConstants.HEADER_CONNECTION);
         return connectionHeader != null && Utf8s.equalsAscii("close", connectionHeader);
-    }
-
-    private static long unitToNanos(ChronoUnit unit) {
-        switch (unit) {
-            case NANOS:
-                return 1;
-            case MICROS:
-                return 1_000;
-            case MILLIS:
-                return 1_000_000;
-            case SECONDS:
-                return 1_000_000_000;
-            default:
-                return unit.getDuration().toNanos();
-        }
     }
 
     private int backoff(int retryBackoff) {
@@ -446,7 +482,7 @@ public final class LineHttpSender implements Sender {
     private HttpClient.Request newRequest() {
         HttpClient.Request r = client.newRequest(host, port)
                 .POST()
-                .url(PATH)
+                .url(path)
                 .header("User-Agent", "QuestDB/java/" + questdbVersion);
         if (username != null) {
             r.authBasic(username, password);
@@ -454,6 +490,7 @@ public final class LineHttpSender implements Sender {
             r.authToken(null, authToken);
         }
         r.withContent();
+        rowBookmark = r.getContentLength();
         return r;
     }
 
@@ -461,13 +498,13 @@ public final class LineHttpSender implements Sender {
      * @return true if flush is required
      */
     private boolean rowAdded() {
+        pendingRows++;
         long nowNanos = System.nanoTime();
         if (flushAfterNanos == Long.MAX_VALUE) {
             flushAfterNanos = nowNanos + flushIntervalNanos;
         } else if (flushAfterNanos - nowNanos < 0) {
             return true;
         }
-        pendingRows++;
         return pendingRows == autoFlushRows;
     }
 
@@ -674,14 +711,14 @@ public final class LineHttpSender implements Sender {
             LineSenderException exception = new LineSenderException("Could not flush buffer: ");
             while ((fragment = chunkedRsp.recv()) != null) {
                 try {
-                    jsonSink.putUtf8(fragment.lo(), fragment.hi());
+                    jsonSink.putNonAscii(fragment.lo(), fragment.hi());
                     lexer.parse(fragment.lo(), fragment.hi(), this);
                 } catch (JsonException e) {
                     // we failed to parse JSON, but we still want to show the error message.
                     // if we cannot parse it then we show the whole response as is.
                     // let's make sure we have the whole message - there might be more chunks
                     while ((fragment = chunkedRsp.recv()) != null) {
-                        jsonSink.putUtf8(fragment.lo(), fragment.hi());
+                        jsonSink.putNonAscii(fragment.lo(), fragment.hi());
                     }
                     exception.put(jsonSink).put(" [http-status=").put(httpStatus.asAsciiCharSequence()).put(']');
                     reset();

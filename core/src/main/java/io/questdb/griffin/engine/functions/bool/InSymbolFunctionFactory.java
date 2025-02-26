@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -61,17 +61,21 @@ public class InSymbolFunctionFactory implements FunctionFactory {
 
         final CharSequenceHashSet set = new CharSequenceHashSet();
         ObjList<Function> deferredValues = null;
+        IntList deferredValuePositions = null;
         for (int i = 1; i < n; i++) {
             Function func = args.getQuick(i);
             switch (ColumnType.tagOf(func.getType())) {
                 case ColumnType.STRING:
                 case ColumnType.VARCHAR:
+                case ColumnType.UNDEFINED:
                     if (func.isRuntimeConstant()) {
                         // string bind variable case
                         if (deferredValues == null) {
                             deferredValues = new ObjList<>();
+                            deferredValuePositions = new IntList();
                         }
                         deferredValues.add(func);
+                        deferredValuePositions.add(argPositions.getQuick(i));
                         continue;
                     }
                     // fall through
@@ -97,7 +101,7 @@ public class InSymbolFunctionFactory implements FunctionFactory {
             // Fast path for all constants case.
             return BooleanConstant.of(set.contains(var.getSymbol(null)));
         }
-        return new Func(var, set, deferredValues);
+        return new Func(var, set, deferredValues, deferredValuePositions);
     }
 
     @FunctionalInterface
@@ -108,6 +112,7 @@ public class InSymbolFunctionFactory implements FunctionFactory {
     private static class Func extends BooleanFunction implements UnaryFunction {
         private final SymbolFunction arg;
         private final CharSequenceHashSet deferredSet;
+        private final IntList deferredValuePositions;
         private final ObjList<Function> deferredValues;
         private final IntHashSet intSet = new IntHashSet();
         private final TestFunc intTest = this::testAsInt;
@@ -115,11 +120,12 @@ public class InSymbolFunctionFactory implements FunctionFactory {
         private final TestFunc strTest = this::testAsString;
         private TestFunc testFunc;
 
-        public Func(SymbolFunction arg, CharSequenceHashSet set, ObjList<Function> deferredValues) {
+        public Func(SymbolFunction arg, CharSequenceHashSet set, ObjList<Function> deferredValues, IntList deferredValuePositions) {
             this.arg = arg;
             this.set = set;
             this.deferredValues = deferredValues;
             this.deferredSet = deferredValues != null ? new CharSequenceHashSet() : null;
+            this.deferredValuePositions = deferredValuePositions;
         }
 
         @Override
@@ -138,6 +144,22 @@ public class InSymbolFunctionFactory implements FunctionFactory {
             if (deferredValues != null) {
                 for (int i = 0, n = deferredValues.size(); i < n; i++) {
                     deferredValues.getQuick(i).init(symbolTableSource, executionContext);
+
+                    // validate types of bind variables we support
+                    final Function func = deferredValues.getQuick(i);
+                    switch (ColumnType.tagOf(func.getType())) {
+                        case ColumnType.VARCHAR:
+                        case ColumnType.STRING:
+                            continue;
+                        default:
+                            throw SqlException.inconvertibleTypes(
+                                    deferredValuePositions.getQuick(i),
+                                    func.getType(),
+                                    ColumnType.nameOf(func.getType()),
+                                    ColumnType.SYMBOL,
+                                    ColumnType.nameOf(ColumnType.SYMBOL)
+                            );
+                    }
                 }
             }
 

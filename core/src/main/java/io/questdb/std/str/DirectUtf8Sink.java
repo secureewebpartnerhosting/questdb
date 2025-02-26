@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ import io.questdb.std.bytes.DirectByteSink;
 import io.questdb.std.bytes.NativeByteSink;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
 
 import java.io.Closeable;
 
@@ -40,16 +39,18 @@ import java.io.Closeable;
 public class DirectUtf8Sink implements MutableUtf8Sink, BorrowableUtf8Sink, DirectUtf8Sequence, Closeable {
     private final AsciiCharSequence asciiCharSequence = new AsciiCharSequence();
     private final DirectByteSink sink;
-    private boolean ascii;
 
     public DirectUtf8Sink(long initialCapacity) {
-        sink = new DirectByteSink(initialCapacity) {
+        this(initialCapacity, true);
+    }
+
+    public DirectUtf8Sink(long initialCapacity, boolean alloc) {
+        sink = new DirectByteSink(initialCapacity, alloc) {
             @Override
             protected int memoryTag() {
                 return MemoryTag.NATIVE_DIRECT_UTF8_SINK;
             }
         };
-        ascii = true;
     }
 
     @Override
@@ -67,20 +68,23 @@ public class DirectUtf8Sink implements MutableUtf8Sink, BorrowableUtf8Sink, Dire
         return sink.byteAt(index);
     }
 
-    @TestOnly
     public long capacity() {
-        return sink.capacity();
+        return sink.allocatedCapacity();
     }
 
     @Override
     public void clear() {
         sink.clear();
-        ascii = true;
     }
 
     @Override
     public void close() {
         sink.close();
+    }
+
+    @Override
+    public boolean isAscii() {
+        return sink.isAscii();
     }
 
     @Override
@@ -90,28 +94,37 @@ public class DirectUtf8Sink implements MutableUtf8Sink, BorrowableUtf8Sink, Dire
 
     @Override
     public DirectUtf8Sink put(@Nullable Utf8Sequence us) {
-        if (us != null) {
-            ascii &= us.isAscii();
-            final int size = us.size();
-            final long dest = sink.checkCapacity(size);
-            for (int i = 0; i < size; i++) {
-                Unsafe.getUnsafe().putByte(dest + i, us.byteAt(i));
-            }
-            sink.advance(size);
+        if (us == null) {
+            return this;
         }
+        setAscii(isAscii() & us.isAscii());
+        final int size = us.size();
+        final long dest = sink.checkCapacity(size);
+        for (int i = 0; i < size; i++) {
+            Unsafe.getUnsafe().putByte(dest + i, us.byteAt(i));
+        }
+        sink.advance(size);
         return this;
     }
 
     @Override
     public DirectUtf8Sink put(byte b) {
-        ascii = false;
+        assert b < 0 : "b is ascii";
+        setAscii(false);
+        sink.put(b);
+        return this;
+    }
+
+    @Override
+    public DirectUtf8Sink putAny(byte b) {
+        setAscii(isAscii() & b >= 0);
         sink.put(b);
         return this;
     }
 
     @Override
     public DirectUtf8Sink putAscii(char c) {
-        MutableUtf8Sink.super.putAscii(c);
+        sink.put((byte) c);
         return this;
     }
 
@@ -122,10 +135,22 @@ public class DirectUtf8Sink implements MutableUtf8Sink, BorrowableUtf8Sink, Dire
     }
 
     @Override
-    public DirectUtf8Sink putUtf8(long lo, long hi) {
-        ascii = false;
+    public DirectUtf8Sink putNonAscii(long lo, long hi) {
+        setAscii(false);
         sink.put(lo, hi);
         return this;
+    }
+
+    public void reopen() {
+        sink.reopen();
+    }
+
+    public void reserve(long minCapacity) {
+        sink.reserve(minCapacity);
+    }
+
+    public void resetCapacity() {
+        sink.resetCapacity();
     }
 
     @Override
@@ -134,7 +159,16 @@ public class DirectUtf8Sink implements MutableUtf8Sink, BorrowableUtf8Sink, Dire
     }
 
     @Override
+    public long tailPadding() {
+        return sink.tailPadding();
+    }
+
+    @Override
     public @NotNull String toString() {
         return Utf8s.stringFromUtf8Bytes(sink.lo(), sink.hi());
+    }
+
+    private void setAscii(boolean ascii) {
+        sink.setAscii(ascii);
     }
 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@ import io.questdb.griffin.engine.functions.constants.StrConstant;
 import io.questdb.std.Chars;
 import io.questdb.std.IntList;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.Utf16Sink;
 
 public class CastSymbolToStrFunctionFactory implements FunctionFactory {
     @Override
@@ -61,18 +60,13 @@ public class CastSymbolToStrFunctionFactory implements FunctionFactory {
         }
 
         @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            utf16Sink.put(arg.getSymbol(rec));
-        }
-
-        @Override
         public CharSequence getStrB(Record rec) {
             return arg.getSymbolB(rec);
         }
 
         @Override
-        public boolean isReadThreadSafe() {
-            return arg.isReadThreadSafe();
+        public boolean isThreadSafe() {
+            return arg.isThreadSafe();
         }
     }
 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,13 @@
 
 package io.questdb.test;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.ColumnType;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableWriter;
 import io.questdb.std.Numbers;
 import io.questdb.std.Rnd;
 import io.questdb.std.str.Utf8StringSink;
@@ -36,21 +42,21 @@ public class CreateTableTestUtils {
 
     public static void createAllTable(CairoEngine engine, int partitionBy) {
         TableModel model = getAllTypesModel(engine.getConfiguration(), partitionBy);
-        TestUtils.create(model, engine);
+        TestUtils.createTable(engine, model);
     }
 
     public static void createAllTableWithNewTypes(CairoEngine engine, int partitionBy) {
         TableModel model = getAllTypesModelWithNewTypes(engine.getConfiguration(), partitionBy);
-        TestUtils.create(model, engine);
+        TestUtils.createTable(engine, model);
     }
 
     public static void createAllTableWithTimestamp(CairoEngine engine, int partitionBy) {
         TableModel model = getAllTypesModel(engine.getConfiguration(), partitionBy).col("ts", ColumnType.TIMESTAMP).timestamp();
-        TestUtils.create(model, engine);
+        TestUtils.createTable(engine, model);
     }
 
     public static void createTableWithVersionAndId(TableModel model, CairoEngine engine, int version, int tableId) {
-        TableToken tableToken = engine.lockTableName(model.getTableName(), tableId, false);
+        TableToken tableToken = engine.lockTableName(model.getTableName(), tableId, false, false);
         if (tableToken == null) {
             throw CairoException.critical(0).put("table already exists: ").put(model.getTableName());
         }
@@ -80,11 +86,11 @@ public class CreateTableTestUtils {
                     .col("l", ColumnType.BINARY)
                     .col("m", ColumnType.UUID)
                     .col("n", ColumnType.VARCHAR);
-            TestUtils.create(model, engine);
+            TestUtils.createTable(engine, model);
 
         } catch (RuntimeException e) {
             if ("table already exists: x".equals(e.getMessage())) {
-                try (TableWriter writer = TestUtils.newOffPoolWriter(engine.getConfiguration(), engine.verifyTableName("x"))) {
+                try (TableWriter writer = TestUtils.newOffPoolWriter(engine.getConfiguration(), engine.verifyTableName("x"), engine)) {
                     writer.truncate();
                 }
             } else {
@@ -93,32 +99,32 @@ public class CreateTableTestUtils {
         }
 
         Utf8StringSink utf8Sink = new Utf8StringSink();
-        try (TableWriter writer = TestUtils.newOffPoolWriter(engine.getConfiguration(), engine.verifyTableName("x"))) {
+        try (TableWriter writer = TestUtils.newOffPoolWriter(engine.getConfiguration(), engine.verifyTableName("x"), engine)) {
             for (int i = 0; i < n; i++) {
                 TableWriter.Row row = writer.newRow();
                 row.putByte(0, rnd.nextByte());
                 row.putShort(1, rnd.nextShort());
 
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putInt(2, Numbers.INT_NaN);
+                    row.putInt(2, Numbers.INT_NULL);
                 } else {
                     row.putInt(2, rnd.nextInt());
                 }
 
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putLong(3, Numbers.LONG_NaN);
+                    row.putLong(3, Numbers.LONG_NULL);
                 } else {
                     row.putLong(3, rnd.nextLong());
                 }
 
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putLong(4, Numbers.LONG_NaN);
+                    row.putLong(4, Numbers.LONG_NULL);
                 } else {
                     row.putDate(4, rnd.nextLong());
                 }
 
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putLong(5, Numbers.LONG_NaN);
+                    row.putLong(5, Numbers.LONG_NULL);
                 } else {
                     row.putTimestamp(5, rnd.nextLong());
                 }
@@ -158,7 +164,7 @@ public class CreateTableTestUtils {
 
                 // UUID
                 if (rnd.nextInt() % 4 == 0) {
-                    row.putLong128(12, Numbers.LONG_NaN, Numbers.LONG_NaN);
+                    row.putLong128(12, Numbers.LONG_NULL, Numbers.LONG_NULL);
                 } else {
                     row.putLong128(12, rnd.nextLong(), rnd.nextLong());
                 }

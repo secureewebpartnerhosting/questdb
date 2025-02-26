@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,12 +29,13 @@ import io.questdb.cairo.TableWriterAPI;
 import io.questdb.griffin.engine.ops.AlterOperation;
 import io.questdb.griffin.engine.ops.AlterOperationBuilder;
 import io.questdb.std.Rnd;
+import io.questdb.test.tools.TestUtils;
 
 public class FuzzDropColumnOperation implements FuzzTransactionOperation {
     private final String columnName;
 
-    public FuzzDropColumnOperation(String columnName) {
-        this.columnName = columnName;
+    public FuzzDropColumnOperation(Rnd rnd, String columnName) {
+        this.columnName = TestUtils.randomiseCase(rnd, columnName);
     }
 
     @Override

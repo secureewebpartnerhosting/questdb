@@ -1,6 +1,34 @@
+/*******************************************************************************
+ *     ___                  _   ____  ____
+ *    / _ \ _   _  ___  ___| |_|  _ \| __ )
+ *   | | | | | | |/ _ \/ __| __| | | |  _ \
+ *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
+ *    \__\_\\__,_|\___||___/\__|____/|____/
+ *
+ *  Copyright (c) 2014-2019 Appsicle
+ *  Copyright (c) 2019-2024 QuestDB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+
 package io.questdb.test.std.histogram.org.HdrHistogram;
 
-import io.questdb.std.histogram.org.HdrHistogram.*;
+import io.questdb.std.histogram.org.HdrHistogram.AbstractHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.Base64Helper;
+import io.questdb.std.histogram.org.HdrHistogram.DoubleHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.DoubleHistogramIterationValue;
+import io.questdb.std.histogram.org.HdrHistogram.HistogramIterationValue;
 
 import java.nio.ByteBuffer;
 
@@ -34,7 +62,7 @@ public class DumpHistogram {
         dumpHistogram(histogram);
     }
 
-    static void dumpHistogram(DoubleHistogram histogram) throws Exception {
+    static void dumpHistogram(DoubleHistogram histogram) {
         AbstractHistogram iHist = histogram.integerValuesHistogram();
         System.out.format("digits = %d, min = %12.12g, max = %12.12g\n", histogram.getNumberOfSignificantValueDigits(), histogram.getMinNonZeroValue(), histogram.getMaxValue());
         System.out.format("lowest = %12.12g, highest = %12.12g\n", histogram.getCurrentLowestTrackableNonZeroValue(), histogram.getCurrentHighestTrackableValue());

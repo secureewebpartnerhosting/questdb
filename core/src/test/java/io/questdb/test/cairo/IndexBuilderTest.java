@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,15 @@
 
 package io.questdb.test.cairo;
 
-import io.questdb.cairo.*;
+import io.questdb.cairo.BitmapIndexReader;
+import io.questdb.cairo.CairoException;
+import io.questdb.cairo.IndexBuilder;
+import io.questdb.cairo.PartitionBy;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableReaderMetadata;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableUtils;
+import io.questdb.cairo.TableWriter;
 import io.questdb.cairo.sql.InvalidColumnException;
 import io.questdb.cairo.sql.RecordCursor;
 import io.questdb.cairo.sql.RecordCursorFactory;
@@ -83,7 +91,8 @@ public class IndexBuilderTest extends AbstractCairoTest {
                         createTableSql,
                         tablePath -> {
                         },
-                        indexBuilder -> indexBuilder.reindexColumn(ff, "sym2"));
+                        indexBuilder -> indexBuilder.reindexColumn(ff, "sym2")
+                );
                 Assert.fail();
             } catch (CairoException ex) {
                 TestUtils.assertContains(ex.getFlyweightMessage(), "could not remove index file");
@@ -135,7 +144,8 @@ public class IndexBuilderTest extends AbstractCairoTest {
                 ff,
                 createAlterInsertSql,
                 tablePath -> removeFileAtPartition("sym2.k.1", PartitionBy.NONE, tablePath, 0, -1L),
-                indexBuilder -> indexBuilder.reindexColumn("sym2"));
+                indexBuilder -> indexBuilder.reindexColumn("sym2")
+        );
     }
 
     @Test
@@ -159,7 +169,7 @@ public class IndexBuilderTest extends AbstractCairoTest {
 
             engine.releaseAllWriters();
 
-            insert("insert into xxx values(500100000000L, 50001, 'D', 'I2')");
+            execute("insert into xxx values(500100000000L, 50001, 'D', 'I2')");
 
             int sym1D = countByFullScan("select * from xxx where sym1 = 'D'");
             Assert.assertEquals(1, sym1D);
@@ -186,7 +196,8 @@ public class IndexBuilderTest extends AbstractCairoTest {
                     removeFileAtPartition("sym1.v", PartitionBy.NONE, tablePath, 0, -1L);
                     removeFileAtPartition("sym1.k", PartitionBy.NONE, tablePath, 0, -1L);
                 },
-                indexBuilder -> indexBuilder.reindexColumn("sym1"));
+                indexBuilder -> indexBuilder.reindexColumn("sym1")
+        );
     }
 
     @Test
@@ -273,7 +284,8 @@ public class IndexBuilderTest extends AbstractCairoTest {
                     removeFileAtPartition("sym1.v", PartitionBy.DAY, tablePath, 0, -1L);
                     removeFileAtPartition("sym1.k", PartitionBy.DAY, tablePath, 0, -1L);
                 },
-                indexBuilder -> indexBuilder.reindexColumn("sym1"));
+                indexBuilder -> indexBuilder.reindexColumn("sym1")
+        );
     }
 
     @Test
@@ -294,7 +306,8 @@ public class IndexBuilderTest extends AbstractCairoTest {
                     removeFileAtPartition("sym1.v", PartitionBy.DAY, tablePath, 0, -1L);
                     removeFileAtPartition("sym1.k", PartitionBy.DAY, tablePath, 0, -1L);
                 },
-                indexBuilder -> indexBuilder.reindex("1970-01-01", "sym1"));
+                indexBuilder -> indexBuilder.reindex("1970-01-01", "sym1")
+        );
     }
 
     @Test
@@ -315,7 +328,8 @@ public class IndexBuilderTest extends AbstractCairoTest {
                     removeFileAtPartition("sym1.v", PartitionBy.DAY, tablePath, 0, -1L);
                     removeFileAtPartition("sym1.k", PartitionBy.DAY, tablePath, 0, -1L);
                 },
-                indexBuilder -> runReindexSql("REINDEX TABLE xxx COLUMN sym1 PARTITION '1970-01-01' LOCK EXCLUSIVE"));
+                indexBuilder -> runReindexSql("REINDEX TABLE xxx COLUMN sym1 PARTITION '1970-01-01' LOCK EXCLUSIVE")
+        );
     }
 
     @Test
@@ -342,7 +356,8 @@ public class IndexBuilderTest extends AbstractCairoTest {
                 ff,
                 createAlterInsertSql,
                 tablePath -> removeFileAtPartition("sym2.k.1", PartitionBy.DAY, tablePath, Timestamps.DAY_MICROS * 11, 1L),
-                indexBuilder -> indexBuilder.reindexColumn("sym2"));
+                indexBuilder -> indexBuilder.reindexColumn("sym2")
+        );
     }
 
     @Test
@@ -373,7 +388,7 @@ public class IndexBuilderTest extends AbstractCairoTest {
                         });
                 Assert.fail();
             } catch (CairoException ex) {
-                TestUtils.assertContains(ex.getFlyweightMessage(), "Cannot lock table");
+                TestUtils.assertContains(ex.getFlyweightMessage(), "cannot lock table");
             }
         });
     }
@@ -396,7 +411,8 @@ public class IndexBuilderTest extends AbstractCairoTest {
                     createTableSql,
                     tablePath -> {
                     },
-                    indexBuilder -> indexBuilder.reindexColumn("sym4"));
+                    indexBuilder -> indexBuilder.reindexColumn("sym4")
+            );
             Assert.fail();
         } catch (InvalidColumnException ignore) {
         }
@@ -407,7 +423,7 @@ public class IndexBuilderTest extends AbstractCairoTest {
         AtomicInteger count = new AtomicInteger();
         FilesFacade ff = new TestFilesFacadeImpl() {
             @Override
-            public int openRW(LPSZ name, long opts) {
+            public long openRW(LPSZ name, long opts) {
                 if (Utf8s.containsAscii(name, "sym2.k")) {
                     if (count.incrementAndGet() == 29) {
                         return -1;
@@ -635,7 +651,7 @@ public class IndexBuilderTest extends AbstractCairoTest {
 
     private static void runReindexSql(String query) {
         try {
-            ddl(query);
+            execute(query);
         } catch (SqlException ex) {
             LOG.error().$((Throwable) ex).I$();
             Assert.fail(ex.getMessage());
@@ -645,18 +661,18 @@ public class IndexBuilderTest extends AbstractCairoTest {
     private void checkRebuildIndexes(FilesFacade ff, String createTableSql, Action<String> changeTable, Action<IndexBuilder> rebuildIndexAction) throws Exception {
         assertMemoryLeak(ff, () -> {
             for (String sql : createTableSql.split(";")) {
-                ddl(sql);
+                execute(sql);
             }
             int sym1A = countByFullScan("select * from xxx where sym1 = 'A'");
             int sym1B = countByFullScan("select * from xxx where sym1 = 'B'");
             int sym1C = countByFullScan("select * from xxx where sym1 = 'C'");
-            ddl("create table copy as (select * from xxx)", sqlExecutionContext);
+            execute("create table copy as (select * from xxx)", sqlExecutionContext);
 
             engine.releaseAllReaders();
             engine.releaseAllWriters();
 
             TableToken xxx = engine.verifyTableName("xxx");
-            String tablePath = configuration.getRoot() + Files.SEPARATOR + xxx.getDirName();
+            String tablePath = configuration.getDbRoot() + Files.SEPARATOR + xxx.getDirName();
             changeTable.run(tablePath);
 
             indexBuilder.clear();
@@ -671,7 +687,7 @@ public class IndexBuilderTest extends AbstractCairoTest {
             Assert.assertEquals(sym1B, sym1B2);
             Assert.assertEquals(sym1C, sym1C2);
 
-            insert("insert into xxx select * from copy");
+            execute("insert into xxx select * from copy");
 
             int sym1A3 = countByFullScan("select * from xxx where sym1 = 'A'");
             int sym1B3 = countByFullScan("select * from xxx where sym1 = 'B'");
@@ -699,7 +715,7 @@ public class IndexBuilderTest extends AbstractCairoTest {
         try (Path path = new Path()) {
             path.concat(tablePath);
             path.put(Files.SEPARATOR);
-            TableUtils.setPathForPartition(path, partitionBy, partitionTs, partitionNameTxn);
+            TableUtils.setPathForNativePartition(path, partitionBy, partitionTs, partitionNameTxn);
             path.concat(fileName);
             LOG.info().$("removing ").$(path).$();
             Assert.assertTrue(Files.remove(path.$()));

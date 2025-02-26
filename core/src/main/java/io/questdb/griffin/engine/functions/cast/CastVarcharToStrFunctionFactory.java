@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,9 +32,7 @@ import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.constants.StrConstant;
 import io.questdb.std.Chars;
 import io.questdb.std.IntList;
-import io.questdb.std.Misc;
 import io.questdb.std.ObjList;
-import io.questdb.std.str.StringSink;
 
 public class CastVarcharToStrFunctionFactory implements FunctionFactory {
 
@@ -53,33 +51,24 @@ public class CastVarcharToStrFunctionFactory implements FunctionFactory {
     ) {
         final Function arg = args.getQuick(0);
         if (arg.isConstant()) {
-            StringSink sink = Misc.getThreadLocalSink();
-            arg.getStr(null, sink);
-            return new StrConstant(Chars.toString(sink));
+            return new StrConstant(Chars.toString(arg.getStrB(null)));
         }
         return new Func(arg);
     }
 
     public static class Func extends AbstractCastToStrFunction {
-        private final StringSink sinkA = new StringSink();
-        private final StringSink sinkB = new StringSink();
-
         public Func(Function arg) {
             super(arg);
         }
 
         @Override
         public CharSequence getStrA(Record rec) {
-            sinkA.clear();
-            arg.getStr(rec, sinkA);
-            return sinkA;
+            return arg.getStrA(rec);
         }
 
         @Override
         public CharSequence getStrB(Record rec) {
-            sinkB.clear();
-            arg.getStr(rec, sinkB);
-            return sinkB;
+            return arg.getStrB(rec);
         }
 
         @Override

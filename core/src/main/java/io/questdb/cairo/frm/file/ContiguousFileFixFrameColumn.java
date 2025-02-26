@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ public class ContiguousFileFixFrameColumn implements FrameColumn {
     private int columnIndex;
     private long columnTop;
     private int columnType;
-    private int fd = -1;
+    private long fd = -1;
     private RecycleBin<ContiguousFileFixFrameColumn> recycleBin;
     private int shl;
 
@@ -72,7 +72,7 @@ public class ContiguousFileFixFrameColumn implements FrameColumn {
             assert appendOffsetRowCount >= 0;
 
             if (sourceHi > 0) {
-                int sourceFd = sourceColumn.getPrimaryFd();
+                long sourceFd = sourceColumn.getPrimaryFd();
                 long length = sourceHi << shl;
                 TableUtils.allocateDiskSpaceToPage(ff, fd, (appendOffsetRowCount + sourceHi) << shl);
                 if (mixedIOFlag) {
@@ -163,12 +163,12 @@ public class ContiguousFileFixFrameColumn implements FrameColumn {
     }
 
     @Override
-    public int getPrimaryFd() {
+    public long getPrimaryFd() {
         return fd;
     }
 
     @Override
-    public int getSecondaryFd() {
+    public long getSecondaryFd() {
         throw new UnsupportedOperationException();
     }
 

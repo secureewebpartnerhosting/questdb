@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,9 +31,7 @@ import io.questdb.griffin.engine.functions.constants.VarcharConstant;
 import io.questdb.std.Numbers;
 import io.questdb.std.NumericException;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 import io.questdb.test.tools.TestUtils;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Assert;
@@ -60,10 +58,6 @@ public class VarcharFunctionTest {
     };
 
     private static final VarcharFunction function = new VarcharFunction() {
-        @Override
-        public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        }
-
         @Override
         public Utf8Sequence getVarcharA(Record rec) {
             return utf8Seq;
@@ -287,7 +281,7 @@ public class VarcharFunctionTest {
 
     @Test
     public void testCastToIntNull() {
-        Assert.assertEquals(Numbers.INT_NaN, new VarcharConstant((Utf8Sequence) null).getInt(null));
+        Assert.assertEquals(Numbers.INT_NULL, new VarcharConstant((Utf8Sequence) null).getInt(null));
     }
 
     @Test
@@ -332,7 +326,7 @@ public class VarcharFunctionTest {
 
     @Test
     public void testCastToLongNull() {
-        Assert.assertEquals(Numbers.LONG_NaN, new VarcharConstant((Utf8Sequence) null).getLong(null));
+        Assert.assertEquals(Numbers.LONG_NULL, new VarcharConstant((Utf8Sequence) null).getLong(null));
     }
 
     @Test
@@ -417,7 +411,7 @@ public class VarcharFunctionTest {
 
     @Test
     public void testCastToTimestampNull() {
-        Assert.assertEquals(Numbers.LONG_NaN, new VarcharConstant((Utf8Sequence) null).getTimestamp(null));
+        Assert.assertEquals(Numbers.LONG_NULL, new VarcharConstant((Utf8Sequence) null).getTimestamp(null));
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -456,26 +450,6 @@ public class VarcharFunctionTest {
     }
 
     @Test(expected = UnsupportedOperationException.class)
-    public void testGetRecordCursorFactory() {
-        function.getRecordCursorFactory();
-    }
-
-    @Test
-    public void testGetStrLen() {
-        Assert.assertEquals(1, function.getStrLen(null));
-    }
-
-    @Test
-    public void testGetSymbol() {
-        TestUtils.assertEquals("a", function.getSymbol(null));
-    }
-
-    @Test
-    public void testGetSymbolB() {
-        TestUtils.assertEquals("a", function.getSymbolB(null));
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
     public void testGetLong128Hi() {
         function.getLong128Hi(null);
     }
@@ -498,5 +472,25 @@ public class VarcharFunctionTest {
     @Test(expected = UnsupportedOperationException.class)
     public void testGetLong256B() {
         function.getLong256B(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetRecordCursorFactory() {
+        function.getRecordCursorFactory();
+    }
+
+    @Test
+    public void testGetStrLen() {
+        Assert.assertEquals(1, function.getStrLen(null));
+    }
+
+    @Test
+    public void testGetSymbol() {
+        TestUtils.assertEquals("a", function.getSymbol(null));
+    }
+
+    @Test
+    public void testGetSymbolB() {
+        TestUtils.assertEquals("a", function.getSymbolB(null));
     }
 }

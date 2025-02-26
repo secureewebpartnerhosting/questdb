@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,27 +26,31 @@ package io.questdb.cliutil;
 
 import io.questdb.cairo.CairoEngine;
 import io.questdb.cairo.DefaultCairoConfiguration;
-import io.questdb.cairo.O3Utils;
 import io.questdb.cairo.pool.PoolListener;
 import io.questdb.cutlass.line.tcp.DefaultLineTcpReceiverConfiguration;
 import io.questdb.cutlass.line.tcp.LineTcpReceiver;
-import io.questdb.cutlass.pgwire.CircuitBreakerRegistry;
+import io.questdb.cutlass.pgwire.DefaultCircuitBreakerRegistry;
 import io.questdb.cutlass.pgwire.DefaultPGWireConfiguration;
+import io.questdb.cutlass.pgwire.IPGWireServer;
 import io.questdb.cutlass.pgwire.PGWireConfiguration;
-import io.questdb.cutlass.pgwire.PGWireServer;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContextImpl;
 import io.questdb.griffin.engine.functions.bind.BindVariableServiceImpl;
 import io.questdb.log.Log;
 import io.questdb.log.LogFactory;
 import io.questdb.mp.WorkerPool;
-import io.questdb.network.DefaultIODispatcherConfiguration;
-import io.questdb.network.IODispatcherConfiguration;
+import io.questdb.mp.WorkerPoolUtils;
 import io.questdb.std.Chars;
 import io.questdb.std.Files;
 import io.questdb.std.Os;
 import io.questdb.std.str.Path;
-import org.junit.*;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.ClassRule;
+import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.IOException;
@@ -61,7 +65,7 @@ public class Table2IlpTest {
     protected static CharSequence root;
     private static DefaultCairoConfiguration configuration;
     private static CairoEngine engine;
-    private static PGWireServer pgServer;
+    private static IPGWireServer pgServer;
     private static LineTcpReceiver receiver;
     private static SqlExecutionContextImpl sqlExecutionContext;
     private static WorkerPool workerPool;
@@ -86,17 +90,17 @@ public class Table2IlpTest {
     }
 
     public static void createTestPath(CharSequence root) {
-        try (Path path = new Path().of(root).$()) {
-            if (Files.exists(path)) {
+        try (Path path = new Path().of(root)) {
+            if (Files.exists(path.$())) {
                 return;
             }
-            Files.mkdirs(path.of(root).slash$(), 509);
+            Files.mkdirs(path.of(root).slash(), 509);
         }
     }
 
     public static void removeTestPath(CharSequence root) {
         Path path = Path.getThreadLocal(root);
-        Files.rmdir(path.slash$(), true);
+        Files.rmdir(path.slash(), true);
     }
 
     public static void setCairoStatic() {
@@ -137,32 +141,21 @@ public class Table2IlpTest {
             }
         };
 
-        CircuitBreakerRegistry registry = new CircuitBreakerRegistry(conf, engine.getConfiguration());
+        DefaultCircuitBreakerRegistry registry = new DefaultCircuitBreakerRegistry(conf, engine.getConfiguration());
 
         workerPool = new WorkerPool(conf);
-        pgServer = new PGWireServer(
+        pgServer = IPGWireServer.newInstance(
                 conf,
                 engine,
                 workerPool,
-                new PGWireServer.PGConnectionContextFactory(
-                        engine,
-                        conf,
-                        registry,
-                        () -> new SqlExecutionContextImpl(engine, workerPool.getWorkerCount(), workerPool.getWorkerCount())
-                ),
-                registry
+                registry,
+                () -> new SqlExecutionContextImpl(engine, workerPool.getWorkerCount(), workerPool.getWorkerCount())
         );
-
-        final IODispatcherConfiguration ioDispatcherConfiguration = new DefaultIODispatcherConfiguration() {
-            public int getBindPort() {
-                return ILP_PORT;
-            }
-        };
 
         receiver = new LineTcpReceiver(new DefaultLineTcpReceiverConfiguration() {
             @Override
-            public IODispatcherConfiguration getDispatcherConfiguration() {
-                return ioDispatcherConfiguration;
+            public int getBindPort() {
+                return ILP_PORT;
             }
 
             @Override
@@ -175,7 +168,7 @@ public class Table2IlpTest {
                 return 500;
             }
         }, engine, workerPool, workerPool);
-        O3Utils.setupWorkerPool(workerPool, engine, null);
+        WorkerPoolUtils.setupWriterJobs(workerPool, engine);
         workerPool.start(LOG);
     }
 
@@ -195,7 +188,7 @@ public class Table2IlpTest {
 
         String tableNameDst = "dst";
         createTable(tableNameDst, 1);
-        engine.ddl("truncate table " + tableNameDst, sqlExecutionContext);
+        engine.execute("truncate table " + tableNameDst, sqlExecutionContext);
 
         addColumn(tableNameSrc, tableNameDst, "nullint", "int");
         addColumn(tableNameSrc, tableNameDst, "nulllong", "long");
@@ -233,7 +226,7 @@ public class Table2IlpTest {
 
         String tableNameDst = "dst";
         createTable(tableNameDst, 1);
-        engine.ddl("truncate table " + tableNameDst, sqlExecutionContext);
+        engine.execute("truncate table " + tableNameDst, sqlExecutionContext);
 
         addColumn(tableNameSrc, tableNameDst, "nullint", "int");
         addColumn(tableNameSrc, tableNameDst, "nulllong", "long");
@@ -401,16 +394,16 @@ public class Table2IlpTest {
 
         Assert.assertTrue(params.isValid());
         Assert.assertNotNull(params.getSymbols());
-        Assert.assertEquals(params.getSymbols().length, 0);
+        Assert.assertEquals(0, params.getSymbols().length);
     }
 
     private static void addColumn(String tableNameSrc, String tableNameDst, String name, String type) throws SqlException {
-        engine.ddl("alter table " + tableNameSrc + " add column " + name + " " + type, sqlExecutionContext);
-        engine.ddl("alter table " + tableNameDst + " add column " + name + " " + type, sqlExecutionContext);
+        engine.execute("alter table " + tableNameSrc + " add column " + name + " " + type, sqlExecutionContext);
+        engine.execute("alter table " + tableNameDst + " add column " + name + " " + type, sqlExecutionContext);
     }
 
     private static void createTable(String tableName, int rows) throws SqlException {
-        engine.ddl(
+        engine.execute(
                 "create table " + tableName + " as (select" +
                         " cast(x as int) kk, " +
                         " rnd_int() a," +

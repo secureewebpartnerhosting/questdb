@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,31 +38,31 @@ import org.jetbrains.annotations.Nullable;
 
 public class CairoException extends RuntimeException implements Sinkable, FlyweightMessageContainer {
 
+    public static final int ERRNO_ACCESS_DENIED_WIN = 5;
     public static final int ERRNO_FILE_DOES_NOT_EXIST = 2;
     public static final int ERRNO_FILE_DOES_NOT_EXIST_WIN = 3;
-
     public static final int METADATA_VALIDATION = -100;
     public static final int ILLEGAL_OPERATION = METADATA_VALIDATION - 1;
     private static final int TABLE_DROPPED = ILLEGAL_OPERATION - 1;
-    public static final int METADATA_VALIDATION_RECOVERABLE = METADATA_VALIDATION - 1;
+    public static final int METADATA_VALIDATION_RECOVERABLE = TABLE_DROPPED - 1;
     public static final int PARTITION_MANIPULATION_RECOVERABLE = METADATA_VALIDATION_RECOVERABLE - 1;
+    public static final int TABLE_DOES_NOT_EXIST = PARTITION_MANIPULATION_RECOVERABLE - 1;
+    public static final int MAT_VIEW_DOES_NOT_EXIST = TABLE_DOES_NOT_EXIST - 1;
     public static final int NON_CRITICAL = -1;
     private static final StackTraceElement[] EMPTY_STACK_TRACE = {};
-    public static final int ERRNO_ACCESS_DENIED_WIN = 5;
     private static final ThreadLocal<CairoException> tlException = new ThreadLocal<>(CairoException::new);
     protected final StringSink message = new StringSink();
+    protected final StringSink nativeBacktrace = new StringSink();
     protected int errno;
     private boolean authorizationError = false;
     private boolean cacheable;
     private boolean cancellation; // when query is explicitly cancelled by user
-    private boolean entityDisabled; // used when account is disabled and connection should be dropped
     private boolean interruption; // used when a query times out
     private int messagePosition;
+    private boolean outOfMemory;
 
     public static CairoException authorization() {
-        CairoException e = nonCritical();
-        e.authorizationError = true;
-        return e;
+        return nonCritical().setAuthorizationError();
     }
 
     public static CairoException critical(int errno) {
@@ -101,19 +101,27 @@ public class CairoException extends RuntimeException implements Sinkable, Flywei
 
     @SuppressWarnings("unused")
     public static CairoException entityIsDisabled(CharSequence entityName) {
-        return nonCritical().setEntityDisabled(true).put("entity is disabled [name=").put(entityName).put(']');
+        return nonCritical().put("entity is disabled [name=").put(entityName).put(']');
+    }
+
+    public static boolean errnoPathDoesNotExist(int errno) {
+        return errno == ERRNO_FILE_DOES_NOT_EXIST || (Os.type == Os.WINDOWS && errno == ERRNO_FILE_DOES_NOT_EXIST_WIN);
     }
 
     public static boolean errnoReadPathDoesNotExist(int errno) {
-        return errnoRemovePathDoesNotExist(errno) || (Os.type == Os.WINDOWS && errno == ERRNO_ACCESS_DENIED_WIN);
-    }
-
-    public static boolean errnoRemovePathDoesNotExist(int errno) {
-        return errno == ERRNO_FILE_DOES_NOT_EXIST || (Os.type == Os.WINDOWS && errno == ERRNO_FILE_DOES_NOT_EXIST_WIN);
+        return errnoPathDoesNotExist(errno) || (Os.type == Os.WINDOWS && errno == ERRNO_ACCESS_DENIED_WIN);
     }
 
     public static CairoException invalidMetadataRecoverable(@NotNull CharSequence msg, @NotNull CharSequence columnName) {
         return critical(METADATA_VALIDATION_RECOVERABLE).put(msg).put(" [column=").put(columnName).put(']');
+    }
+
+    public static boolean isCairoOomError(Throwable t) {
+        return t instanceof CairoException && ((CairoException) t).isOutOfMemory();
+    }
+
+    public static CairoException matViewDoesNotExist(CharSequence matViewName) {
+        return critical(MAT_VIEW_DOES_NOT_EXIST).put("materialized view does not exist [view=").put(matViewName).put(']');
     }
 
     public static CairoException nonCritical() {
@@ -124,7 +132,7 @@ public class CairoException extends RuntimeException implements Sinkable, Flywei
         return instance(PARTITION_MANIPULATION_RECOVERABLE);
     }
 
-    public static CairoException queryCancelled(int fd) {
+    public static CairoException queryCancelled(long fd) {
         CairoException exception = nonCritical().put("cancelled by user").setInterruption(true).setCancellation(true);
         if (fd > -1) {
             exception.put(" [fd=").put(fd).put(']');
@@ -136,8 +144,12 @@ public class CairoException extends RuntimeException implements Sinkable, Flywei
         return nonCritical().put("cancelled by user").setInterruption(true).setCancellation(true);
     }
 
-    public static CairoException queryTimedOut(int fd) {
-        return nonCritical().put("timeout, query aborted [fd=").put(fd).put(']').setInterruption(true);
+    public static CairoException queryTimedOut(long fd, long runtime, long timeout) {
+        return nonCritical()
+                .put("timeout, query aborted [fd=").put(fd)
+                .put(", runtime=").put(runtime).put("us")
+                .put(", timeout=").put(timeout).put("us")
+                .put(']').setInterruption(true);
     }
 
     public static CairoException queryTimedOut() {
@@ -145,7 +157,7 @@ public class CairoException extends RuntimeException implements Sinkable, Flywei
     }
 
     public static CairoException tableDoesNotExist(CharSequence tableName) {
-        return nonCritical().put("table does not exist [table=").put(tableName).put(']');
+        return critical(TABLE_DOES_NOT_EXIST).put("table does not exist [table=").put(tableName).put(']');
     }
 
     public static CairoException tableDropped(TableToken tableToken) {
@@ -212,12 +224,16 @@ public class CairoException extends RuntimeException implements Sinkable, Flywei
         return errno != NON_CRITICAL && errno != PARTITION_MANIPULATION_RECOVERABLE && errno != METADATA_VALIDATION_RECOVERABLE;
     }
 
-    public boolean isEntityDisabled() {
-        return entityDisabled;
-    }
-
     public boolean isInterruption() {
         return interruption;
+    }
+
+    public boolean isOutOfMemory() {
+        return outOfMemory;
+    }
+
+    public boolean isTableDoesNotExist() {
+        return errno == TABLE_DOES_NOT_EXIST;
     }
 
     public boolean isTableDropped() {
@@ -274,6 +290,11 @@ public class CairoException extends RuntimeException implements Sinkable, Flywei
         return this;
     }
 
+    public CairoException setAuthorizationError() {
+        this.authorizationError = true;
+        return this;
+    }
+
     public CairoException setCacheable(boolean cacheable) {
         this.cacheable = cacheable;
         return this;
@@ -284,14 +305,18 @@ public class CairoException extends RuntimeException implements Sinkable, Flywei
         return this;
     }
 
-    public CairoException setEntityDisabled(boolean disabled) {
-        this.entityDisabled = disabled;
-        return this;
-    }
-
     public CairoException setInterruption(boolean interruption) {
         this.interruption = interruption;
         return this;
+    }
+
+    public CairoException setOutOfMemory(boolean outOfMemory) {
+        this.outOfMemory = outOfMemory;
+        return this;
+    }
+
+    public boolean tableDoesNotExist() {
+        return errno == TABLE_DOES_NOT_EXIST;
     }
 
     @Override
@@ -312,13 +337,30 @@ public class CairoException extends RuntimeException implements Sinkable, Flywei
         return ex;
     }
 
+    // N.B.: Change the API with care! This method is called from native code via JNI.
+    // See `struct CairoException` in the `qdbr` Rust crate.
+    @SuppressWarnings("unused")
+    private static CairoException paramInstance(
+            int errno, // pass `NON_CRITICAL` (-1) to create a non-critical exception
+            boolean outOfMemory,
+            CharSequence message,
+            @Nullable CharSequence nativeBacktrace
+    ) {
+        CairoException ex = instance(errno)
+                .setOutOfMemory(outOfMemory)
+                .put(message);
+        ex.nativeBacktrace.put(nativeBacktrace);
+        return ex;
+    }
+
     protected void clear(int errno) {
         message.clear();
+        nativeBacktrace.clear();
         this.errno = errno;
         cacheable = false;
         interruption = false;
         authorizationError = false;
-        entityDisabled = false;
         messagePosition = 0;
+        outOfMemory = false;
     }
 }

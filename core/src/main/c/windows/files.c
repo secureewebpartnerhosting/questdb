@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,9 +30,13 @@
 #include <winbase.h>
 #include <direct.h>
 #include <stdint.h>
+#include <windows.h>
 #include "../share/files.h"
 #include "errno.h"
 #include "files.h"
+
+#include <stdio.h>
+#include <ntdef.h>
 
 JNIEXPORT jint JNICALL Java_io_questdb_std_Files_copy
         (JNIEnv *e, jclass cls, jlong lpszFrom, jlong lpszTo) {
@@ -462,6 +466,10 @@ JNIEXPORT jint JNICALL Java_io_questdb_std_Files_softLink(JNIEnv *e, jclass cl, 
     return -1;
 }
 
+// JNIEXPORT jboolean JNICALL Java_io_questdb_std_Files_isDir(JNIEnv *e, jclass cl, jlong lpszName) {
+//     See Rust implementation in `files.rs`.
+// }
+
 JNIEXPORT jint JNICALL Java_io_questdb_std_Files_unlink(JNIEnv *e, jclass cl, jlong lpszSoftLink) {
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-deletefile
     // If the path points to a symbolic link, the symbolic link is deleted, not the target.
@@ -752,8 +760,6 @@ JNIEXPORT jboolean JNICALL Java_io_questdb_std_Files_rmdir
     return FALSE;
 }
 
-#define UTF8_MAX_PATH (MAX_PATH * 4)
-
 typedef struct {
     WIN32_FIND_DATAW *find_data;
     HANDLE hFind;
@@ -812,8 +818,16 @@ JNIEXPORT void JNICALL Java_io_questdb_std_Files_findClose
 
 JNIEXPORT jlong JNICALL Java_io_questdb_std_Files_findName
         (JNIEnv *e, jclass cl, jlong findPtr) {
-    WideCharToMultiByte(CP_UTF8, 0, ((FIND *) findPtr)->find_data->cFileName, -1, ((FIND *) findPtr)->utf8Name,
-                        UTF8_MAX_PATH, NULL, NULL);
+    WideCharToMultiByte(
+            CP_UTF8,
+            0,
+            ((FIND *) findPtr)->find_data->cFileName,
+            -1,
+            ((FIND *) findPtr)->utf8Name,
+            UTF8_MAX_PATH,
+            NULL,
+            NULL
+    );
     return (jlong) ((FIND *) findPtr)->utf8Name;
 }
 

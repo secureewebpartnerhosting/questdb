@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ public class LastNotNullDateGroupByFunction extends FirstDateGroupByFunction {
 
     @Override
     public void computeNext(MapValue mapValue, Record record, long rowId) {
-        if (arg.getDate(record) != Numbers.LONG_NaN) {
+        if (arg.getDate(record) != Numbers.LONG_NULL) {
             computeFirst(mapValue, record, rowId);
         }
     }
@@ -51,7 +51,7 @@ public class LastNotNullDateGroupByFunction extends FirstDateGroupByFunction {
     @Override
     public void merge(MapValue destValue, MapValue srcValue) {
         long srcVal = srcValue.getDate(valueIndex + 1);
-        if (srcVal == Numbers.LONG_NaN) {
+        if (srcVal == Numbers.LONG_NULL) {
             return;
         }
         long srcRowId = srcValue.getLong(valueIndex);

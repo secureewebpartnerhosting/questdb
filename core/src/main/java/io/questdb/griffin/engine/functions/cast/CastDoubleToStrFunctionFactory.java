@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,12 +30,8 @@ import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.FunctionFactory;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.constants.StrConstant;
-import io.questdb.std.Chars;
-import io.questdb.std.IntList;
-import io.questdb.std.Misc;
-import io.questdb.std.ObjList;
+import io.questdb.std.*;
 import io.questdb.std.str.StringSink;
-import io.questdb.std.str.Utf16Sink;
 
 public class CastDoubleToStrFunctionFactory implements FunctionFactory {
 
@@ -68,27 +64,18 @@ public class CastDoubleToStrFunctionFactory implements FunctionFactory {
         @Override
         public CharSequence getStrA(Record rec) {
             final double value = arg.getDouble(rec);
-            if (Double.isNaN(value)) {
-                return null;
+            if (Numbers.isFinite(value)) {
+                sinkA.clear();
+                sinkA.put(value, scale);
+                return sinkA;
             }
-            sinkA.clear();
-            sinkA.put(value, scale);
-            return sinkA;
-        }
-
-        @Override
-        public void getStr(Record rec, Utf16Sink utf16Sink) {
-            final double value = arg.getDouble(rec);
-            if (Double.isNaN(value)) {
-                return;
-            }
-            utf16Sink.put(value, scale);
+            return null;
         }
 
         @Override
         public CharSequence getStrB(Record rec) {
             final double value = arg.getDouble(rec);
-            if (Double.isNaN(value)) {
+            if (Numbers.isNull(value)) {
                 return null;
             }
             sinkB.clear();

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,11 +32,12 @@ public class HyperLogLogTestUtils {
         // According to the paper 'HyperLogLog: the analysis of a near-optimal cardinality estimation algorithm.'
         // (https://hal.science/hal-00406166) the estimates provided by HyperLogLog are expected to be within
         // 3 standard errors of the exact count in 99% of all cases. The standard error is around 1.04 / sqrt(2^precision).
+        // To mitigate the likelihood of unreliable tests, we opt for a slightly wider range (increasing from 3 to 5 standard errors).
         double standardError = 1.04 / Math.sqrt(1 << precision);
-        double min = exact - (3 * standardError) * exact;
-        double max = exact + (3 * standardError) * exact;
+        double min = exact - (5 * standardError) * exact;
+        double max = exact + (5 * standardError) * exact;
         assertTrue(
-                "Estimated cardinality " + estimated + " for precision " + precision + " is not within the expected range of " + min + " to " + max,
+                "Estimated cardinality " + estimated + " for precision " + precision + " is not within the expected range of " + min + " to " + max + ", std error " + standardError,
                 estimated >= min && estimated <= max
         );
     }

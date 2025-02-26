@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -40,7 +40,11 @@ import io.questdb.log.LogFactory;
 import io.questdb.mp.FanOut;
 import io.questdb.mp.RingQueue;
 import io.questdb.mp.SCSequence;
-import io.questdb.std.*;
+import io.questdb.std.AbstractSelfReturningObject;
+import io.questdb.std.Misc;
+import io.questdb.std.Os;
+import io.questdb.std.Unsafe;
+import io.questdb.std.WeakSelfReturningObjectPool;
 import io.questdb.std.datetime.millitime.MillisecondClock;
 import io.questdb.tasks.TableWriterTask;
 
@@ -75,7 +79,9 @@ class OperationFutureImpl extends AbstractSelfReturningObject<OperationFutureImp
             await(engine.getConfiguration().getWriterAsyncCommandMaxTimeout() - busyWaitTimeout);
         }
         if (status != QUERY_COMPLETE) {
-            throw SqlTimeoutException.timeout("Timeout expired on waiting for the async command execution result [instance=").put(correlationId).put(']');
+            throw SqlTimeoutException
+                    .timeout("Timeout expired on waiting for the async command execution result [instance=").put(correlationId)
+                    .put(", timeout=").put(busyWaitTimeout).put("ms]");
         }
     }
 
@@ -88,7 +94,6 @@ class OperationFutureImpl extends AbstractSelfReturningObject<OperationFutureImp
     public void close() {
         if (eventSubSeq != null) {
             engine.getMessageBus().getTableWriterEventFanOut().remove(eventSubSeq);
-            eventSubSeq.clear();
             eventSubSeq = null;
             correlationId = -1;
             tableToken = null;
@@ -105,11 +110,6 @@ class OperationFutureImpl extends AbstractSelfReturningObject<OperationFutureImp
     @Override
     public long getAffectedRowsCount() {
         return affectedRowsCount;
-    }
-
-    @Override
-    public long getInstanceId() {
-        return correlationId;
     }
 
     @Override

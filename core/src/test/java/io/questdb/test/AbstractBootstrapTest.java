@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,12 +27,10 @@ package io.questdb.test;
 import io.questdb.Bootstrap;
 import io.questdb.PropBootstrapConfiguration;
 import io.questdb.PropServerConfiguration;
-import io.questdb.ServerMain;
 import io.questdb.cairo.CairoEngine;
 import io.questdb.cairo.TableToken;
 import io.questdb.cairo.wal.ApplyWal2TableJob;
 import io.questdb.cairo.wal.CheckWalTransactionsJob;
-import io.questdb.griffin.SqlCompiler;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.std.Files;
 import io.questdb.std.Misc;
@@ -80,7 +78,7 @@ public abstract class AbstractBootstrapTest extends AbstractTest {
     public static void setUpStatic() throws Exception {
         AbstractTest.setUpStatic();
         TestUtils.unchecked(() -> {
-            dbPath = new Path().of(root).concat(PropServerConfiguration.DB_DIRECTORY).$();
+            dbPath = new Path().of(root).concat(PropServerConfiguration.DB_DIRECTORY);
             dbPathLen = dbPath.size();
             auxPath = new Path();
             dbPath.trimTo(dbPathLen).$();
@@ -107,7 +105,7 @@ public abstract class AbstractBootstrapTest extends AbstractTest {
     }
 
     @NotNull
-    private static Bootstrap newBootstrapWithEnvVariables(Map<String, String> envs) {
+    protected static Bootstrap newBootstrapWithEnvVariables(Map<String, String> envs) {
         Map<String, String> env = new HashMap<>(System.getenv());
 
         env.putAll(envs);
@@ -233,6 +231,20 @@ public abstract class AbstractBootstrapTest extends AbstractTest {
         createDummyConfiguration(HTTP_PORT, HTTP_MIN_PORT, PG_PORT, ILP_PORT, root, extra);
     }
 
+    protected static long createDummyWebConsole() throws Exception {
+        final String publicPath = root + Files.SEPARATOR + "public";
+        TestUtils.createTestPath(publicPath);
+
+        final String indexFile = publicPath + Files.SEPARATOR + "index.html";
+        try (PrintWriter writer = new PrintWriter(indexFile, CHARSET)) {
+            writer.print("<html><body><p>Dummy Web Console</p></body></html>");
+        }
+
+        try (Path indexPath = new Path().of(indexFile)) {
+            return Files.getLastModified(indexPath.$());
+        }
+    }
+
     protected static void drainWalQueue(CairoEngine engine) {
         try (final ApplyWal2TableJob walApplyJob = new ApplyWal2TableJob(engine, 1, 1)) {
             walApplyJob.drain(0);
@@ -242,8 +254,10 @@ public abstract class AbstractBootstrapTest extends AbstractTest {
         }
     }
 
-    static void dropTable(SqlCompiler compiler, SqlExecutionContext context, TableToken tableToken) throws Exception {
-        compiler.compile("DROP TABLE '" + tableToken.getTableName() + '\'', context);
+    static void dropTable(SqlExecutionContext context, TableToken tableToken) throws Exception {
+        CairoEngine cairoEngine = context.getCairoEngine();
+        CharSequence dropSql = "DROP TABLE '" + tableToken.getTableName() + '\'';
+        cairoEngine.execute(dropSql, context);
     }
 
     static String[] extendArgsWith(String[] args, String... moreArgs) {

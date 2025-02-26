@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,6 +35,15 @@ import static io.questdb.cairo.ColumnType.LEGACY_VAR_SIZE_AUX_SHL;
 
 public class StringTypeDriver implements ColumnTypeDriver {
     public static final StringTypeDriver INSTANCE = new StringTypeDriver();
+
+    public static void appendValue(MemoryA auxMem, MemoryA dataMem, CharSequence value) {
+        auxMem.putLong(dataMem.putStr(value));
+    }
+
+    @Override
+    public void appendNull(MemoryA auxMem, MemoryA dataMem) {
+        auxMem.putLong(dataMem.putNullStr());
+    }
 
     @Override
     public long auxRowsToBytes(long rowCount) {
@@ -67,10 +76,11 @@ public class StringTypeDriver implements ColumnTypeDriver {
     }
 
     @Override
-    public void configureAuxMemOM(FilesFacade ff, MemoryOM auxMem, int fd, LPSZ fileName, long rowLo, long rowHi, int memoryTag, long opts) {
+    public void configureAuxMemOM(FilesFacade ff, MemoryOM auxMem, long fd, LPSZ fileName, long rowLo, long rowHi, int memoryTag, long opts) {
         auxMem.ofOffset(
                 ff,
                 fd,
+                false,
                 fileName,
                 rowLo << LEGACY_VAR_SIZE_AUX_SHL,
                 (rowHi + 1) << LEGACY_VAR_SIZE_AUX_SHL,
@@ -84,7 +94,7 @@ public class StringTypeDriver implements ColumnTypeDriver {
             FilesFacade ff,
             MemoryR auxMem,
             MemoryOM dataMem,
-            int dataFd,
+            long dataFd,
             LPSZ fileName,
             long rowLo,
             long rowHi,
@@ -94,12 +104,18 @@ public class StringTypeDriver implements ColumnTypeDriver {
         dataMem.ofOffset(
                 ff,
                 dataFd,
+                false,
                 fileName,
                 auxMem.getLong(rowLo << LEGACY_VAR_SIZE_AUX_SHL),
                 auxMem.getLong(rowHi << LEGACY_VAR_SIZE_AUX_SHL),
                 memoryTag,
                 opts
         );
+    }
+
+    @Override
+    public long dedupMergeVarColumnSize(long mergeIndexAddr, long mergeIndexCount, long srcDataFixAddr, long srcOooFixAddr) {
+        return Vect.dedupMergeStrBinColumnSize(mergeIndexAddr, mergeIndexCount, srcDataFixAddr, srcOooFixAddr);
     }
 
     @Override
@@ -119,14 +135,12 @@ public class StringTypeDriver implements ColumnTypeDriver {
 
     @Override
     public long getDataVectorOffset(long auxMemAddr, long row) {
-        long result = Unsafe.getUnsafe().getLong(auxMemAddr + (row << LEGACY_VAR_SIZE_AUX_SHL));
-
-        // It's tempting to assert as the line bellow.
+        // It's tempting to assert the result.
         //        assert (row == 0 && result == 0) || result > 0;
         // However, we can't do that, because the partition attach/detach mechanism has to be able to gracefully
         // recover from attempts to attach damaged partition data. Throwing AssertError makes it impossible,
         // unless we want to catch AssertError in the partition attach code.
-        return result;
+        return Unsafe.getUnsafe().getLong(auxMemAddr + (row << LEGACY_VAR_SIZE_AUX_SHL));
     }
 
     @Override
@@ -140,7 +154,7 @@ public class StringTypeDriver implements ColumnTypeDriver {
     }
 
     @Override
-    public long getDataVectorSizeAtFromFd(FilesFacade ff, int auxFd, long row) {
+    public long getDataVectorSizeAtFromFd(FilesFacade ff, long auxFd, long row) {
         long auxFileOffset = getAuxVectorOffset(row + 1);
         long dataOffset = row > -1 ? ff.readNonNegativeLong(auxFd, auxFileOffset) : 0;
 
@@ -193,7 +207,7 @@ public class StringTypeDriver implements ColumnTypeDriver {
             long srcHi,
             long dstAddr,
             long dstFileOffset,
-            int dstFd,
+            long dstFd,
             boolean mixedIOFlag
     ) {
         // srcHi is inclusive, and we also copy 1 extra entry due to N+1 aux vector structure
@@ -278,16 +292,7 @@ public class StringTypeDriver implements ColumnTypeDriver {
         dataMem.jumpTo(0);
         auxMem.jumpTo(0);
         auxMem.putLong(0);
-        // Assume var length columns use 28 bytes per value to estimate the record size
-        // if there are no rows in the partition yet.
-        // The record size used to estimate the partition size
-        // to split partition in O3 commit when necessary
-        return TableUtils.ESTIMATED_VAR_COL_SIZE;
-    }
-
-    @Override
-    public void setColumnRefs(long address, long initialOffset, long count) {
-        Vect.setVarColumnRefs32Bit(address, initialOffset, count);
+        return Long.BYTES;
     }
 
     @Override
@@ -296,19 +301,30 @@ public class StringTypeDriver implements ColumnTypeDriver {
     }
 
     @Override
+    public void setFullAuxVectorNull(long auxMemAddr, long rowCount) {
+        Vect.setVarColumnRefs32Bit(auxMemAddr, 0, rowCount + 1);
+    }
+
+    @Override
+    public void setPartAuxVectorNull(long auxMemAddr, long initialOffset, long columnTop) {
+        Vect.setVarColumnRefs32Bit(auxMemAddr, initialOffset, columnTop);
+    }
+
+    @Override
     public void shiftCopyAuxVector(
             long shift,
             long src,
             long srcLo,
             long srcHi,
-            long dstAddr
+            long dstAddr,
+            long dstAddrSize
     ) {
-        Vect.shiftCopyFixedSizeColumnData(shift, src, srcLo, srcHi + 1, dstAddr);
-    }
+        assert (srcHi - srcLo + 2) * 8 <= dstAddrSize;
+        // +2 because
+        // 1. srcHi is inclusive
+        // 2. we copy 1 extra entry due to N+1 string aux vector structure
 
-    @Override
-    public void appendNull(MemoryA dataMem, MemoryA auxMem) {
-        auxMem.putLong(dataMem.putNullStr());
+        Vect.shiftCopyFixedSizeColumnData(shift, src, srcLo, srcHi + 1, dstAddr);
     }
 }
 

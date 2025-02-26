@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,13 +26,15 @@ package io.questdb.cairo.sql;
 
 import io.questdb.cairo.CairoException;
 import io.questdb.network.NetworkFacade;
+import io.questdb.std.Mutable;
 import io.questdb.std.Unsafe;
 import io.questdb.std.datetime.millitime.MillisecondClock;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.Closeable;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBreaker, Closeable {
+public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBreaker, Closeable, Mutable {
     private final int bufferSize;
     private final MillisecondClock clock;
     private final SqlExecutionCircuitBreakerConfiguration configuration;
@@ -42,13 +44,13 @@ public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBre
     private final int throttle;
     private long buffer;
     private AtomicBoolean cancelledFlag;
-    private int fd = -1;
+    private long fd = -1;
     private volatile long powerUpTime = Long.MAX_VALUE;
     private int secret;
     private int testCount;
     private long timeout;
 
-    public NetworkSqlExecutionCircuitBreaker(SqlExecutionCircuitBreakerConfiguration configuration, int memoryTag) {
+    public NetworkSqlExecutionCircuitBreaker(@NotNull SqlExecutionCircuitBreakerConfiguration configuration, int memoryTag) {
         this.configuration = configuration;
         this.nf = configuration.getNetworkFacade();
         this.throttle = configuration.getCircuitBreakerThrottle();
@@ -81,7 +83,7 @@ public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBre
     }
 
     @Override
-    public boolean checkIfTripped(long millis, int fd) {
+    public boolean checkIfTripped(long millis, long fd) {
         if (clock.getTicks() - timeout > millis) {
             return true;
         }
@@ -106,12 +108,17 @@ public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBre
     }
 
     @Override
+    public AtomicBoolean getCancelledFlag() {
+        return cancelledFlag;
+    }
+
+    @Override
     public SqlExecutionCircuitBreakerConfiguration getConfiguration() {
         return configuration;
     }
 
     @Override
-    public int getFd() {
+    public long getFd() {
         return fd;
     }
 
@@ -125,7 +132,7 @@ public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBre
     }
 
     @Override
-    public int getState(long millis, int fd) {
+    public int getState(long millis, long fd) {
         if (clock.getTicks() - timeout > millis) {
             return STATE_TIMEOUT;
         }
@@ -139,11 +146,21 @@ public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBre
     }
 
     @Override
+    public long getTimeout() {
+        return timeout;
+    }
+
+    @Override
+    public boolean isThreadSafe() {
+        return false;
+    }
+
+    @Override
     public boolean isTimerSet() {
         return powerUpTime < Long.MAX_VALUE;
     }
 
-    public NetworkSqlExecutionCircuitBreaker of(int fd) {
+    public NetworkSqlExecutionCircuitBreaker of(long fd) {
         assert buffer != 0;
         testCount = 0;
         this.fd = fd;
@@ -165,7 +182,7 @@ public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBre
     }
 
     @Override
-    public void setFd(int fd) {
+    public void setFd(long fd) {
         this.fd = fd;
     }
 
@@ -223,16 +240,17 @@ public class NetworkSqlExecutionCircuitBreaker implements SqlExecutionCircuitBre
     }
 
     private void testTimeout() {
-        if (clock.getTicks() - timeout > powerUpTime) {
+        long runtime = clock.getTicks() - powerUpTime;
+        if (runtime > timeout) {
             if (isCancelled()) {
                 throw CairoException.queryCancelled(fd);
             } else {
-                throw CairoException.queryTimedOut(fd);
+                throw CairoException.queryTimedOut(fd, runtime, timeout);
             }
         }
     }
 
-    protected boolean testConnection(int fd) {
+    protected boolean testConnection(long fd) {
         if (fd == -1 || !configuration.checkConnection()) {
             return false;
         }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ public class InformationSchemaTablesFunctionFactoryTest extends AbstractCairoTes
     public void testSelectWhenTelemetryTablesAreHidden() throws Exception {
         assertMemoryLeak(() -> {
             node1.getConfigurationOverrides().setIsHidingTelemetryTable(true);
-            ddl("create table " + TelemetryConfigLogger.TELEMETRY_CONFIG_TABLE_NAME + " (i int)");
-            ddl("create table " + TelemetryTask.TABLE_NAME + " (i int)");
+            execute("create table " + TelemetryConfigLogger.TELEMETRY_CONFIG_TABLE_NAME + " (i int)");
+            execute("create table " + TelemetryTask.TABLE_NAME + " (i int)");
 
 
             assertQuery("table_catalog\ttable_schema\ttable_name\ttable_type\tself_referencing_column_name\treference_generation\tuser_defined_type_catalog\tuser_defined_type_schema\tuser_defined_type_name\tis_insertable_into\tis_typed\tcommit_action\n",
@@ -55,8 +55,8 @@ public class InformationSchemaTablesFunctionFactoryTest extends AbstractCairoTes
     @Test
     public void testSelectWhenThereAreTables() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table first_table(i int)");
-            ddl("create table second_table(i int)");
+            execute("create table first_table(i int)");
+            execute("create table second_table(i int)");
 
             assertQuery("table_catalog\ttable_schema\ttable_name\ttable_type\tself_referencing_column_name\treference_generation\tuser_defined_type_catalog\tuser_defined_type_schema\tuser_defined_type_name\tis_insertable_into\tis_typed\tcommit_action\n" +
                             "qdb\tpublic\tfirst_table\tBASE TABLE\t\t\t\t\t\ttrue\tfalse\t\n" +

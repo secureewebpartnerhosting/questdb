@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -70,48 +70,53 @@ public class FirstDoubleGroupByFunction extends DoubleFunction implements GroupB
     }
 
     @Override
+    public int getSampleByFlags() {
+        return GroupByFunction.SAMPLE_BY_FILL_ALL;
+    }
+
+    @Override
     public int getValueIndex() {
         return valueIndex;
     }
 
     @Override
-    public boolean isReadThreadSafe() {
-        return UnaryFunction.super.isReadThreadSafe();
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
     }
 
     @Override
-    public void merge(MapValue destValue, MapValue srcValue) {
-        long srcRowId = srcValue.getLong(valueIndex);
-        long destRowId = destValue.getLong(valueIndex);
-        if (srcRowId != Numbers.LONG_NaN && (srcRowId < destRowId || destRowId == Numbers.LONG_NaN)) {
-            destValue.putLong(valueIndex, srcRowId);
-            destValue.putDouble(valueIndex + 1, srcValue.getDouble(valueIndex + 1));
-        }
-    }
-
-    @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
         this.valueIndex = columnTypes.getColumnCount();
         columnTypes.add(ColumnType.LONG);   // row id
         columnTypes.add(ColumnType.DOUBLE); // value
     }
 
     @Override
+    public boolean isThreadSafe() {
+        return UnaryFunction.super.isThreadSafe();
+    }
+
+    @Override
+    public void merge(MapValue destValue, MapValue srcValue) {
+        long srcRowId = srcValue.getLong(valueIndex);
+        long destRowId = destValue.getLong(valueIndex);
+        if (srcRowId != Numbers.LONG_NULL && (srcRowId < destRowId || destRowId == Numbers.LONG_NULL)) {
+            destValue.putLong(valueIndex, srcRowId);
+            destValue.putDouble(valueIndex + 1, srcValue.getDouble(valueIndex + 1));
+        }
+    }
+
+    @Override
     public void setDouble(MapValue mapValue, double value) {
         // This method is used to define interpolated points and to init
         // an empty value, so it's ok to reset the row id field here.
-        mapValue.putLong(valueIndex, Numbers.LONG_NaN);
+        mapValue.putLong(valueIndex, Numbers.LONG_NULL);
         mapValue.putDouble(valueIndex + 1, value);
     }
 
     @Override
     public void setNull(MapValue mapValue) {
         setDouble(mapValue, Double.NaN);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
     }
 
     @Override

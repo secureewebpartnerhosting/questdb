@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -66,16 +66,16 @@ public class FullFatJoinNoLeakTest extends AbstractCairoTest {
 
     private void createTablesToJoin() throws SqlException {
         // ASKS
-        ddl("create table asks (ask int, ts timestamp) timestamp(ts) partition by none");
-        insert("insert into asks values(100, 0)");
-        insert("insert into asks values(101, 2);");
-        insert("insert into asks values(102, 4);");
+        execute("create table asks (ask int, ts timestamp) timestamp(ts) partition by none");
+        execute("insert into asks values(100, 0)");
+        execute("insert into asks values(101, 2);");
+        execute("insert into asks values(102, 4);");
 
         // BIDS
-        ddl("create table bids (bid int, ts timestamp) timestamp(ts) partition by none");
-        insert("insert into bids values(101, 1);");
-        insert("insert into bids values(102, 3);");
-        insert("insert into bids values(103, 5);");
+        execute("create table bids (bid int, ts timestamp) timestamp(ts) partition by none");
+        execute("insert into bids values(101, 1);");
+        execute("insert into bids values(102, 3);");
+        execute("insert into bids values(103, 5);");
     }
 
     private void testJoinThrowsLimitOverflowException(String sql) throws Exception {
@@ -85,7 +85,7 @@ public class FullFatJoinNoLeakTest extends AbstractCairoTest {
         assertMemoryLeak(() -> {
             try {
                 createTablesToJoin();
-                assertException(sql, sqlExecutionContext, true);
+                assertExceptionNoLeakCheck(sql, sqlExecutionContext, true);
             } catch (LimitOverflowException ex) {
                 TestUtils.assertContains(ex.getFlyweightMessage(), "limit of 0 resizes exceeded in FastMap");
                 Assert.assertFalse(ex.isCritical());

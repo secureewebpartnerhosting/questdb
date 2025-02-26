@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,8 +38,8 @@ public class SimpleTableTest extends AbstractCairoTest {
     @Test
     public void testTimeStampWithTimezone() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table t (timestamp timestamp) timestamp(timestamp);");
-            insert("insert into t values (1);");
+            execute("create table t (timestamp timestamp) timestamp(timestamp);");
+            execute("insert into t values (1);");
 
             String expected1 = "time\n" +
                     "1970-01-01T00:00:00.000001Z\n";
@@ -47,7 +47,7 @@ public class SimpleTableTest extends AbstractCairoTest {
             assertSql(expected1, "select timestamp time from t;");
 
             try {
-                assertException("select timestamp with time zone from t;");
+                assertExceptionNoLeakCheck("select timestamp with time zone from t;");
             } catch (SqlException e) {
                 Assert.assertEquals(31, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "String literal expected after 'timestamp with time zone'");

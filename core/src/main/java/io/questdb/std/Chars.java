@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,11 @@ package io.questdb.std;
 import io.questdb.cairo.CairoException;
 import io.questdb.griffin.engine.functions.constants.CharConstant;
 import io.questdb.griffin.engine.functions.str.TrimType;
-import io.questdb.std.str.*;
+import io.questdb.std.str.CharSink;
+import io.questdb.std.str.Path;
+import io.questdb.std.str.StringSink;
+import io.questdb.std.str.Utf16Sink;
+import io.questdb.std.str.Utf8Sink;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -58,13 +62,17 @@ public final class Chars {
      * @param ascii ascii string to convert to byte array
      * @return byte array representation of the input string
      */
-    public static byte[] asciiToByteArray(CharSequence ascii) {
+    public static byte[] asciiToByteArray(@NotNull CharSequence ascii) {
         byte[] dst = new byte[ascii.length()];
-        for (int i = 0; i < ascii.length(); i++) {
+        for (int i = 0, n = ascii.length(); i < n; i++) {
             assert ascii.charAt(i) < 128;
             dst[i] = (byte) ascii.charAt(i);
         }
         return dst;
+    }
+
+    public static void base64Decode(CharSequence encoded, @NotNull Utf8Sink target) {
+        base64Decode(encoded, target, base64Inverted);
     }
 
     /**
@@ -80,10 +88,6 @@ public final class Chars {
      * @throws java.nio.BufferOverflowException if target buffer is too small
      */
     public static void base64Decode(CharSequence encoded, @NotNull ByteBuffer target) {
-        base64Decode(encoded, target, base64Inverted);
-    }
-
-    public static void base64Decode(CharSequence encoded, @NotNull Utf8Sink target) {
         base64Decode(encoded, target, base64Inverted);
     }
 
@@ -117,6 +121,18 @@ public final class Chars {
     public static void base64UrlEncode(BinarySequence sequence, int maxLength, CharSink<?> buffer) {
         base64Encode(sequence, maxLength, buffer, base64Url);
         // base64 url does not use padding
+    }
+
+    public static int charBytes(char c) {
+        if (c < 0x80) {
+            return 1;
+        } else if (c < 0x800) {
+            return 2;
+        } else if (Character.isSurrogate(c)) {
+            return 1; // replaced with '?'
+        } else {
+            return 3;
+        }
     }
 
     public static int compare(CharSequence l, CharSequence r) {
@@ -228,8 +244,8 @@ public final class Chars {
             return true;
         }
 
-        int ll;
-        if ((ll = l.length()) != rHi - rLo) {
+        int ll = l.length();
+        if (ll != rHi - rLo) {
             return false;
         }
 
@@ -275,8 +291,8 @@ public final class Chars {
             return true;
         }
 
-        int ll;
-        if ((ll = l.length()) != r.length()) {
+        int ll = l.length();
+        if (ll != r.length()) {
             return false;
         }
 
@@ -286,8 +302,8 @@ public final class Chars {
     /**
      * Case-insensitive comparison of two char sequences, with subsequence over second.
      *
-     * @param l left sequence
-     * @param r right sequence
+     * @param l   left sequence
+     * @param r   right sequence
      * @param rLo right sequence lower bound
      * @param rHi right sequence upper bound
      * @return true if sequences match exactly (ignoring char case)
@@ -297,8 +313,8 @@ public final class Chars {
             return true;
         }
 
-        int ll;
-        if ((ll = l.length()) != rHi - rLo) {
+        int ll = l.length();
+        if (ll != rHi - rLo) {
             return false;
         }
 
@@ -315,8 +331,8 @@ public final class Chars {
             return true;
         }
 
-        int ll;
-        if ((ll = lLC.length()) != rHi - rLo) {
+        int ll = lLC.length();
+        if (ll != rHi - rLo) {
             return false;
         }
 
@@ -365,8 +381,8 @@ public final class Chars {
     }
 
     public static boolean equalsLowerCaseAscii(@NotNull CharSequence l, @NotNull CharSequence r) {
-        int ll;
-        if ((ll = l.length()) != r.length()) {
+        int ll = l.length();
+        if (ll != r.length()) {
             return false;
         }
 
@@ -393,6 +409,54 @@ public final class Chars {
 
     public static boolean equalsNc(CharSequence l, CharSequence r, int rLo, int rHi) {
         return l != null && equals(l, r, rLo, rHi);
+    }
+
+    public static boolean equalsNullable(@Nullable CharSequence l, @Nullable CharSequence r) {
+        if (l == null && r == null) {
+            return true;
+        }
+
+        if (l == null || r == null) {
+            return false;
+        }
+
+        int ll;
+        if ((ll = l.length()) != r.length()) {
+            return false;
+        }
+
+        return equalsChars(l, r, ll);
+    }
+
+    /**
+     * Strictly greater than (&gt;) comparison of two UTF16 sequences in lexicographical
+     * order. For example, for:
+     * l = aaaaa
+     * r = aaaaaaa
+     * the l &gt; r will produce "false", however for:
+     * l = bbbb
+     * r = aaaaaaa
+     * the l &gt; r will produce "true", because b &gt; a.
+     *
+     * @param l left sequence, can be null
+     * @param r right sequence, can be null
+     * @return if either l or r is "null", the return value false, otherwise sequences are compared lexicographically.
+     */
+    public static boolean greaterThan(@Nullable CharSequence l, @Nullable CharSequence r) {
+        if (l == null || r == null) {
+            return false;
+        }
+        final int ll = l.length();
+        final int rl = r.length();
+        final int min = Math.min(ll, rl);
+
+        for (int i = 0; i < min; i++) {
+            final int k = l.charAt(i) - r.charAt(i);
+            if (k != 0) {
+                return k > 0;
+            }
+        }
+        return ll > rl;
     }
 
     public static int hashCode(@NotNull CharSequence value, int lo, int hi) {
@@ -615,6 +679,55 @@ public final class Chars {
         return -1;
     }
 
+    public static int indexOfUnquoted(@NotNull CharSequence seq, char ch) {
+        return indexOfUnquoted(seq, ch, 0, seq.length(), 1);
+    }
+
+    public static int indexOfUnquoted(@NotNull CharSequence seq, char ch, int seqLo, int seqHi, int occurrence) {
+        if (occurrence == 0) {
+            return -1;
+        }
+
+        int count = 0;
+        boolean inQuotes = false;
+        if (occurrence > 0) {
+            for (int i = seqLo; i < seqHi; i++) {
+                if (seq.charAt(i) == '\"') {
+                    inQuotes = !inQuotes;
+                }
+                if (seq.charAt(i) == ch && !inQuotes) {
+                    count++;
+                    if (count == occurrence) {
+                        return i;
+                    }
+                }
+            }
+        } else {    // if occurrence is negative, search in reverse
+            for (int i = seqHi - 1; i >= seqLo; i--) {
+                if (seq.charAt(i) == '\"') {
+                    inQuotes = !inQuotes;
+                }
+                if (seq.charAt(i) == ch && !inQuotes) {
+                    count--;
+                    if (count == occurrence) {
+                        return i;
+                    }
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    public static boolean isAscii(@NotNull CharSequence cs) {
+        for (int i = 0, n = cs.length(); i < n; i++) {
+            if (cs.charAt(i) > 127) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static boolean isBlank(CharSequence s) {
         if (s == null) {
             return true;
@@ -661,8 +774,44 @@ public final class Chars {
         return isQuote(open) && open == s.charAt(s.length() - 1);
     }
 
-    public static int lastIndexOf(CharSequence sequence, int sequenceLo, int sequenceHi, CharSequence term) {
+    public static int lastIndexOf(@NotNull CharSequence sequence, int sequenceLo, int sequenceHi, @NotNull CharSequence term) {
         return indexOf(sequence, sequenceLo, sequenceHi, term, -1);
+    }
+
+    /**
+     * Strictly greater than (&lt;) comparison of two UTF16 sequences in lexicographical
+     * order. For example, for:
+     * l = aaaaa
+     * r = aaaaaaa
+     * the l &gt; r will produce "false", however for:
+     * l = bbbb
+     * r = aaaaaaa
+     * the l &lt; r will produce "true", because b &lt; a.
+     *
+     * @param l left sequence, can be null
+     * @param r right sequence, can be null
+     * @return if either l or r is "null", the return value false, otherwise sequences are compared lexicographically.
+     */
+    public static boolean lessThan(@Nullable CharSequence l, @Nullable CharSequence r) {
+        if (l == null || r == null) {
+            return false;
+        }
+        final int ll = l.length();
+        final int rl = r.length();
+        final int min = Math.min(ll, rl);
+
+        for (int i = 0; i < min; i++) {
+            final int k = l.charAt(i) - r.charAt(i);
+            if (k != 0) {
+                return k < 0;
+            }
+        }
+        return ll < rl;
+    }
+
+    public static boolean lessThan(@Nullable CharSequence l, @Nullable CharSequence r, boolean negated) {
+        final boolean eq = Chars.equalsNullable(l, r);
+        return negated ? (eq || Chars.greaterThan(l, r)) : (!eq && Chars.lessThan(l, r));
     }
 
     public static int lowerCaseAsciiHashCode(CharSequence value, int lo, int hi) {
@@ -772,7 +921,7 @@ public final class Chars {
                         if (inQuote) {
                             lastLen++;
                         } else {
-                            paths.add(new Path().of(args, lastIndex, lastLen + lastIndex).$());
+                            paths.add(new Path().of(args, lastIndex, lastLen + lastIndex));
                             lastLen = 0;
                         }
                     }
@@ -791,7 +940,7 @@ public final class Chars {
         }
 
         if (lastLen > 0) {
-            paths.add(new Path().of(args, lastIndex, lastLen + lastIndex).$());
+            paths.add(new Path().of(args, lastIndex, lastLen + lastIndex));
         }
         return paths;
     }
@@ -800,13 +949,8 @@ public final class Chars {
         if (cs == null || starts == null) {
             return false;
         }
-
         int l = starts.length();
-        if (l == 0) {
-            return true;
-        }
-
-        return cs.length() >= l && equalsChars(cs, starts, l);
+        return l == 0 || cs.length() >= l && equalsChars(cs, starts, l);
     }
 
     public static boolean startsWith(CharSequence _this, int thisLo, int thisHi, CharSequence that) {
@@ -826,6 +970,19 @@ public final class Chars {
 
     public static boolean startsWith(CharSequence _this, char c) {
         return _this.length() > 0 && _this.charAt(0) == c;
+    }
+
+    public static boolean startsWithIgnoreCase(CharSequence cs, CharSequence startsWith) {
+        if (cs == null || startsWith == null) {
+            return false;
+        }
+
+        int l = startsWith.length();
+        if (l == 0) {
+            return true;
+        }
+
+        return cs.length() >= l && equalsWithIgnoreCase(startsWith, cs, l);
     }
 
     // Pattern has to be lower-case.
@@ -853,7 +1010,6 @@ public final class Chars {
             sink.put(Character.toLowerCase(str.charAt(i)));
         }
     }
-
 
     public static String toLowerCaseAscii(@Nullable CharSequence value) {
         if (value == null) {
@@ -1010,9 +1166,9 @@ public final class Chars {
             int wrk = b0 | b1 | b2 | b4;
             // we use absolute positions to write to the byte buffer in the hot loop
             // benchmarking shows that it is faster than using relative positions
-            target.put((byte) (wrk >>> 16));
-            target.put((byte) ((wrk >>> 8) & 0xFF));
-            target.put((byte) (wrk & 0xFF));
+            target.putAny((byte) (wrk >>> 16));
+            target.putAny((byte) ((wrk >>> 8) & 0xFF));
+            target.putAny((byte) (wrk & 0xFF));
         }
         // now decode remainder
         int wrk;
@@ -1027,14 +1183,14 @@ public final class Chars {
             case 2:
                 wrk = base64InvertedLookup(invertedAlphabet, encoded.charAt(sourcePos)) << 18;
                 wrk |= base64InvertedLookup(invertedAlphabet, encoded.charAt(sourcePos + 1)) << 12;
-                target.put((byte) (wrk >>> 16));
+                target.putAny((byte) (wrk >>> 16));
                 break;
             case 3:
                 wrk = base64InvertedLookup(invertedAlphabet, encoded.charAt(sourcePos)) << 18;
                 wrk |= base64InvertedLookup(invertedAlphabet, encoded.charAt(sourcePos + 1)) << 12;
                 wrk |= base64InvertedLookup(invertedAlphabet, encoded.charAt(sourcePos + 2)) << 6;
-                target.put((byte) (wrk >>> 16));
-                target.put((byte) ((wrk >>> 8) & 0xFF));
+                target.putAny((byte) (wrk >>> 16));
+                target.putAny((byte) ((wrk >>> 8) & 0xFF));
         }
     }
 
@@ -1153,7 +1309,7 @@ public final class Chars {
     }
 
     private static boolean equalsCharsIgnoreCase(@NotNull CharSequence l, @NotNull CharSequence r, int len, int rLo, int rHi) {
-        assert len == (rHi-rLo);
+        assert len == (rHi - rLo);
         for (int i = 0; i < len; i++) {
             if (Character.toLowerCase(l.charAt(i)) != Character.toLowerCase(r.charAt(i + rLo))) {
                 return false;
@@ -1166,6 +1322,15 @@ public final class Chars {
     private static boolean equalsCharsLowerCase(@NotNull CharSequence lLC, @NotNull CharSequence r, int len) {
         for (int i = 0; i < len; i++) {
             if (lLC.charAt(i) != Character.toLowerCase(r.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean equalsWithIgnoreCase(@NotNull CharSequence lLC, @NotNull CharSequence r, int len) {
+        for (int i = 0; i < len; i++) {
+            if (Character.toLowerCase(lLC.charAt(i)) != Character.toLowerCase(r.charAt(i))) {
                 return false;
             }
         }

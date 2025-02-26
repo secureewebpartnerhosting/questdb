@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ public class MemoryLeakTest extends AbstractCairoTest {
                 final SqlCompiler compiler = engine.getSqlCompiler();
                 final SqlExecutionContext executionContext = TestUtils.createSqlExecutionCtx(engine)
         ) {
-            ddl(compiler, "create table users (sequence long, event binary, timestamp timestamp, id long) timestamp(timestamp)", executionContext);
+            execute(compiler, "create table users (sequence long, event binary, timestamp timestamp, id long) timestamp(timestamp)", executionContext);
             long buffer = Unsafe.malloc(1024, MemoryTag.NATIVE_DEFAULT);
             try {
                 try (TableWriter writer = getWriter("users")) {

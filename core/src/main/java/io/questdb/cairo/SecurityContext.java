@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,16 +35,17 @@ public interface SecurityContext extends Mutable {
     byte AUTH_TYPE_CREDENTIALS = 1;
     // The user authenticated with a JWK token.
     byte AUTH_TYPE_JWK_TOKEN = 2;
-    // The context is not aware of authentication types.
+    // The user is not authenticated.
+    // Either tried to authenticate and failed, or did not try to authenticate at all.
     byte AUTH_TYPE_NONE = 0;
-
-    void authorizeAdminAction();
 
     void authorizeAlterTableAddColumn(TableToken tableToken);
 
     void authorizeAlterTableAddIndex(TableToken tableToken, @NotNull ObjList<CharSequence> columnNames);
 
     void authorizeAlterTableAlterColumnCache(TableToken tableToken, @NotNull ObjList<CharSequence> columnNames);
+
+    void authorizeAlterTableAlterColumnType(TableToken tableToken, @NotNull ObjList<CharSequence> columnNames);
 
     void authorizeAlterTableAttachPartition(TableToken tableToken);
 
@@ -65,9 +66,6 @@ public interface SecurityContext extends Mutable {
 
     void authorizeAlterTableSetType(TableToken tableToken);
 
-    default void authorizeCancelQuery() {
-    }
-
     void authorizeCopyCancel(SecurityContext cancellingSecurityContext);
 
     void authorizeDatabaseSnapshot();
@@ -78,6 +76,12 @@ public interface SecurityContext extends Mutable {
 
     void authorizeLineTcp();
 
+    void authorizeMatViewCreate();
+
+    void authorizeMatViewDrop(TableToken tableToken);
+
+    void authorizeMatViewRefresh(TableToken tableToken);
+
     void authorizePGWire();
 
     void authorizeResumeWal(TableToken tableToken);
@@ -85,6 +89,10 @@ public interface SecurityContext extends Mutable {
     void authorizeSelect(TableToken tableToken, @NotNull ObjList<CharSequence> columnNames);
 
     void authorizeSelectOnAnyColumn(TableToken tableToken);
+
+    void authorizeSqlEngineAdmin();
+
+    void authorizeSystemAdmin();
 
     void authorizeTableBackup(ObjHashSet<TableToken> tableTokens);
 
@@ -146,4 +154,10 @@ public interface SecurityContext extends Mutable {
     default boolean isExternal() {
         return false;
     }
+
+    default boolean isQueryCancellationAllowed() {
+        return true;
+    }
+
+    boolean isSystemAdmin();
 }

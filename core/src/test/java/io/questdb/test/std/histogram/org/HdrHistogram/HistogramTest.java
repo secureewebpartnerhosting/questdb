@@ -1,19 +1,50 @@
-/**
- * HistogramTest.java
- * Written by Gil Tene of Azul Systems, and released to the public domain,
- * as explained at http://creativecommons.org/publicdomain/zero/1.0/
+/*******************************************************************************
+ *     ___                  _   ____  ____
+ *    / _ \ _   _  ___  ___| |_|  _ \| __ )
+ *   | | | | | | |/ _ \/ __| __| | | |  _ \
+ *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
+ *    \__\_\\__,_|\___||___/\__|____/|____/
  *
- * @author Gil Tene
- */
+ *  Copyright (c) 2014-2019 Appsicle
+ *  Copyright (c) 2019-2024 QuestDB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+
+// Written by Gil Tene of Azul Systems, and released to the public domain,
+// as explained at http://creativecommons.org/publicdomain/zero/1.0/
+//
+// @author Gil Tene
 
 package io.questdb.test.std.histogram.org.HdrHistogram;
 
 import io.questdb.cairo.CairoException;
-import io.questdb.std.histogram.org.HdrHistogram.*;
+import io.questdb.std.histogram.org.HdrHistogram.AbstractHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.Histogram;
+import io.questdb.std.histogram.org.HdrHistogram.HistogramIterationValue;
+import io.questdb.std.histogram.org.HdrHistogram.IntCountsHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.PackedHistogram;
+import io.questdb.std.histogram.org.HdrHistogram.ShortCountsHistogram;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInput;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
 import java.util.zip.Deflater;
 
 import static io.questdb.test.std.histogram.org.HdrHistogram.HistogramTestUtils.constructHistogram;
@@ -28,7 +59,7 @@ public class HistogramTest {
     static final long testValueLevel = 4;
 
     @Test
-    public void testAdd() throws Exception {
+    public void testAdd() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -80,7 +111,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testConstructionArgumentGets() throws Exception {
+    public void testConstructionArgumentGets() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -102,7 +133,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testConstructionArgumentRanges() throws Exception {
+    public void testConstructionArgumentRanges() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -149,7 +180,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testConstructionWithLargeNumbers() throws Exception {
+    public void testConstructionWithLargeNumbers() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -172,7 +203,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testCopy() throws Exception {
+    public void testCopy() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -191,7 +222,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testCopyInto() throws Exception {
+    public void testCopyInto() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -220,7 +251,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testEmptyHistogram() throws Exception {
+    public void testEmptyHistogram() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -245,7 +276,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testGetEstimatedFootprintInBytes() throws Exception {
+    public void testGetEstimatedFootprintInBytes() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class
         };
@@ -273,7 +304,7 @@ public class HistogramTest {
                                                     / Math.log(2)
                                     )
                                             + 2)) *
-                            (1 << (64 - Long.numberOfLeadingZeros(2 * (long) Math.pow(10, numberOfSignificantValueDigits))))
+                            (1L << (64 - Long.numberOfLeadingZeros(2 * (long) Math.pow(10, numberOfSignificantValueDigits))))
                     ) / 2);
             Assert.assertEquals(expectedSize, histogram.getEstimatedFootprintInBytes());
             verifyMaxValue(histogram);
@@ -309,7 +340,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testIntCountsHistogramOverflow() throws Exception {
+    public void testIntCountsHistogramOverflow() {
         Assert.assertThrows(IllegalStateException.class,
                 () -> {
                     IntCountsHistogram histogram =
@@ -419,7 +450,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testRecordValue() throws Exception {
+    public void testRecordValue() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -438,7 +469,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testRecordValueWithExpectedInterval() throws Exception {
+    public void testRecordValueWithExpectedInterval() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -454,13 +485,13 @@ public class HistogramTest {
             AbstractHistogram rawHistogram = constructHistogram(histoClass, highestTrackableValue, numberOfSignificantValueDigits);
             rawHistogram.recordValue(testValueLevel);
             // The data will include corrected samples:
-            Assert.assertEquals(1L, histogram.getCountAtValue((testValueLevel * 1) / 4));
+            Assert.assertEquals(1L, histogram.getCountAtValue((testValueLevel) / 4));
             Assert.assertEquals(1L, histogram.getCountAtValue((testValueLevel * 2) / 4));
             Assert.assertEquals(1L, histogram.getCountAtValue((testValueLevel * 3) / 4));
             Assert.assertEquals(1L, histogram.getCountAtValue((testValueLevel * 4) / 4));
             Assert.assertEquals(4L, histogram.getTotalCount());
             // But the raw data will not:
-            Assert.assertEquals(0L, rawHistogram.getCountAtValue((testValueLevel * 1) / 4));
+            Assert.assertEquals(0L, rawHistogram.getCountAtValue((testValueLevel) / 4));
             Assert.assertEquals(0L, rawHistogram.getCountAtValue((testValueLevel * 2) / 4));
             Assert.assertEquals(0L, rawHistogram.getCountAtValue((testValueLevel * 3) / 4));
             Assert.assertEquals(1L, rawHistogram.getCountAtValue((testValueLevel * 4) / 4));
@@ -471,7 +502,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testRecordValue_Overflow_ShouldThrowException() throws Exception {
+    public void testRecordValue_Overflow_ShouldThrowException() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -490,7 +521,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testReset() throws Exception {
+    public void testReset() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -518,7 +549,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testScaledCopy() throws Exception {
+    public void testScaledCopy() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -539,7 +570,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testScaledCopyInto() throws Exception {
+    public void testScaledCopyInto() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -654,7 +685,7 @@ public class HistogramTest {
             // Histogram histogram = new Histogram(1024, highestTrackableValue, numberOfSignificantValueDigits);
             AbstractHistogram histogram = constructHistogram(histoClass, 1024, highestTrackableValue, numberOfSignificantValueDigits);
             Assert.assertEquals("Size of equivalent range for value 1 * 1024 is 1 * 1024",
-                    1 * 1024, histogram.sizeOfEquivalentValueRange(1 * 1024));
+                    1024, histogram.sizeOfEquivalentValueRange(1024));
             Assert.assertEquals("Size of equivalent range for value 2500 * 1024 is 2 * 1024",
                     2 * 1024, histogram.sizeOfEquivalentValueRange(2500 * 1024));
             Assert.assertEquals("Size of equivalent range for value 8191 * 1024 is 4 * 1024",
@@ -690,7 +721,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testShortCountsHistogramOverflow() throws Exception {
+    public void testShortCountsHistogramOverflow() {
         Assert.assertThrows(IllegalStateException.class,
                 () -> {
                     ShortCountsHistogram histogram =
@@ -1118,7 +1149,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testValueAtPercentileMatchesPercentile() throws Exception {
+    public void testValueAtPercentileMatchesPercentile() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -1150,7 +1181,7 @@ public class HistogramTest {
     }
 
     @Test
-    public void testValueAtPercentileMatchesPercentileIter() throws Exception {
+    public void testValueAtPercentileMatchesPercentileIter() {
         Class<?>[] testClasses = new Class[]{
                 Histogram.class,
                 PackedHistogram.class,
@@ -1246,12 +1277,12 @@ public class HistogramTest {
         }
         Assert.assertNotNull(newHistogram);
         assertEqual(histogram, newHistogram);
-        assertTrue(histogram.equals(newHistogram));
+        assertEquals(histogram, newHistogram);
         if (histogram.supportsAutoResize()) {
             assertTrue(histogram.isAutoResize());
         }
         assertEquals(newHistogram.isAutoResize(), histogram.isAutoResize());
-        Assert.assertTrue(histogram.hashCode() == newHistogram.hashCode());
+        assertEquals(histogram.hashCode(), newHistogram.hashCode());
         assertEquals(histogram.getNeededByteBufferCapacity(), newHistogram.copy().getNeededByteBufferCapacity());
         assertEquals(histogram.getNeededByteBufferCapacity(), newHistogram.getNeededByteBufferCapacity());
     }

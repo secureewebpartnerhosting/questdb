@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,10 +27,7 @@ package io.questdb.test.griffin.engine.functions;
 import io.questdb.cairo.TableUtils;
 import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.engine.functions.CharFunction;
-import io.questdb.std.str.StringSink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
-import io.questdb.std.str.Utf8StringSink;
 import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -46,7 +43,7 @@ public class CharFunctionTest {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return true;
         }
     };
@@ -58,30 +55,10 @@ public class CharFunctionTest {
         }
 
         @Override
-        public boolean isReadThreadSafe() {
+        public boolean isThreadSafe() {
             return true;
         }
     };
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetGeoByte() {
-        function.getGeoByte(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetGeoInt() {
-        function.getGeoInt(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetGeoLong() {
-        function.getGeoLong(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetGeoShort() {
-        function.getGeoShort(null);
-    }
 
     @Test(expected = UnsupportedOperationException.class)
     public void testGetBin() {
@@ -119,6 +96,26 @@ public class CharFunctionTest {
     }
 
     @Test(expected = UnsupportedOperationException.class)
+    public void testGetGeoByte() {
+        function.getGeoByte(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetGeoInt() {
+        function.getGeoInt(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetGeoLong() {
+        function.getGeoLong(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetGeoShort() {
+        function.getGeoShort(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
     public void testGetIPv4() {
         function.getIPv4(null);
     }
@@ -131,70 +128,6 @@ public class CharFunctionTest {
     @Test
     public void testGetLong() {
         Assert.assertEquals(value, function.getLong(null));
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetRecordCursorFactory() {
-        function.getRecordCursorFactory();
-    }
-
-    @Test
-    public void testGetShort() {
-        Assert.assertEquals(value, function.getShort(null));
-    }
-
-    @Test
-    public void testGetStr() {
-        TestUtils.assertEquals("4", function.getStrA(null));
-    }
-
-    @Test
-    public void testGetStr2() {
-        StringSink sink = new StringSink();
-        function.getStr(null, sink);
-        TestUtils.assertEquals("4", sink);
-    }
-
-    @Test
-    public void testGetStrB() {
-        TestUtils.assertEquals("4", function.getStrB(null));
-    }
-
-    @Test
-    public void testGetStrLen() {
-        Assert.assertEquals(1, function.getStrLen(null));
-    }
-
-    @Test
-    public void testGetStrZ() {
-        Assert.assertNull(zeroFunc.getStrA(null));
-    }
-
-    @Test
-    public void testGetStrZ2() {
-        StringSink sink = new StringSink();
-        zeroFunc.getStr(null, sink);
-        TestUtils.assertEquals("", sink);
-    }
-
-    @Test
-    public void testGetStrZLen() {
-        Assert.assertEquals(TableUtils.NULL_LEN, zeroFunc.getStrLen(null));
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetSym() {
-        function.getSymbol(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetSymbolB() {
-        function.getSymbolB(null);
-    }
-
-    @Test(expected = UnsupportedOperationException.class)
-    public void testGetTimestamp() {
-        function.getTimestamp(null);
     }
 
     @Test(expected = UnsupportedOperationException.class)
@@ -222,6 +155,55 @@ public class CharFunctionTest {
         function.getLong256B(null);
     }
 
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetRecordCursorFactory() {
+        function.getRecordCursorFactory();
+    }
+
+    @Test
+    public void testGetShort() {
+        Assert.assertEquals(value, function.getShort(null));
+    }
+
+    @Test
+    public void testGetStr() {
+        TestUtils.assertEquals("4", function.getStrA(null));
+    }
+
+    @Test
+    public void testGetStrB() {
+        TestUtils.assertEquals("4", function.getStrB(null));
+    }
+
+    @Test
+    public void testGetStrLen() {
+        Assert.assertEquals(1, function.getStrLen(null));
+    }
+
+    @Test
+    public void testGetStrZ() {
+        Assert.assertNull(zeroFunc.getStrA(null));
+    }
+
+    @Test
+    public void testGetStrZLen() {
+        Assert.assertEquals(TableUtils.NULL_LEN, zeroFunc.getStrLen(null));
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetSym() {
+        function.getSymbol(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetSymbolB() {
+        function.getSymbolB(null);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetTimestamp() {
+        function.getTimestamp(null);
+    }
 
     @Test
     public void testGetVarcharA() {
@@ -238,22 +220,8 @@ public class CharFunctionTest {
     }
 
     @Test
-    public void testGetVarcharToSink() {
-        Utf8Sink sink = new Utf8StringSink();
-        function.getVarchar(null, sink);
-        TestUtils.assertEquals("4", sink.toString());
-    }
-
-    @Test
     public void testGetZeroVarchar() {
         Assert.assertNull(zeroFunc.getVarcharA(null));
         Assert.assertNull(zeroFunc.getVarcharB(null));
-    }
-
-    @Test
-    public void testGetZeroVarcharToSink() {
-        Utf8Sink sink = new Utf8StringSink();
-        zeroFunc.getVarchar(null, sink);
-        TestUtils.assertEquals("", sink.toString());
     }
 }

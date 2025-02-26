@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import io.questdb.log.LogFactory;
 import io.questdb.std.FilesFacade;
 import io.questdb.std.MemoryTag;
 import io.questdb.std.Misc;
-import io.questdb.std.str.Path;
+import io.questdb.std.str.LPSZ;
 
 /**
  * Rebuild index independently of TableWriter
@@ -45,7 +45,7 @@ public class IndexBuilder extends RebuildColumnBase {
 
     public IndexBuilder(CairoConfiguration configuration) {
         super(configuration);
-        ddlMem = Vm.getMARInstance(configuration.getCommitMode());
+        ddlMem = Vm.getPMARInstance(configuration);
         indexer = new SymbolColumnIndexer(configuration);
         unsupportedColumnMessage = "Column is not indexed";
     }
@@ -67,10 +67,10 @@ public class IndexBuilder extends RebuildColumnBase {
 
     private void createIndexFiles(FilesFacade ff, CharSequence columnName, int indexValueBlockCapacity, int plen, long columnNameTxn) {
         try {
-            BitmapIndexUtils.keyFileName(path.trimTo(plen), columnName, columnNameTxn);
+            LPSZ lpsz = BitmapIndexUtils.keyFileName(path.trimTo(plen), columnName, columnNameTxn);
             try {
                 LOG.info().$("writing ").$(path).$();
-                ddlMem.smallFile(ff, path, MemoryTag.MMAP_TABLE_WRITER);
+                ddlMem.smallFile(ff, lpsz, MemoryTag.MMAP_TABLE_WRITER);
                 BitmapIndexWriter.initKeyMemory(ddlMem, indexValueBlockCapacity);
             } catch (CairoException e) {
                 // looks like we could not create key file properly
@@ -79,7 +79,7 @@ public class IndexBuilder extends RebuildColumnBase {
                         .$("could not create index [name=").$(path)
                         .$(", errno=").$(e.getErrno())
                         .$(']').$();
-                if (!ff.removeQuiet(path)) {
+                if (!ff.removeQuiet(lpsz)) {
                     LOG.error()
                             .$("could not remove '").$(path).$("'. Please remove MANUALLY.")
                             .$("[errno=").$(ff.errno())
@@ -100,11 +100,11 @@ public class IndexBuilder extends RebuildColumnBase {
         }
     }
 
-    private void removeFile(FilesFacade ff, Path path) {
+    private void removeFile(FilesFacade ff, LPSZ path) {
         LOG.info().$("deleting ").$(path).$();
-        if (!ff.removeQuiet(this.path)) {
+        if (!ff.removeQuiet(path)) {
             int errno = ff.errno();
-            if (!ff.exists(this.path)) {
+            if (!ff.exists(path)) {
                 // This is fine, index can be corrupt, rewriting is what we try to do here
                 LOG.info().$("index file did not exist, file will be re-written [path=").$(path).I$();
             } else {
@@ -115,11 +115,8 @@ public class IndexBuilder extends RebuildColumnBase {
 
     private void removeIndexFiles(FilesFacade ff, CharSequence columnName, long columnNameTxn) {
         final int plen = path.size();
-        BitmapIndexUtils.keyFileName(path.trimTo(plen), columnName, columnNameTxn);
-        removeFile(ff, path);
-
-        BitmapIndexUtils.valueFileName(path.trimTo(plen), columnName, columnNameTxn);
-        removeFile(ff, path);
+        removeFile(ff, BitmapIndexUtils.keyFileName(path.trimTo(plen), columnName, columnNameTxn));
+        removeFile(ff, BitmapIndexUtils.valueFileName(path.trimTo(plen), columnName, columnNameTxn));
     }
 
     protected void doReindex(
@@ -134,7 +131,7 @@ public class IndexBuilder extends RebuildColumnBase {
             int indexValueBlockCapacity
     ) {
         final int trimTo = path.size();
-        TableUtils.setPathForPartition(path, partitionBy, partitionTimestamp, partitionNameTxn);
+        TableUtils.setPathForNativePartition(path, partitionBy, partitionTimestamp, partitionNameTxn);
         try {
             final int plen = path.size();
 
@@ -145,12 +142,11 @@ public class IndexBuilder extends RebuildColumnBase {
 
                 final long columnTop = columnVersionReader.getColumnTop(partitionTimestamp, columnWriterIndex);
                 if (columnTop > -1L) {
-
                     if (partitionSize > columnTop) {
                         LOG.info().$("indexing [path=").$(path).I$();
                         createIndexFiles(ff, columnName, indexValueBlockCapacity, plen, columnNameTxn);
-                        TableUtils.dFile(path.trimTo(plen), columnName, columnNameTxn);
-                        int columnDataFd = TableUtils.openRO(ff, path, LOG);
+
+                        long columnDataFd = TableUtils.openRO(ff, TableUtils.dFile(path.trimTo(plen), columnName, columnNameTxn), LOG);
                         try {
                             indexer.configureWriter(path.trimTo(plen), columnName, columnNameTxn, columnTop);
                             indexer.index(ff, columnDataFd, columnTop, partitionSize);

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,16 +36,6 @@ public class DenyAllSecurityContext extends ReadOnlySecurityContext {
     }
 
     @Override
-    public void authorizeAdminAction() {
-        throw CairoException.nonCritical().put("permission denied");
-    }
-
-    @Override
-    public void authorizeCancelQuery() {
-        throw CairoException.nonCritical().put("permission denied");
-    }
-
-    @Override
     public void authorizeHttp() {
         throw CairoException.nonCritical().put("permission denied");
     }
@@ -67,6 +57,16 @@ public class DenyAllSecurityContext extends ReadOnlySecurityContext {
 
     @Override
     public void authorizeSelectOnAnyColumn(TableToken tableToken) {
+        throw CairoException.nonCritical().put("permission denied");
+    }
+
+    @Override
+    public void authorizeSqlEngineAdmin() {
+        throw CairoException.nonCritical().put("permission denied");
+    }
+
+    @Override
+    public void authorizeSystemAdmin() {
         throw CairoException.nonCritical().put("permission denied");
     }
 }

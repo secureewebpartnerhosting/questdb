@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ public class TxnTest extends AbstractCairoTest {
         TestUtils.assertMemoryLeak(() -> {
             FilesFacade errorFf = new TestFilesFacadeImpl() {
                 @Override
-                public long mremap(int fd, long addr, long previousSize, long newSize, long offset, int mode, int memoryTag) {
+                public long mremap(long fd, long addr, long previousSize, long newSize, long offset, int mode, int memoryTag) {
                     return -1;
                 }
             };
@@ -68,9 +68,9 @@ public class TxnTest extends AbstractCairoTest {
 
                 try (Path path = new Path()) {
                     TableToken tableToken = engine.verifyTableName(tableName);
-                    path.of(configuration.getRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
+                    path.of(configuration.getDbRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
                     int testPartitionCount = 3000;
-                    try (TxWriter txWriter = new TxWriter(cleanFf, configuration).ofRW(path, PartitionBy.DAY)) {
+                    try (TxWriter txWriter = new TxWriter(cleanFf, configuration).ofRW(path.$(), PartitionBy.DAY)) {
                         // Add lots of partitions
                         for (int i = 0; i < testPartitionCount; i++) {
                             txWriter.updatePartitionSizeByTimestamp(i * Timestamps.DAY_MICROS, i + 1);
@@ -81,7 +81,7 @@ public class TxnTest extends AbstractCairoTest {
                     }
 
                     // Reopen without OS errors
-                    try (TxWriter txWriter = new TxWriter(cleanFf, configuration).ofRW(path, PartitionBy.DAY)) {
+                    try (TxWriter txWriter = new TxWriter(cleanFf, configuration).ofRW(path.$(), PartitionBy.DAY)) {
                         // Read lots of partitions
                         Assert.assertEquals(testPartitionCount, txWriter.getPartitionCount());
                         for (int i = 0; i < testPartitionCount - 1; i++) {
@@ -90,19 +90,48 @@ public class TxnTest extends AbstractCairoTest {
                     }
 
                     // Open with OS error to file extend
-                    try (TxWriter ignored = new TxWriter(errorFf, configuration).ofRW(path, PartitionBy.DAY)) {
+                    try (TxWriter ignored = new TxWriter(errorFf, configuration).ofRW(path.$(), PartitionBy.DAY)) {
                         Assert.fail("Should not be able to extend on opening");
                     } catch (CairoException ex) {
                         // expected
                     }
 
                     // Reopen without OS errors
-                    try (TxWriter txWriter = new TxWriter(cleanFf, configuration).ofRW(path, PartitionBy.DAY)) {
+                    try (TxWriter txWriter = new TxWriter(cleanFf, configuration).ofRW(path.$(), PartitionBy.DAY)) {
                         // Read lots of partitions
                         Assert.assertEquals(testPartitionCount, txWriter.getPartitionCount());
                         for (int i = 0; i < testPartitionCount - 1; i++) {
                             Assert.assertEquals(i + 1, txWriter.getPartitionSize(i));
                         }
+                    }
+                }
+            });
+        });
+    }
+
+    @Test
+    public void testToString() throws Exception {
+        TestUtils.assertMemoryLeak(() -> {
+            FilesFacade ff = engine.getConfiguration().getFilesFacade();
+            assertMemoryLeak(() -> {
+
+                String tableName = "txntest";
+                TableModel model = new TableModel(configuration, tableName, PartitionBy.DAY);
+                model.timestamp();
+                AbstractCairoTest.create(model);
+
+                try (Path path = new Path()) {
+                    TableToken tableToken = engine.verifyTableName(tableName);
+                    path.of(configuration.getDbRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
+                    int testPartitionCount = 2;
+                    try (TxWriter txWriter = new TxWriter(ff, configuration).ofRW(path.$(), PartitionBy.DAY)) {
+                        for (int i = 0; i < testPartitionCount; i++) {
+                            txWriter.updatePartitionSizeByTimestamp(i * Timestamps.DAY_MICROS, i + 1);
+                        }
+                        TestUtils.assertContains(txWriter.toString(), "[\n" +
+                                "{ts: '1970-01-01T00:00:00.000Z', rowCount: 1, nameTxn: -1},\n" +
+                                "{ts: '1970-01-02T00:00:00.000Z', rowCount: 2, nameTxn: -1}\n" +
+                                "]");
                     }
                 }
             });
@@ -154,8 +183,8 @@ public class TxnTest extends AbstractCairoTest {
                             TxReader txReader = new TxReader(ff)
                     ) {
                         TableToken tableToken = engine.verifyTableName(tableName);
-                        path.of(engine.getConfiguration().getRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
-                        txReader.ofRO(path, PartitionBy.HOUR);
+                        path.of(engine.getConfiguration().getDbRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
+                        txReader.ofRO(path.$(), PartitionBy.HOUR);
                         MillisecondClock clock = engine.getConfiguration().getMillisecondClock();
                         long duration = 5_000;
                         start.await();
@@ -176,7 +205,7 @@ public class TxnTest extends AbstractCairoTest {
                                 reloadCount.incrementAndGet();
                             }
                             if (readerRnd.nextBoolean()) {
-                                txReader.ofRO(path, PartitionBy.HOUR);
+                                txReader.ofRO(path.$(), PartitionBy.HOUR);
                             }
                             Os.pause();
                         }
@@ -250,8 +279,8 @@ public class TxnTest extends AbstractCairoTest {
                             TxReader txReader = new TxReader(ff)
                     ) {
                         TableToken tableToken = engine.verifyTableName(tableName);
-                        path.of(engine.getConfiguration().getRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
-                        txReader.ofRO(path, PartitionBy.HOUR);
+                        path.of(engine.getConfiguration().getDbRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
+                        txReader.ofRO(path.$(), PartitionBy.HOUR);
                         MillisecondClock clock = engine.getConfiguration().getMillisecondClock();
                         long duration = 5_000;
                         start.await();
@@ -290,7 +319,7 @@ public class TxnTest extends AbstractCairoTest {
 
                             if (readerRnd.nextBoolean()) {
                                 // Reopen txn file
-                                txReader.ofRO(path, PartitionBy.HOUR);
+                                txReader.ofRO(path.$(), PartitionBy.HOUR);
                             }
                         }
                         TableUtils.safeReadTxn(txReader, clock, duration);
@@ -353,8 +382,8 @@ public class TxnTest extends AbstractCairoTest {
                     TxWriter txWriter = new TxWriter(ff, configuration)
             ) {
                 TableToken tableToken = engine.verifyTableName(tableName);
-                path.of(engine.getConfiguration().getRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
-                txWriter.ofRW(path, PartitionBy.HOUR);
+                path.of(engine.getConfiguration().getDbRoot()).concat(tableToken).concat(TXN_FILE_NAME).$();
+                txWriter.ofRW(path.$(), PartitionBy.HOUR);
 
                 start.await();
                 for (int j = 0; j < iterations; j++) {
@@ -403,7 +432,7 @@ public class TxnTest extends AbstractCairoTest {
 
                     if (rnd.nextBoolean()) {
                         // Reopen txn file for writing
-                        txWriter.ofRW(path, PartitionBy.HOUR);
+                        txWriter.ofRW(path.$(), PartitionBy.HOUR);
                     }
 
                     if (!exceptions.isEmpty()) {

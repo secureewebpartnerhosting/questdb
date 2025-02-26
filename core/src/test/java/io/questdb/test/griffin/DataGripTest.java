@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,9 +34,9 @@ public class DataGripTest extends AbstractCairoTest {
 
     @Test
     public void testGetCurrentDatabase() throws SqlException {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "id\tname\tdescription\tis_template\tallow_connections\towner\n" +
-                        "1\tquestdb\t\tfalse\ttrue\tpublic\n",
+                        "1\tqdb\t\tfalse\ttrue\tpublic\n",
                 "select N.oid::bigint as id,\n" +
                         "       datname as name,\n" +
                         "       D.description,\n" +
@@ -54,7 +54,7 @@ public class DataGripTest extends AbstractCairoTest {
 
     @Test
     public void testGetDatabaseOwner() throws SqlException {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "id\tstate_number\tname\tdescription\towner\n" +
                         "2200\t0\tpublic\t\tpublic\n" +
                         "11\t0\tpg_catalog\t\tpublic\n",
@@ -75,9 +75,9 @@ public class DataGripTest extends AbstractCairoTest {
 
     @Test
     public void testGetDatabases() throws SqlException {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "id\tname\tdescription\tis_template\tallow_connections\towner\n" +
-                        "1\tquestdb\t\tfalse\ttrue\tpublic\n",
+                        "1\tqdb\t\tfalse\ttrue\tpublic\n",
                 "select N.oid::bigint as id,\n" +
                         "       datname as name,\n" +
                         "       D.description,\n" +
@@ -109,7 +109,7 @@ public class DataGripTest extends AbstractCairoTest {
     @Test
     public void testLowerCaseCount() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table y as (select x from long_sequence(10))");
+            execute("create table y as (select x from long_sequence(10))");
             assertSql(
                     "count\n" +
                             "10\n", "select COUNT(*) from y"
@@ -118,7 +118,7 @@ public class DataGripTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testShowDateStyles() throws SqlException {
+    public void testShowDateStyles() throws Exception {
         assertQuery(
                 "DateStyle\n" +
                         "ISO,YMD\n",
@@ -126,14 +126,13 @@ public class DataGripTest extends AbstractCairoTest {
                 null,
                 false,
                 true
-
         );
     }
 
     @Test
     @Ignore
     public void testStartUpUnknownDBMS() throws SqlException {
-        assertQuery(
+        assertQueryNoLeakCheck(
                 "",
                 "SELECT NULL AS TABLE_CAT, n.nspname AS TABLE_SCHEM," +
                         "   ct.relname AS TABLE_NAME," +
@@ -180,7 +179,7 @@ public class DataGripTest extends AbstractCairoTest {
     @Test
     public void testUpperCaseCount() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table y as (select x from long_sequence(10))");
+            execute("create table y as (select x from long_sequence(10))");
             assertSql(
                     "count\n" +
                             "10\n", "select COUNT(*) from y"

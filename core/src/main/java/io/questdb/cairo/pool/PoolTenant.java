@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ package io.questdb.cairo.pool;
 
 import io.questdb.cairo.TableToken;
 import io.questdb.std.QuietCloseable;
+import org.jetbrains.annotations.Nullable;
 
 public interface PoolTenant<T extends PoolTenant<T>> extends QuietCloseable {
 
@@ -63,7 +64,7 @@ public interface PoolTenant<T extends PoolTenant<T>> extends QuietCloseable {
      * Pool informs the reader that the instance is being returned to the new owner and the new owner expects
      * the reader to be fully up-to-date with all data and metadata changes.
      */
-    void refresh();
+    void refresh(@Nullable ResourcePoolSupervisor<T> supervisor);
 
     /**
      * Refreshes value of the Table Token to the one it was created with.

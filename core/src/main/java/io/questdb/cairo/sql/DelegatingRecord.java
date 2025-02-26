@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,11 +25,10 @@
 package io.questdb.cairo.sql;
 
 import io.questdb.std.BinarySequence;
+import io.questdb.std.Interval;
 import io.questdb.std.Long256;
 import io.questdb.std.str.CharSink;
-import io.questdb.std.str.Utf16Sink;
 import io.questdb.std.str.Utf8Sequence;
-import io.questdb.std.str.Utf8Sink;
 
 public class DelegatingRecord implements Record {
     protected Record base;
@@ -105,6 +104,11 @@ public class DelegatingRecord implements Record {
     }
 
     @Override
+    public Interval getInterval(int col) {
+        return base.getInterval(col);
+    }
+
+    @Override
     public long getLong(int col) {
         return base.getLong(col);
     }
@@ -140,11 +144,6 @@ public class DelegatingRecord implements Record {
     }
 
     @Override
-    public void getStr(int col, Utf16Sink utf16Sink) {
-        base.getStr(col, utf16Sink);
-    }
-
-    @Override
     public CharSequence getStrB(int col) {
         return base.getStrB(col);
     }
@@ -170,11 +169,6 @@ public class DelegatingRecord implements Record {
     }
 
     @Override
-    public void getVarchar(int col, Utf8Sink utf8Sink) {
-        base.getVarchar(col, utf8Sink);
-    }
-
-    @Override
     public Utf8Sequence getVarcharA(int col) {
         return base.getVarcharA(col);
     }
@@ -182,6 +176,11 @@ public class DelegatingRecord implements Record {
     @Override
     public Utf8Sequence getVarcharB(int col) {
         return base.getVarcharB(col);
+    }
+
+    @Override
+    public int getVarcharSize(int col) {
+        return base.getVarcharSize(col);
     }
 
     public void of(Record base) {

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,12 @@
 
 package io.questdb.cutlass.http.processors;
 
-import io.questdb.cutlass.http.*;
-import io.questdb.metrics.Scrapable;
+import io.questdb.cutlass.http.HttpChunkedResponse;
+import io.questdb.cutlass.http.HttpConnectionContext;
+import io.questdb.cutlass.http.HttpRequestProcessor;
+import io.questdb.cutlass.http.HttpServerConfiguration;
+import io.questdb.cutlass.http.LocalValue;
+import io.questdb.metrics.Target;
 import io.questdb.network.PeerDisconnectedException;
 import io.questdb.network.PeerIsSlowToReadException;
 import io.questdb.std.Files;
@@ -39,11 +43,11 @@ import org.jetbrains.annotations.TestOnly;
 public class PrometheusMetricsProcessor implements HttpRequestProcessor {
     private static final CharSequence CONTENT_TYPE_TEXT = "text/plain; version=0.0.4; charset=utf-8";
     private static final LocalValue<RequestState> LV = new LocalValue<>();
-    private final Scrapable metrics;
+    private final Target metrics;
     private final RequestStatePool pool;
     private final byte requiredAuthType;
 
-    public PrometheusMetricsProcessor(Scrapable metrics, HttpMinServerConfiguration configuration, RequestStatePool pool) {
+    public PrometheusMetricsProcessor(Target metrics, HttpServerConfiguration configuration, RequestStatePool pool) {
         this.metrics = metrics;
         this.requiredAuthType = configuration.getRequiredAuthType();
         this.pool = pool;

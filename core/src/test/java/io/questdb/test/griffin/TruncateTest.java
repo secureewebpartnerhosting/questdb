@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ public class TruncateTest extends AbstractCairoTest {
     @Test
     public void testAddColumnTruncate() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table y as (" +
                             "select timestamp_sequence(0, 1000000000) timestamp," +
                             " x " +
@@ -56,10 +56,10 @@ public class TruncateTest extends AbstractCairoTest {
             );
 
 
-            ddl("alter table y add column new_x int", sqlExecutionContext);
-            ddl("truncate table y");
+            execute("alter table y add column new_x int", sqlExecutionContext);
+            execute("truncate table y");
 
-            insert("insert into y values('2022-02-24', 1, 2)");
+            execute("insert into y values('2022-02-24', 1, 2)");
 
             assertSql("timestamp\tx\tnew_x\n" +
                     "2022-02-24T00:00:00.000000Z\t1\t2\n", "select * from y");
@@ -69,7 +69,7 @@ public class TruncateTest extends AbstractCairoTest {
     @Test
     public void testDropColumnTruncatePartitionByNone() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table y as (" +
                             "select timestamp_sequence(0, 1000000000) timestamp," +
                             " rnd_symbol('a','b',null) symbol1 " +
@@ -77,14 +77,14 @@ public class TruncateTest extends AbstractCairoTest {
                             ") timestamp (timestamp)"
             );
 
-            ddl("alter table y drop column symbol1", sqlExecutionContext);
-            ddl("truncate table y");
+            execute("alter table y drop column symbol1", sqlExecutionContext);
+            execute("truncate table y");
             try (TableWriter w = getWriter("y")) {
                 TableWriter.Row row = w.newRow(123);
                 row.cancel();
             }
 
-            insert("insert into y values(223)");
+            execute("insert into y values(223)");
             assertSql(
                     "timestamp\n" +
                             "1970-01-01T00:00:00.000223Z\n",
@@ -96,7 +96,7 @@ public class TruncateTest extends AbstractCairoTest {
     @Test
     public void testDropColumnWithCachedPlanSelectFull() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table y as (" +
                             "select timestamp_sequence(0, 1000000000) timestamp," +
                             " rnd_symbol('a','b',null) symbol1 " +
@@ -123,7 +123,7 @@ public class TruncateTest extends AbstractCairoTest {
                     );
                 }
 
-                ddl("alter table y drop column symbol1", sqlExecutionContext);
+                execute("alter table y drop column symbol1", sqlExecutionContext);
 
                 try (RecordCursor cursor = factory.getCursor(sqlExecutionContext)) {
                     println(factory, cursor);
@@ -165,7 +165,7 @@ public class TruncateTest extends AbstractCairoTest {
         TestUtils.assertMemoryLeak(() -> {
             try {
                 createX();
-                assertException("truncate table x keep symbol maps bla-bla-bla");
+                assertExceptionNoLeakCheck("truncate table x keep symbol maps bla-bla-bla");
             } catch (SqlException e) {
                 Assert.assertEquals(34, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "unexpected token [bla]");
@@ -179,7 +179,7 @@ public class TruncateTest extends AbstractCairoTest {
     public void testExpectTableKeyword() throws Exception {
         TestUtils.assertMemoryLeak(() -> {
             try {
-                assertException("truncate x", sqlExecutionContext);
+                assertExceptionNoLeakCheck("truncate x", sqlExecutionContext);
             } catch (SqlException e) {
                 Assert.assertEquals(9, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "TABLE expected");
@@ -191,7 +191,7 @@ public class TruncateTest extends AbstractCairoTest {
     public void testExpectTableKeyword2() throws Exception {
         TestUtils.assertMemoryLeak(() -> {
             try {
-                assertException("truncate");
+                assertExceptionNoLeakCheck("truncate");
             } catch (SqlException e) {
                 Assert.assertEquals(8, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "TABLE expected");
@@ -203,7 +203,7 @@ public class TruncateTest extends AbstractCairoTest {
     public void testExpectTableName() throws Exception {
         TestUtils.assertMemoryLeak(() -> {
             try {
-                assertException("truncate table", sqlExecutionContext);
+                assertExceptionNoLeakCheck("truncate table", sqlExecutionContext);
             } catch (SqlException e) {
                 Assert.assertEquals(14, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "table name expected");
@@ -216,7 +216,7 @@ public class TruncateTest extends AbstractCairoTest {
         TestUtils.assertMemoryLeak(() -> {
             try {
                 createX();
-                assertException("truncate table x,", sqlExecutionContext);
+                assertExceptionNoLeakCheck("truncate table x,", sqlExecutionContext);
             } catch (SqlException e) {
                 Assert.assertEquals(17, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "table name expected");
@@ -230,7 +230,7 @@ public class TruncateTest extends AbstractCairoTest {
     public void testExpectTableName3() throws Exception {
         TestUtils.assertMemoryLeak(() -> {
             try {
-                assertException("truncate table with");
+                assertExceptionNoLeakCheck("truncate table with");
             } catch (SqlException e) {
                 Assert.assertEquals(15, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "table name expected");
@@ -243,7 +243,7 @@ public class TruncateTest extends AbstractCairoTest {
         TestUtils.assertMemoryLeak(() -> {
             try {
                 createX();
-                assertException("truncate table x, keep");
+                assertExceptionNoLeakCheck("truncate table x, keep");
             } catch (SqlException e) {
                 Assert.assertEquals(22, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "table name expected");
@@ -258,7 +258,7 @@ public class TruncateTest extends AbstractCairoTest {
         TestUtils.assertMemoryLeak(() -> {
             try {
                 createX();
-                assertException("truncate table x y z");
+                assertExceptionNoLeakCheck("truncate table x y z");
             } catch (SqlException e) {
                 Assert.assertEquals(19, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "',' or 'keep' expected");
@@ -354,7 +354,7 @@ public class TruncateTest extends AbstractCairoTest {
     public void testHappyPathTableNameKeep() throws Exception {
         assertMemoryLeak(
                 () -> {
-                    ddl(
+                    execute(
                             "create table keep as (" +
                                     "select" +
                                     " cast(x as int) i," +
@@ -424,7 +424,7 @@ public class TruncateTest extends AbstractCairoTest {
         TestUtils.assertMemoryLeak(() -> {
             try {
                 createX();
-                assertException("truncate table x keep bla-bla-bla");
+                assertExceptionNoLeakCheck("truncate table x keep bla-bla-bla");
             } catch (SqlException e) {
                 Assert.assertEquals(22, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "SYMBOL expected");
@@ -439,7 +439,7 @@ public class TruncateTest extends AbstractCairoTest {
         TestUtils.assertMemoryLeak(() -> {
             try {
                 createX();
-                assertException("truncate table x keep symbol bla-bla-bla");
+                assertExceptionNoLeakCheck("truncate table x keep symbol bla-bla-bla");
             } catch (SqlException e) {
                 Assert.assertEquals(29, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "MAPS expected");
@@ -455,7 +455,7 @@ public class TruncateTest extends AbstractCairoTest {
             createX();
             createY();
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     "count\n" +
                             "10\n",
                     "select count() from x",
@@ -464,7 +464,7 @@ public class TruncateTest extends AbstractCairoTest {
                     true
             );
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     "count\n" +
                             "20\n",
                     "select count() from y",
@@ -491,7 +491,7 @@ public class TruncateTest extends AbstractCairoTest {
 
             useBarrier.await();
             try {
-                assertException("truncate table x,y");
+                assertExceptionNoLeakCheck("truncate table x,y");
             } catch (SqlException e) {
                 Assert.assertEquals(17, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "table 'y' could not be truncated: [-1]: table busy");
@@ -499,7 +499,7 @@ public class TruncateTest extends AbstractCairoTest {
 
             releaseBarrier.await();
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     "count\n" +
                             "10\n",
                     "select count() from x",
@@ -508,7 +508,7 @@ public class TruncateTest extends AbstractCairoTest {
                     true
             );
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     "count\n" +
                             "20\n",
                     "select count() from y",
@@ -546,7 +546,7 @@ public class TruncateTest extends AbstractCairoTest {
             );
 
             try {
-                assertException("truncate table x, y,z");
+                assertExceptionNoLeakCheck("truncate table x, y,z");
             } catch (SqlException e) {
                 Assert.assertEquals(20, e.getPosition());
                 TestUtils.assertContains(e.getFlyweightMessage(), "table does not exist [table=z]");
@@ -626,14 +626,14 @@ public class TruncateTest extends AbstractCairoTest {
                 }
             }
 
-            ddl("truncate table 'x'");
+            execute("truncate table 'x'");
         });
     }
 
     @Test
     public void testTruncateSymbolIndexRestoresCapacity() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table x as (" +
                             "select timestamp_sequence(0, 1000000000) timestamp," +
                             " rnd_symbol('a','b',null) symbol1 " +
@@ -642,8 +642,8 @@ public class TruncateTest extends AbstractCairoTest {
             );
             TestUtils.assertIndexBlockCapacity(engine, "x", "symbol1");
 
-            ddl("truncate table x");
-            insert("insert into x\n" +
+            execute("truncate table x");
+            execute("insert into x\n" +
                     "select timestamp_sequence(0, 1000000000) timestamp," +
                     " rnd_symbol('a','b',null) symbol1 " +
                     " from long_sequence(10)");
@@ -655,7 +655,7 @@ public class TruncateTest extends AbstractCairoTest {
     public void testTruncateWithColumnTop() throws Exception {
         assertMemoryLeak(
                 () -> {
-                    compile(
+                    execute(
                             "create table testTruncateWithColumnTop as (" +
                                     "select" +
                                     " cast(x as int) i," +
@@ -665,9 +665,9 @@ public class TruncateTest extends AbstractCairoTest {
                                     ") timestamp (k) partition by day"
                     );
 
-                    compile("alter table testTruncateWithColumnTop add column column_with_top int");
+                    execute("alter table testTruncateWithColumnTop add column column_with_top int");
 
-                    compile(
+                    execute(
                             "insert into testTruncateWithColumnTop " +
                                     "select" +
                                     " cast(x as int) i," +
@@ -690,7 +690,7 @@ public class TruncateTest extends AbstractCairoTest {
                         Assert.assertEquals(TRUNCATE, compiler.compile("truncate table testTruncateWithColumnTop", sqlExecutionContext).getType());
                     }
 
-                    compile(
+                    execute(
                             "insert into testTruncateWithColumnTop " +
                                     "select" +
                                     " cast(x as int) i," +
@@ -758,7 +758,7 @@ public class TruncateTest extends AbstractCairoTest {
     @Test
     public void testUpdateThenTruncate() throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table y as (" +
                             "select timestamp_sequence(0, 1000000000) timestamp," +
                             " x " +
@@ -767,9 +767,9 @@ public class TruncateTest extends AbstractCairoTest {
             );
 
             update("update y set x = 10");
-            ddl("truncate table y");
+            execute("truncate table y");
 
-            insert("insert into y values('2022-02-24', 1)");
+            execute("insert into y values('2022-02-24', 1)");
 
             assertSql("timestamp\tx\n" +
                     "2022-02-24T00:00:00.000000Z\t1\n", "select * from y");
@@ -781,7 +781,7 @@ public class TruncateTest extends AbstractCairoTest {
     }
 
     private void createX(long count) throws SqlException {
-        ddl(
+        execute(
                 "create table x as (" +
                         "select" +
                         " cast(x as int) i," +
@@ -806,7 +806,7 @@ public class TruncateTest extends AbstractCairoTest {
     }
 
     private void createY() throws SqlException {
-        ddl(
+        execute(
                 "create table y as (" +
                         "select" +
                         " cast(x as int) i," +
@@ -832,7 +832,7 @@ public class TruncateTest extends AbstractCairoTest {
 
     private void testDropTableWithCachedPlan(String query) throws Exception {
         assertMemoryLeak(() -> {
-            ddl(
+            execute(
                     "create table y as (" +
                             "select timestamp_sequence(0, 1000000000) timestamp," +
                             " rnd_symbol('a','b',null) symbol1 " +
@@ -845,8 +845,8 @@ public class TruncateTest extends AbstractCairoTest {
                     println(factory, cursor);
                 }
 
-                drop("drop table y");
-                ddl(
+                execute("drop table y");
+                execute(
                         "create table y as ( " +
                                 " select " +
                                 " timestamp_sequence('1970-01-01T02:30:00.000000Z', 1000000000L) timestamp " +

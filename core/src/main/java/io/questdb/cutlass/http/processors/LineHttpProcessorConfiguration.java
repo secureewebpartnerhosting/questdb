@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import io.questdb.cutlass.line.LineTcpTimestampAdapter;
 import io.questdb.std.datetime.microtime.MicrosecondClock;
 
 public interface LineHttpProcessorConfiguration {
+
     boolean autoCreateNewColumns();
 
     boolean autoCreateNewTables();
@@ -48,11 +49,9 @@ public interface LineHttpProcessorConfiguration {
 
     boolean isEnabled();
 
-    boolean isStringAsTagSupported();
-
     boolean isStringToCharCastAllowed();
 
-    boolean isSymbolAsFieldSupported();
-
     boolean isUseLegacyStringDefault();
+
+    boolean logMessageOnError();
 }

@@ -32,14 +32,16 @@ import io.questdb.cairo.sql.Record;
 import io.questdb.griffin.engine.functions.GroupByFunction;
 import io.questdb.griffin.engine.functions.LongFunction;
 import io.questdb.griffin.engine.functions.UnaryFunction;
-import io.questdb.std.*;
+import io.questdb.std.CompactUtf8SequenceHashSet;
+import io.questdb.std.Numbers;
+import io.questdb.std.ObjList;
 import io.questdb.std.str.Utf8Sequence;
 
 public class CountDistinctVarcharGroupByFunction extends LongFunction implements UnaryFunction, GroupByFunction {
     private final Function arg;
     private final int setInitialCapacity;
     private final double setLoadFactor;
-    private final ObjList<Utf8SequenceHashSet> sets = new ObjList<>();
+    private final ObjList<CompactUtf8SequenceHashSet> sets = new ObjList<>();
     private int setIndex = 0;
     private int valueIndex;
 
@@ -57,9 +59,9 @@ public class CountDistinctVarcharGroupByFunction extends LongFunction implements
 
     @Override
     public void computeFirst(MapValue mapValue, Record record, long rowId) {
-        final Utf8SequenceHashSet set;
+        final CompactUtf8SequenceHashSet set;
         if (sets.size() <= setIndex) {
-            sets.extendAndSet(setIndex, set = new Utf8SequenceHashSet(setInitialCapacity, setLoadFactor));
+            sets.extendAndSet(setIndex, set = new CompactUtf8SequenceHashSet(setInitialCapacity, setLoadFactor));
         } else {
             set = sets.getQuick(setIndex);
             set.clear();
@@ -77,7 +79,7 @@ public class CountDistinctVarcharGroupByFunction extends LongFunction implements
 
     @Override
     public void computeNext(MapValue mapValue, Record record, long rowId) {
-        final Utf8SequenceHashSet set = sets.getQuick(mapValue.getInt(valueIndex + 1));
+        final CompactUtf8SequenceHashSet set = sets.getQuick(mapValue.getInt(valueIndex + 1));
         final Utf8Sequence val = arg.getVarcharA(record);
         if (val != null) {
             final int index = set.keyIndex(val);
@@ -105,8 +107,25 @@ public class CountDistinctVarcharGroupByFunction extends LongFunction implements
     }
 
     @Override
+    public int getSampleByFlags() {
+        return GroupByFunction.SAMPLE_BY_FILL_ALL;
+    }
+
+    @Override
     public int getValueIndex() {
         return valueIndex;
+    }
+
+    @Override
+    public void initValueIndex(int valueIndex) {
+        this.valueIndex = valueIndex;
+    }
+
+    @Override
+    public void initValueTypes(ArrayColumnTypes columnTypes) {
+        this.valueIndex = columnTypes.getColumnCount();
+        columnTypes.add(ColumnType.LONG);
+        columnTypes.add(ColumnType.INT);
     }
 
     @Override
@@ -115,15 +134,8 @@ public class CountDistinctVarcharGroupByFunction extends LongFunction implements
     }
 
     @Override
-    public boolean isReadThreadSafe() {
+    public boolean isThreadSafe() {
         return false;
-    }
-
-    @Override
-    public void pushValueTypes(ArrayColumnTypes columnTypes) {
-        this.valueIndex = columnTypes.getColumnCount();
-        columnTypes.add(ColumnType.LONG);
-        columnTypes.add(ColumnType.INT);
     }
 
     @Override
@@ -138,12 +150,7 @@ public class CountDistinctVarcharGroupByFunction extends LongFunction implements
 
     @Override
     public void setNull(MapValue mapValue) {
-        mapValue.putLong(valueIndex, Numbers.LONG_NaN);
-    }
-
-    @Override
-    public void setValueIndex(int valueIndex) {
-        this.valueIndex = valueIndex;
+        mapValue.putLong(valueIndex, Numbers.LONG_NULL);
     }
 
     @Override

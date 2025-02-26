@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ package io.questdb.test;
 import io.questdb.FactoryProvider;
 import io.questdb.cairo.sql.SqlExecutionCircuitBreakerConfiguration;
 import io.questdb.std.FilesFacade;
+import io.questdb.std.Misc;
 import io.questdb.std.datetime.microtime.MicrosecondClock;
 import io.questdb.test.cairo.Overrides;
 
@@ -34,10 +35,6 @@ public class StaticOverrides extends Overrides {
 
     public SqlExecutionCircuitBreakerConfiguration getCircuitBreakerConfiguration() {
         return AbstractCairoTest.circuitBreakerConfiguration;
-    }
-
-    public long getCurrentMicros() {
-        return AbstractCairoTest.currentMicros;
     }
 
     public FactoryProvider getFactoryProvider() {
@@ -56,6 +53,11 @@ public class StaticOverrides extends Overrides {
         return AbstractCairoTest.inputWorkRoot;
     }
 
+    @Override
+    public long getSpinLockTimeout() {
+        return AbstractCairoTest.spinLockTimeout;
+    }
+
     public MicrosecondClock getTestMicrosClock() {
         return AbstractCairoTest.testMicrosClock;
     }
@@ -66,31 +68,10 @@ public class StaticOverrides extends Overrides {
 
         AbstractCairoTest.currentMicros = -1;
         AbstractCairoTest.testMicrosClock = AbstractCairoTest.defaultMicrosecondClock;
+        AbstractCairoTest.sqlExecutionContext.initNow();
         AbstractCairoTest.ff = null;
         AbstractCairoTest.factoryProvider = null;
-    }
-
-    public void setCircuitBreakerConfiguration(SqlExecutionCircuitBreakerConfiguration circuitBreakerConfiguration) {
-        AbstractCairoTest.circuitBreakerConfiguration = circuitBreakerConfiguration;
-    }
-
-    public void setFactoryProvider(FactoryProvider factoryProvider) {
-        AbstractCairoTest.factoryProvider = factoryProvider;
-    }
-
-    public void setFilesFacade(FilesFacade ff) {
-        AbstractCairoTest.ff = ff;
-    }
-
-    public void setInputRoot(String inputRoot) {
-        AbstractCairoTest.inputRoot = inputRoot;
-    }
-
-    public void setInputWorkRoot(String inputWorkRoot) {
-        AbstractCairoTest.inputWorkRoot = inputWorkRoot;
-    }
-
-    public void setTestMicrosClock(MicrosecondClock testMicrosClock) {
-        AbstractCairoTest.testMicrosClock = testMicrosClock;
+        AbstractCairoTest.circuitBreakerConfiguration = null;
+        AbstractCairoTest.circuitBreaker = Misc.free(AbstractCairoTest.circuitBreaker);
     }
 }

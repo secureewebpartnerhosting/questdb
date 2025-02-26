@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,12 +33,14 @@ import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
-import static io.questdb.std.MemoryTag.NATIVE_O3;
+import static io.questdb.std.MemoryTag.NATIVE_DEFAULT;
 
 public final class Unsafe {
+    // The various _ADDR fields are `long` in Java, but they are `* mut usize` in Rust, or `size_t*` in C.
+    // These are off-heap allocated atomic counters for memory usage tracking.
+
     public static final long BYTE_OFFSET;
     public static final long BYTE_SCALE;
     public static final long INT_OFFSET;
@@ -48,37 +50,25 @@ public final class Unsafe {
     //#endif
     public static final long LONG_OFFSET;
     public static final long LONG_SCALE;
-    static final AtomicLong MEM_USED = new AtomicLong(0);
     private static final LongAdder[] COUNTERS = new LongAdder[MemoryTag.SIZE];
-    private static final AtomicLong FREE_COUNT = new AtomicLong(0);
-    private static final AtomicLong MALLOC_COUNT = new AtomicLong(0);
+    private static final long FREE_COUNT_ADDR;
+    private static final long MALLOC_COUNT_ADDR;
+    private static final long[] NATIVE_ALLOCATORS = new long[MemoryTag.SIZE - NATIVE_DEFAULT];
+    private static final long[] NATIVE_MEM_COUNTER_ADDRS = new long[MemoryTag.SIZE];
+    private static final long NON_RSS_MEM_USED_ADDR;
     //#if jdk.version!=8
     private static final long OVERRIDE;
     //#endif
-    private static final AtomicLong REALLOC_COUNT = new AtomicLong(0);
+    private static final long REALLOC_COUNT_ADDR;
+    private static final long RSS_MEM_LIMIT_ADDR;
+    private static final long RSS_MEM_USED_ADDR;
     private static final sun.misc.Unsafe UNSAFE;
     private static final AnonymousClassDefiner anonymousClassDefiner;
-    private static long WRITER_MEM_LIMIT = 0;
     //#if jdk.version!=8
     private static final Method implAddExports;
     //#endif
 
     private Unsafe() {
-    }
-
-    public static long malloc(long size, int memoryTag) {
-        try {
-            checkAllocLimit(size, memoryTag);
-            long ptr = getUnsafe().allocateMemory(size);
-            recordMemAlloc(size, memoryTag);
-            MALLOC_COUNT.incrementAndGet();
-            return ptr;
-        } catch (OutOfMemoryError oom) {
-            System.err.printf(
-                    "Unsafe.malloc() OutOfMemoryError, mem_used=%d, size=%d, memoryTag=%d\n",
-                    MEM_USED.get(), size, memoryTag);
-            throw oom;
-        }
     }
 
     //#if jdk.version!=8
@@ -171,8 +161,8 @@ public final class Unsafe {
 
     public static long free(long ptr, long size, int memoryTag) {
         if (ptr != 0) {
-            getUnsafe().freeMemory(ptr);
-            FREE_COUNT.incrementAndGet();
+            Unsafe.getUnsafe().freeMemory(ptr);
+            incrFreeCount();
             recordMemAlloc(-size, memoryTag);
         }
         return 0;
@@ -191,24 +181,46 @@ public final class Unsafe {
     }
 
     public static long getFreeCount() {
-        return FREE_COUNT.get();
+        return UNSAFE.getLongVolatile(null, FREE_COUNT_ADDR);
     }
 
     public static long getMallocCount() {
-        return MALLOC_COUNT.get();
+        return UNSAFE.getLongVolatile(null, MALLOC_COUNT_ADDR);
     }
 
+    /**
+     * Get the total memory used by the process, this includes both resident memory
+     * and that assigned to memory mapped files.
+     */
     public static long getMemUsed() {
-        return MEM_USED.get();
+        return UNSAFE.getLongVolatile(null, NON_RSS_MEM_USED_ADDR) +
+                UNSAFE.getLongVolatile(null, RSS_MEM_USED_ADDR);
     }
 
     public static long getMemUsedByTag(int memoryTag) {
         assert memoryTag >= 0 && memoryTag < MemoryTag.SIZE;
-        return COUNTERS[memoryTag].sum();
+        return COUNTERS[memoryTag].sum() + UNSAFE.getLongVolatile(null, NATIVE_MEM_COUNTER_ADDRS[memoryTag]);
+    }
+
+    /** Returns a `*const QdbAllocator` for use in Rust. */
+    public static long getNativeAllocator(int memoryTag) {
+        return NATIVE_ALLOCATORS[memoryTag - NATIVE_DEFAULT];
     }
 
     public static long getReallocCount() {
-        return REALLOC_COUNT.get();
+        return UNSAFE.getLongVolatile(null, REALLOC_COUNT_ADDR);
+    }
+
+    public static long getRssMemLimit() {
+        return UNSAFE.getLongVolatile(null, RSS_MEM_LIMIT_ADDR);
+    }
+
+    public static void setRssMemLimit(long limit) {
+        UNSAFE.putLongVolatile(null, RSS_MEM_LIMIT_ADDR, limit);
+    }
+
+    public static long getRssMemUsed() {
+        return UNSAFE.getLongVolatile(null, RSS_MEM_USED_ADDR);
     }
 
     public static sun.misc.Unsafe getUnsafe() {
@@ -216,15 +228,15 @@ public final class Unsafe {
     }
 
     public static void incrFreeCount() {
-        FREE_COUNT.incrementAndGet();
+        UNSAFE.getAndAddLong(null, FREE_COUNT_ADDR, 1);
     }
 
     public static void incrMallocCount() {
-        MALLOC_COUNT.incrementAndGet();
+        UNSAFE.getAndAddLong(null, MALLOC_COUNT_ADDR, 1);
     }
 
     public static void incrReallocCount() {
-        REALLOC_COUNT.incrementAndGet();
+        UNSAFE.getAndAddLong(null, REALLOC_COUNT_ADDR, 1);
     }
 
     //#if jdk.version!=8
@@ -240,43 +252,75 @@ public final class Unsafe {
     }
     //#endif
 
-    public static long realloc(long address, long oldSize, long newSize, int memoryTag) {
+    public static long malloc(long size, int memoryTag) {
         try {
-            checkAllocLimit(-oldSize + newSize, memoryTag);
-            long ptr = getUnsafe().reallocateMemory(address, newSize);
-            recordMemAlloc(-oldSize + newSize, memoryTag);
-            REALLOC_COUNT.incrementAndGet();
+            assert memoryTag >= MemoryTag.NATIVE_PATH;
+            checkAllocLimit(size, memoryTag);
+            long ptr = Unsafe.getUnsafe().allocateMemory(size);
+            recordMemAlloc(size, memoryTag);
+            incrMallocCount();
             return ptr;
         } catch (OutOfMemoryError oom) {
-            System.err.printf(
-                    "Unsafe.realloc() OutOfMemoryError, mem_used=%d, old_size=%d, new_size=%d, memoryTag=%d",
-                    MEM_USED.get(), oldSize, newSize, memoryTag);
-            throw oom;
+            CairoException e = CairoException.nonCritical().setOutOfMemory(true)
+                    .put("sun.misc.Unsafe.allocateMemory() OutOfMemoryError [RSS_MEM_USED=")
+                    .put(getRssMemUsed())
+                    .put(", size=")
+                    .put(size)
+                    .put(", memoryTag=").put(memoryTag)
+                    .put("], original message: ")
+                    .put(oom.getMessage());
+            System.err.println(e.getFlyweightMessage());
+            throw e;
         }
     }
 
-    public static void setWriterMemLimit(long limit) {
-        WRITER_MEM_LIMIT = limit;
-    }
-
-    private static void checkAllocLimit(long size, int memoryTag) {
-        if (WRITER_MEM_LIMIT > 0 && memoryTag == NATIVE_O3 && COUNTERS[memoryTag].sum() + size > WRITER_MEM_LIMIT) {
-            long usage = COUNTERS[memoryTag].sum();
-            if (usage + size > WRITER_MEM_LIMIT) {
-                throw CairoException.critical(0).put("table writing memory limit reached [usage=")
-                        .put(usage)
-                        .put(", limit=").put(WRITER_MEM_LIMIT)
-                        .put(", allocation=").put(size)
-                        .put(']');
-            }
+    public static long realloc(long address, long oldSize, long newSize, int memoryTag) {
+        try {
+            assert memoryTag >= MemoryTag.NATIVE_PATH;
+            checkAllocLimit(-oldSize + newSize, memoryTag);
+            long ptr = Unsafe.getUnsafe().reallocateMemory(address, newSize);
+            recordMemAlloc(-oldSize + newSize, memoryTag);
+            incrReallocCount();
+            return ptr;
+        } catch (OutOfMemoryError oom) {
+            CairoException e = CairoException.nonCritical().setOutOfMemory(true)
+                    .put("sun.misc.Unsafe.reallocateMemory() OutOfMemoryError [RSS_MEM_USED=")
+                    .put(getRssMemUsed())
+                    .put(", oldSize=")
+                    .put(oldSize)
+                    .put(", newSize=")
+                    .put(newSize)
+                    .put(", memoryTag=").put(memoryTag)
+                    .put("], original message: ")
+                    .put(oom.getMessage());
+            System.err.println(e.getFlyweightMessage());
+            throw e;
         }
     }
 
     public static void recordMemAlloc(long size, int memoryTag) {
-        long mem = MEM_USED.addAndGet(size);
-        assert mem >= 0;
         assert memoryTag >= 0 && memoryTag < MemoryTag.SIZE;
         COUNTERS[memoryTag].add(size);
+        if (memoryTag >= MemoryTag.NATIVE_DEFAULT) {
+            final long mem = UNSAFE.getAndAddLong(null, RSS_MEM_USED_ADDR, size) + size;
+            assert mem >= 0 : "unexpected RSS mem: " + mem + ", size: " + size + ", memoryTag:" + memoryTag;
+        } else {
+            final long mem = UNSAFE.getAndAddLong(null, NON_RSS_MEM_USED_ADDR, size) + size;
+            assert mem >= 0 : "unexpected non-RSS mem: " + mem + ", size: " + size + ", memoryTag:" + memoryTag;
+        }
+    }
+
+    /** Allocate a new native allocator object and return its pointer */
+    private static long constructNativeAllocator(long nativeMemCountersArray, int memoryTag) {
+        // See `allocator.rs` for the definition of `QdbAllocator`.
+        // We construct here via `Unsafe` to avoid having initialization order issues with `Os.java`.
+        final long allocSize = 8 + 8 + 4;  // two longs, one int
+        final long addr = UNSAFE.allocateMemory(allocSize);
+        Vect.memset(addr, allocSize, 0);
+        UNSAFE.putLong(addr, nativeMemCountersArray);
+        UNSAFE.putLong(addr + 8, NATIVE_MEM_COUNTER_ADDRS[memoryTag]);
+        UNSAFE.putInt(addr + 16, memoryTag);
+        return addr;
     }
 
     //#if jdk.version!=8
@@ -295,6 +339,26 @@ public final class Unsafe {
         return 16L;
     }
     //#endif
+
+    private static void checkAllocLimit(long size, int memoryTag) {
+        if (size <= 0) {
+            return;
+        }
+        // Don't check limits for mmap'd memory
+        final long rssMemLimit = getRssMemLimit();
+        if (rssMemLimit > 0 && memoryTag >= NATIVE_DEFAULT) {
+            long usage = getRssMemUsed();
+            if (usage + size > rssMemLimit) {
+                throw CairoException.nonCritical().setOutOfMemory(true)
+                        .put("global RSS memory limit exceeded [usage=")
+                        .put(usage)
+                        .put(", RSS_MEM_LIMIT=").put(rssMemLimit)
+                        .put(", size=").put(size)
+                        .put(", memoryTag=").put(memoryTag)
+                        .put(']');
+            }
+        }
+    }
 
     //#if jdk.version!=8
     private static boolean getOrdinaryObjectPointersCompressionStatus(boolean is32BitJVM) {
@@ -462,8 +526,36 @@ public final class Unsafe {
         makeAccessible(implAddExports);
         //#endif
 
+        // A single allocation for all the off-heap native memory counters.
+        // Might help with locality, given they're often incremented together.
+        // All initial values set to 0.
+        final long nativeMemCountersArraySize = (6 + COUNTERS.length) * 8;
+        final long nativeMemCountersArray = UNSAFE.allocateMemory(nativeMemCountersArraySize);
+        long ptr = nativeMemCountersArray;
+        Vect.memset(nativeMemCountersArray, nativeMemCountersArraySize, 0);
+
+        // N.B.: The layout here is also used in `allocator.rs` for the Rust side.
+        // See: `struct MemTracking`.
+        RSS_MEM_USED_ADDR = ptr;
+        ptr += 8;
+        RSS_MEM_LIMIT_ADDR = ptr;
+        ptr += 8;
+        MALLOC_COUNT_ADDR = ptr;
+        ptr += 8;
+        REALLOC_COUNT_ADDR = ptr;
+        ptr += 8;
+        FREE_COUNT_ADDR = ptr;
+        ptr += 8;
+        NON_RSS_MEM_USED_ADDR = ptr;
+        ptr += 8;
         for (int i = 0; i < COUNTERS.length; i++) {
             COUNTERS[i] = new LongAdder();
+            NATIVE_MEM_COUNTER_ADDRS[i] = ptr;
+            ptr += 8;
+        }
+        for (int memoryTag = NATIVE_DEFAULT; memoryTag < MemoryTag.SIZE; ++memoryTag) {
+            NATIVE_ALLOCATORS[memoryTag - NATIVE_DEFAULT] = constructNativeAllocator(
+                    nativeMemCountersArray, memoryTag);
         }
     }
 }

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,18 +25,31 @@
 package org.questdb;
 
 import io.questdb.MessageBusImpl;
-import io.questdb.Metrics;
-import io.questdb.cairo.*;
-import io.questdb.cairo.sql.Record;
-import io.questdb.cairo.sql.RecordCursor;
+import io.questdb.cairo.CairoConfiguration;
+import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.DefaultCairoConfiguration;
+import io.questdb.cairo.DefaultDdlListener;
+import io.questdb.cairo.DefaultLifecycleManager;
+import io.questdb.cairo.TableReader;
+import io.questdb.cairo.TableToken;
+import io.questdb.cairo.TableWriter;
 import io.questdb.griffin.SqlCompilerImpl;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.SqlExecutionContextImpl;
 import io.questdb.log.LogFactory;
+import io.questdb.std.Numbers;
 import io.questdb.std.NumericException;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
-import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Level;
+import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.Setup;
+import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
@@ -51,12 +64,13 @@ public class TableReaderReloadBenchmark {
 
     private static final CairoConfiguration configuration = new DefaultCairoConfiguration(System.getProperty("java.io.tmpdir"));
     private static final long ts;
+    private static CairoEngine cairoEngine;
     private static TableReader reader;
-    private static long sum = 0;
     private static TableWriter writer;
 
     public static void main(String[] args) throws RunnerException {
         try (CairoEngine engine = new CairoEngine(configuration)) {
+            cairoEngine = engine;
             SqlExecutionContext sqlExecutionContext = new SqlExecutionContextImpl(engine, 1)
                     .with(
                             configuration.getFactoryProvider().getSecurityContextFactory().getRootContext(),
@@ -93,10 +107,10 @@ public class TableReaderReloadBenchmark {
                 new MessageBusImpl(configuration),
                 true,
                 DefaultLifecycleManager.INSTANCE,
-                configuration.getRoot(),
+                configuration.getDbRoot(),
                 DefaultDdlListener.INSTANCE,
-                () -> false,
-                Metrics.disabled()
+                () -> Numbers.LONG_NULL,
+                cairoEngine
         );
         writer.truncate();
         // create 10 partitions
@@ -114,10 +128,8 @@ public class TableReaderReloadBenchmark {
         reader = new TableReader(configuration, tableToken);
 
         // ensure reader opens all partitions and maps all data
-        RecordCursor cursor = reader.getCursor();
-        Record record = cursor.getRecord();
-        while (cursor.hasNext()) {
-            sum += record.getTimestamp(0);
+        for (int i = 0; i < reader.getPartitionCount(); i++) {
+            reader.openPartition(i);
         }
     }
 

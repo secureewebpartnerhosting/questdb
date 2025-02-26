@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,13 +27,16 @@ package io.questdb.griffin.engine.join;
 import io.questdb.cairo.DataUnavailableException;
 import io.questdb.cairo.TableToken;
 import io.questdb.cairo.sql.Record;
-import io.questdb.cairo.sql.*;
+import io.questdb.cairo.sql.RecordCursor;
+import io.questdb.cairo.sql.RecordCursorFactory;
+import io.questdb.cairo.sql.RecordMetadata;
+import io.questdb.cairo.sql.SqlExecutionCircuitBreaker;
 import io.questdb.griffin.PlanSink;
 import io.questdb.griffin.SqlException;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.std.Misc;
 
-//This plan is actually filter-less Nested Loop  
+// This exec plan is filter-less Nested Loop
 public class CrossJoinRecordCursorFactory extends AbstractJoinRecordCursorFactory {
     private final CrossJoinRecordCursor cursor;
 
@@ -45,6 +48,11 @@ public class CrossJoinRecordCursorFactory extends AbstractJoinRecordCursorFactor
     ) {
         super(metadata, null, masterFactory, slaveFactory);
         this.cursor = new CrossJoinRecordCursor(columnSplit);
+    }
+
+    @Override
+    public boolean followedOrderByAdvice() {
+        return masterFactory.followedOrderByAdvice();
     }
 
     @Override
@@ -60,11 +68,6 @@ public class CrossJoinRecordCursorFactory extends AbstractJoinRecordCursorFactor
             Misc.free(slaveCursor);
             throw ex;
         }
-    }
-
-    @Override
-    public boolean followedOrderByAdvice() {
-        return masterFactory.followedOrderByAdvice();
     }
 
     @Override
@@ -91,9 +94,9 @@ public class CrossJoinRecordCursorFactory extends AbstractJoinRecordCursorFactor
 
     @Override
     protected void _close() {
-        ((JoinRecordMetadata) getMetadata()).close();
-        masterFactory.close();
-        slaveFactory.close();
+        Misc.freeIfCloseable(getMetadata());
+        Misc.free(masterFactory);
+        Misc.free(slaveFactory);
     }
 
     private static class CrossJoinRecordCursor extends AbstractJoinCursor {
@@ -180,6 +183,7 @@ public class CrossJoinRecordCursorFactory extends AbstractJoinRecordCursorFactor
                 }
 
                 slaveCursor.toTop();
+                circuitBreaker.statefulThrowExceptionIfTrippedNoThrottle();
                 isMasterHasNextPending = true;
             }
         }

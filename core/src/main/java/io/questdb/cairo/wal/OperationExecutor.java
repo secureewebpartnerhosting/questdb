@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ import java.io.Closeable;
 class OperationExecutor implements Closeable {
     private final BindVariableService bindVariableService;
     private final CairoEngine engine;
-    private final WalApplySqlExecutionContext renameSupportExecutionContext;
+    private final WalApplySqlExecutionContext executionContext;
     private final Rnd rnd;
 
     OperationExecutor(
@@ -52,12 +52,12 @@ class OperationExecutor implements Closeable {
     ) {
         rnd = new Rnd();
         bindVariableService = new BindVariableServiceImpl(engine.getConfiguration());
-        renameSupportExecutionContext = new WalApplySqlExecutionContext(
+        executionContext = new WalApplySqlExecutionContext(
                 engine,
                 workerCount,
                 sharedWorkerCount
         );
-        renameSupportExecutionContext.with(
+        executionContext.with(
                 engine.getConfiguration().getFactoryProvider().getSecurityContextFactory().getRootContext(),
                 bindVariableService,
                 rnd,
@@ -69,17 +69,21 @@ class OperationExecutor implements Closeable {
 
     @Override
     public void close() {
-        Misc.free(renameSupportExecutionContext);
+        Misc.free(executionContext);
     }
 
-    public void executeAlter(TableWriter tableWriter, CharSequence alterSql, long seqTxn) throws SqlException {
+    /**
+     * Returns result of underlying {@link AlterOperation#matViewInvalidationReason()}.
+     */
+    public String executeAlter(TableWriter tableWriter, CharSequence alterSql, long seqTxn) throws SqlException {
         final TableToken tableToken = tableWriter.getTableToken();
         try (SqlCompiler compiler = engine.getSqlCompiler()) {
-            renameSupportExecutionContext.remapTableNameResolutionTo(tableToken);
-            final CompiledQuery compiledQuery = compiler.compile(alterSql, renameSupportExecutionContext);
+            executionContext.remapTableNameResolutionTo(tableToken);
+            final CompiledQuery compiledQuery = compiler.compile(alterSql, executionContext);
             try (AlterOperation alterOp = compiledQuery.getAlterOperation()) {
-                alterOp.withContext(renameSupportExecutionContext);
+                alterOp.withContext(executionContext);
                 tableWriter.apply(alterOp, seqTxn);
+                return alterOp.matViewInvalidationReason();
             }
         } catch (SqlException ex) {
             tableWriter.markSeqTxnCommitted(seqTxn);
@@ -90,17 +94,16 @@ class OperationExecutor implements Closeable {
     public long executeUpdate(TableWriter tableWriter, CharSequence updateSql, long seqTxn) throws SqlException {
         final TableToken tableToken = tableWriter.getTableToken();
         try (SqlCompiler compiler = engine.getSqlCompiler()) {
-            renameSupportExecutionContext.remapTableNameResolutionTo(tableToken);
-            final CompiledQuery compiledQuery = compiler.compile(updateSql, renameSupportExecutionContext);
+            executionContext.remapTableNameResolutionTo(tableToken);
+            final CompiledQuery compiledQuery = compiler.compile(updateSql, executionContext);
             try (UpdateOperation updateOperation = compiledQuery.getUpdateOperation()) {
                 updateOperation.withSqlStatement(updateSql);
-                updateOperation.withContext(renameSupportExecutionContext);
+                updateOperation.withContext(executionContext);
                 return tableWriter.apply(updateOperation, seqTxn);
             }
-        } catch (SqlException ex) {
-            tableWriter.markSeqTxnCommitted(seqTxn);
-            throw ex;
         }
+        // Do not catch the exception and mark transaction as committed
+        // it can be transient, like table does not exist and should be retried.
     }
 
     public BindVariableService getBindVariableService() {
@@ -112,6 +115,6 @@ class OperationExecutor implements Closeable {
     }
 
     public void setNowAndFixClock(long now) {
-        renameSupportExecutionContext.setNowAndFixClock(now);
+        executionContext.setNowAndFixClock(now);
     }
 }

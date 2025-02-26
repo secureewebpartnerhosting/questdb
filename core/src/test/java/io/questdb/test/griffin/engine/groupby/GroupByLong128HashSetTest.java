@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@
 
 package io.questdb.test.griffin.engine.groupby;
 
+import io.questdb.griffin.engine.groupby.FastGroupByAllocator;
 import io.questdb.griffin.engine.groupby.GroupByAllocator;
-import io.questdb.griffin.engine.groupby.GroupByAllocatorArena;
 import io.questdb.griffin.engine.groupby.GroupByLong128HashSet;
 import io.questdb.std.Numbers;
 import io.questdb.std.Rnd;
@@ -41,7 +41,7 @@ public class GroupByLong128HashSetTest extends AbstractCairoTest {
 
     @Test
     public void testFuzzWithLongNullAsNoKeyValue() throws Exception {
-        testFuzz(Numbers.LONG_NaN);
+        testFuzz(Numbers.LONG_NULL);
     }
 
     @Test
@@ -52,7 +52,7 @@ public class GroupByLong128HashSetTest extends AbstractCairoTest {
     @Test
     public void testMerge() throws Exception {
         assertMemoryLeak(() -> {
-            try (GroupByAllocator allocator = new GroupByAllocatorArena(64, Numbers.SIZE_1GB)) {
+            try (GroupByAllocator allocator = new FastGroupByAllocator(64, Numbers.SIZE_1GB)) {
                 GroupByLong128HashSet setA = new GroupByLong128HashSet(16, 0.5, -1);
                 setA.setAllocator(allocator);
                 setA.of(0);
@@ -90,7 +90,7 @@ public class GroupByLong128HashSetTest extends AbstractCairoTest {
             final long seed0 = rnd.getSeed0();
             final long seed1 = rnd.getSeed1();
             HashSet<Uuid> oracle = new HashSet<>();
-            try (GroupByAllocator allocator = new GroupByAllocatorArena(64, Numbers.SIZE_1GB)) {
+            try (GroupByAllocator allocator = new FastGroupByAllocator(64, Numbers.SIZE_1GB)) {
                 GroupByLong128HashSet set = new GroupByLong128HashSet(64, 0.7, noKeyValue);
                 set.setAllocator(allocator);
                 set.of(0);
@@ -125,7 +125,7 @@ public class GroupByLong128HashSetTest extends AbstractCairoTest {
                 for (int i = 0; i < N; i++) {
                     long lo = rnd.nextPositiveLong() + 1;
                     long hi = rnd.nextPositiveLong() + 1;
-                    int index = set.keyIndex(lo, hi);
+                    long index = set.keyIndex(lo, hi);
                     Assert.assertTrue(index >= 0);
                     set.addAt(index, lo, hi);
                 }

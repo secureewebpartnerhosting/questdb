@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,13 +37,16 @@ import java.util.List;
 public class InfluxDBUtils {
 
     public static void assertRequestErrorContains(InfluxDB influxDB, List<String> points, String line, String... errors) {
+        assert errors.length > 0;
         points.add(line);
         try {
             influxDB.write(points);
             Assert.fail();
         } catch (InfluxDBException e) {
             for (String error : errors) {
-                Assert.assertTrue(Chars.contains(e.getMessage(), error));
+                if (!Chars.contains(e.getMessage(), error)) {
+                    Assert.fail("Expected error message to contain [" + error + "] but got [" + e.getMessage() + "]");
+                }
             }
         }
         points.clear();

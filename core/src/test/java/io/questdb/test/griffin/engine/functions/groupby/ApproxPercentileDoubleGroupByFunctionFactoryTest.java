@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ package io.questdb.test.griffin.engine.functions.groupby;
 
 import io.questdb.cairo.CairoException;
 import io.questdb.test.AbstractCairoTest;
+import org.junit.Assert;
 import org.junit.Test;
 
 public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCairoTest {
@@ -33,7 +34,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox0thPercentileDoubleValues() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(100))");
+            execute("create table test as (select cast(x as double) x from long_sequence(100))");
             assertSql(
                     "approx_percentile\n1.0\n",
                     "select approx_percentile(x, 0) from test"
@@ -44,7 +45,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox100thPercentileDoubleValues() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(100))");
+            execute("create table test as (select cast(x as double) x from long_sequence(100))");
             assertSql(
                     "approx_percentile\n103.9375\n",
                     "select approx_percentile(x, 1.0) from test"
@@ -55,7 +56,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox50thPercentileDoubleValues() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(100))");
+            execute("create table test as (select cast(x as double) x from long_sequence(100))");
             assertSql(
                     "approx_percentile\n51.9375\n",
                     "select approx_percentile(x, 0.5) from test"
@@ -66,7 +67,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox50thPercentileDoubleValuesWith5() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(100))");
+            execute("create table test as (select cast(x as double) x from long_sequence(100))");
             assertSql(
                     "approx_percentile\n51.9375\n",
                     "select approx_percentile(x, 0.5) from test"
@@ -77,7 +78,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox50thPercentileFloatValues() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as float) x from long_sequence(100))");
+            execute("create table test as (select cast(x as float) x from long_sequence(100))");
             assertSql(
                     "approx_percentile\n51.9375\n",
                     "select approx_percentile(x, 0.5) from test"
@@ -89,7 +90,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox50thPercentileWithPrecision1() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(1000))");
+            execute("create table test as (select cast(x as double) x from long_sequence(1000))");
             assertSql(
                     "approx_percentile\n511.9375\n",
                     "select approx_percentile(x, 0.5, 1) from test"
@@ -100,7 +101,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox50thPercentileWithPrecision2() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(1000))");
+            execute("create table test as (select cast(x as double) x from long_sequence(1000))");
             assertSql(
                     "approx_percentile\n501.9921875\n",
                     "select approx_percentile(x, 0.5, 2) from test"
@@ -111,7 +112,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox50thPercentileWithPrecision3() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(1000))");
+            execute("create table test as (select cast(x as double) x from long_sequence(1000))");
             assertSql(
                     "approx_percentile\n500.2490234375\n",
                     "select approx_percentile(x, 0.5, 3) from test"
@@ -122,7 +123,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox50thPercentileWithPrecision4() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(1000))");
+            execute("create table test as (select cast(x as double) x from long_sequence(1000))");
             assertSql(
                     "approx_percentile\n500.01556396484375\n",
                     "select approx_percentile(x, 0.5, 4) from test"
@@ -133,7 +134,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApprox50thPercentileWithPrecision5() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select cast(x as double) x from long_sequence(1000))");
+            execute("create table test as (select cast(x as double) x from long_sequence(1000))");
             assertSql(
                     "approx_percentile\n500.00194549560547\n",
                     "select approx_percentile(x, 0.5, 5) from test"
@@ -144,11 +145,11 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApproxPercentileAllNulls() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table test (x long)");
-            insert("insert into test values (null), (null), (null)");
+            execute("create table test (x long)");
+            execute("insert into test values (null), (null), (null)");
             assertSql(
                     "approx_percentile\n" +
-                            "NaN\n",
+                            "null\n",
                     "select approx_percentile(x, 0.5) from test"
             );
         });
@@ -157,7 +158,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApproxPercentileAllSameValues() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table test as (select 5.0 x from long_sequence(100))");
+            execute("create table test as (select 5.0 x from long_sequence(100))");
             assertSql(
                     "approx_percentile\n5.0\n",
                     "select approx_percentile(x, 0.5) from test"
@@ -168,10 +169,10 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApproxPercentileEmptyTable() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table test (x double)");
+            execute("create table test (x double)");
             assertSql(
                     "approx_percentile\n" +
-                            "NaN\n",
+                            "null\n",
                     "select approx_percentile(x, 0.5) from test"
             );
         });
@@ -180,11 +181,11 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApproxPercentilePackedAllNulls() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table test (x long)");
-            insert("insert into test values (null), (null), (null)");
+            execute("create table test (x long)");
+            execute("insert into test values (null), (null), (null)");
             assertSql(
                     "approx_percentile\n" +
-                            "NaN\n",
+                            "null\n",
                     "select approx_percentile(x, 0.5, 5) from test"
             );
         });
@@ -193,10 +194,10 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApproxPercentilePackedEmptyTable() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table test (x double)");
+            execute("create table test (x double)");
             assertSql(
                     "approx_percentile\n" +
-                            "NaN\n",
+                            "null\n",
                     "select approx_percentile(x, 0.5, 5) from test"
             );
         });
@@ -206,7 +207,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     public void testApproxPercentilePackedWithPercentileBindVariable() throws Exception {
         bindVariableService.setDouble(0, 0.5);
         assertMemoryLeak(() -> {
-            ddl("create table test as (select 5.0 x from long_sequence(100))");
+            execute("create table test as (select 5.0 x from long_sequence(100))");
             assertSql(
                     "approx_percentile\n5.0\n",
                     "select approx_percentile(x, $1, 5) from test"
@@ -217,8 +218,8 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     @Test
     public void testApproxPercentileSomeNulls() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table test (x double)");
-            insert("insert into test values (1.0), (null), (null), (null)");
+            execute("create table test (x double)");
+            execute("insert into test values (1.0), (null), (null), (null)");
             assertSql(
                     "approx_percentile\n" +
                             "1.0\n",
@@ -231,7 +232,7 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
     public void testApproxPercentileWithPercentileBindVariable() throws Exception {
         bindVariableService.setDouble(0, 0.5);
         assertMemoryLeak(() -> {
-            ddl("create table test as (select 5.0 x from long_sequence(100))");
+            execute("create table test as (select 5.0 x from long_sequence(100))");
             assertSql(
                     "approx_percentile\n5.0\n",
                     "select approx_percentile(x, $1) from test"
@@ -311,29 +312,37 @@ public class ApproxPercentileDoubleGroupByFunctionFactoryTest extends AbstractCa
         );
     }
 
-    @Test(expected = CairoException.class)
+    @Test
     public void testThrowsOnNegativeValues() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table test (x double)");
-            insert("insert into test values (1.0), (-1.0)");
-            assertSql(
-                    "approx_percentile\n" +
-                            "1.0\n",
-                    "select approx_percentile(x, 0.5) from test"
-            );
+            execute("create table test (x double)");
+            execute("insert into test values (1.0), (-1.0)");
+            try {
+                assertSql(
+                        "approx_percentile\n" +
+                                "1.0\n",
+                        "select approx_percentile(x, 0.5) from test"
+                );
+                Assert.fail();
+            } catch (CairoException ignore) {
+            }
         });
     }
 
-    @Test(expected = CairoException.class)
+    @Test
     public void testThrowsOnNegativeValuesPacked() throws Exception {
         assertMemoryLeak(() -> {
-            compile("create table test (x double)");
-            insert("insert into test values (1.0), (-1.0)");
-            assertSql(
-                    "approx_percentile\n" +
-                            "1.0\n",
-                    "select approx_percentile(x, 0.5, 5) from test"
-            );
+            execute("create table test (x double)");
+            execute("insert into test values (1.0), (-1.0)");
+            try {
+                assertSql(
+                        "approx_percentile\n" +
+                                "1.0\n",
+                        "select approx_percentile(x, 0.5, 5) from test"
+                );
+                Assert.fail();
+            } catch (CairoException ignore) {
+            }
         });
     }
 }

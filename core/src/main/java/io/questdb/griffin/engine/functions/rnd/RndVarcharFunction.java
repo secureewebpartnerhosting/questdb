@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,7 +31,9 @@ import io.questdb.griffin.PlanSink;
 import io.questdb.griffin.SqlExecutionContext;
 import io.questdb.griffin.engine.functions.VarcharFunction;
 import io.questdb.std.Rnd;
-import io.questdb.std.str.*;
+import io.questdb.std.str.Utf8Sequence;
+import io.questdb.std.str.Utf8Sink;
+import io.questdb.std.str.Utf8StringSink;
 
 class RndVarcharFunction extends VarcharFunction implements Function {
     private final int lo;
@@ -45,14 +47,6 @@ class RndVarcharFunction extends VarcharFunction implements Function {
         this.lo = lo;
         this.range = hi - lo + 1;
         this.nullRate = nullRate;
-    }
-
-    @Override
-    public void getVarchar(Record rec, Utf8Sink utf8Sink) {
-        if ((rnd.nextInt() % nullRate) == 1) {
-            return;
-        }
-        sinkRnd(utf8Sink);
     }
 
     @Override
@@ -81,11 +75,21 @@ class RndVarcharFunction extends VarcharFunction implements Function {
     }
 
     @Override
+    public boolean isNonDeterministic() {
+        return true;
+    }
+
+    @Override
     public void toPlan(PlanSink sink) {
         sink.val("rnd_varchar(").val(lo).val(',').val(range + lo - 1).val(',').val(nullRate - 1).val(')');
     }
 
     private void sinkRnd(Utf8Sink utf8Sink) {
-        rnd.nextUtf8Str(lo + rnd.nextPositiveInt() % range, utf8Sink);
+        int len = lo + rnd.nextPositiveInt() % range;
+        if (rnd.nextBoolean()) {
+            rnd.nextUtf8AsciiStr(len, utf8Sink);
+        } else {
+            rnd.nextUtf8Str(len, utf8Sink);
+        }
     }
 }

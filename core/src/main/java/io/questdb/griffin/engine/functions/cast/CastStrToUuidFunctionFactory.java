@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -65,6 +65,7 @@ public final class CastStrToUuidFunctionFactory implements FunctionFactory {
     }
 
     public static class Func extends AbstractCastToUuidFunction {
+
         public Func(Function arg) {
             super(arg);
         }
@@ -73,13 +74,13 @@ public final class CastStrToUuidFunctionFactory implements FunctionFactory {
         public long getLong128Hi(Record rec) {
             final CharSequence value = arg.getStrA(rec);
             if (value == null) {
-                return Numbers.LONG_NaN;
+                return Numbers.LONG_NULL;
             }
             try {
                 Uuid.checkDashesAndLength(value);
                 return Uuid.parseHi(value);
             } catch (NumericException e) {
-                return Numbers.LONG_NaN;
+                return Numbers.LONG_NULL;
             }
         }
 
@@ -87,13 +88,13 @@ public final class CastStrToUuidFunctionFactory implements FunctionFactory {
         public long getLong128Lo(Record rec) {
             final CharSequence value = arg.getStrA(rec);
             if (value == null) {
-                return Numbers.LONG_NaN;
+                return Numbers.LONG_NULL;
             }
             try {
                 Uuid.checkDashesAndLength(value);
                 return Uuid.parseLo(value);
             } catch (NumericException e) {
-                return Numbers.LONG_NaN;
+                return Numbers.LONG_NULL;
             }
         }
     }

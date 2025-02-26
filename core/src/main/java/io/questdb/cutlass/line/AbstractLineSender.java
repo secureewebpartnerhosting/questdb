@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,11 @@ package io.questdb.cutlass.line;
 import io.questdb.cairo.TableUtils;
 import io.questdb.client.Sender;
 import io.questdb.cutlass.auth.AuthUtils;
-import io.questdb.std.*;
+import io.questdb.std.MemoryTag;
+import io.questdb.std.Misc;
+import io.questdb.std.Numbers;
+import io.questdb.std.Unsafe;
+import io.questdb.std.Vect;
 import io.questdb.std.str.Utf8Sequence;
 import io.questdb.std.str.Utf8Sink;
 import io.questdb.std.str.Utf8s;
@@ -35,7 +39,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.Closeable;
-import java.security.*;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 
@@ -223,11 +231,6 @@ public abstract class AbstractLineSender implements Utf8Sink, Closeable, Sender 
     }
 
     @Override
-    public AbstractLineSender putUtf8(long lo, long hi) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public AbstractLineSender putAscii(char @NotNull [] chars, int start, int len) {
         validateNotClosed();
         if (ptr + len < hi) {
@@ -309,6 +312,11 @@ public abstract class AbstractLineSender implements Utf8Sink, Closeable, Sender 
             }
         }
         return this;
+    }
+
+    @Override
+    public AbstractLineSender putNonAscii(long lo, long hi) {
+        throw new UnsupportedOperationException();
     }
 
     @Override

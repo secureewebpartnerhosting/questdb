@@ -1,16 +1,43 @@
-/**
- * Written by Gil Tene of Azul Systems, and released to the public domain,
- * as explained at http://creativecommons.org/publicdomain/zero/1.0/
+/*******************************************************************************
+ *     ___                  _   ____  ____
+ *    / _ \ _   _  ___  ___| |_|  _ \| __ )
+ *   | | | | | | |/ _ \/ __| __| | | |  _ \
+ *   | |_| | |_| |  __/\__ \ |_| |_| | |_) |
+ *    \__\_\\__,_|\___||___/\__|____/|____/
  *
- * @author Gil Tene
- */
+ *  Copyright (c) 2014-2019 Appsicle
+ *  Copyright (c) 2019-2024 QuestDB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+
+// Written by Gil Tene of Azul Systems, and released to the public domain,
+// as explained at http://creativecommons.org/publicdomain/zero/1.0/
+//
+// @author Gil Tene
 
 package io.questdb.std.histogram.org.HdrHistogram;
 
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
-import java.util.*;
+import java.util.Date;
+import java.util.LinkedList;
+import java.util.Locale;
+import java.util.Queue;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * {@link io.questdb.std.histogram.org.HdrHistogram.HistogramLogProcessor} will process an input log and
@@ -55,7 +82,7 @@ public class HistogramLogProcessor extends Thread {
 
     private final HistogramLogProcessorConfiguration config;
     private int lineNumber = 0;
-    private HistogramLogReader logReader;
+    private final HistogramLogReader logReader;
 
     /**
      * Construct a {@link io.questdb.std.histogram.org.HdrHistogram.HistogramLogProcessor} with the given arguments
@@ -396,7 +423,7 @@ public class HistogramLogProcessor extends Thread {
 
     private void outputStartTime(final PrintStream log, final Double startTime) {
         log.format(Locale.US, "#[StartTime: %.3f (seconds since epoch), %s]\n",
-                startTime, (new Date((long) (startTime * 1000))).toString());
+                startTime, (new Date((long) (startTime * 1000))));
     }
 
     private void outputTimeRange(final PrintStream log, final String title) {

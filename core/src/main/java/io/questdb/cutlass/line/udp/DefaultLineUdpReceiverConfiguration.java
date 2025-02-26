@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -126,6 +126,11 @@ public class DefaultLineUdpReceiverConfiguration implements LineUdpReceiverConfi
     }
 
     @Override
+    public boolean isUseLegacyStringDefault() {
+        return true;
+    }
+
+    @Override
     public boolean ownThread() {
         return true;
     }
@@ -133,10 +138,5 @@ public class DefaultLineUdpReceiverConfiguration implements LineUdpReceiverConfi
     @Override
     public int ownThreadAffinity() {
         return -1;
-    }
-
-    @Override
-    public boolean isUseLegacyStringDefault() {
-        return true;
     }
 }

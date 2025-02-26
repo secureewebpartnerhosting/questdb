@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 
 package io.questdb.cutlass.http.processors;
 
-import io.questdb.cairo.CairoConfiguration;
+import io.questdb.ServerConfiguration;
 import io.questdb.cairo.SecurityContext;
 import io.questdb.cutlass.http.HttpChunkedResponse;
 import io.questdb.cutlass.http.HttpConnectionContext;
@@ -40,10 +40,10 @@ import java.net.HttpURLConnection;
 public class SettingsProcessor implements HttpRequestProcessor {
     private final Utf8StringSink sink = new Utf8StringSink();
 
-    public SettingsProcessor(CairoConfiguration cairoConfiguration) {
+    public SettingsProcessor(ServerConfiguration serverConfiguration) {
         final CharSequenceObjHashMap<CharSequence> settings = new CharSequenceObjHashMap<>();
-        cairoConfiguration.populateSettings(settings);
-
+        serverConfiguration.getCairoConfiguration().populateSettings(settings);
+        serverConfiguration.getPublicPassthroughConfiguration().populateSettings(settings);
         sink.putAscii('{');
         final ObjList<CharSequence> keys = settings.keys();
         for (int i = 0, n = keys.size(); i < n; i++) {

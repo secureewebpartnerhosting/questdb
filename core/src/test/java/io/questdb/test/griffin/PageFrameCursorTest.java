@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ import io.questdb.cairo.sql.PageFrameCursor;
 import io.questdb.cairo.sql.RecordCursorFactory;
 import io.questdb.griffin.SqlException;
 import io.questdb.std.Unsafe;
-import io.questdb.std.str.DirectUtf8String;
 import io.questdb.std.str.StringSink;
 import io.questdb.std.str.Utf8SplitString;
 import io.questdb.test.AbstractCairoTest;
@@ -38,7 +37,7 @@ import io.questdb.test.tools.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
-import static io.questdb.cairo.sql.DataFrameCursorFactory.ORDER_ASC;
+import static io.questdb.cairo.sql.PartitionFrameCursorFactory.ORDER_ASC;
 
 public class PageFrameCursorTest extends AbstractCairoTest {
 
@@ -46,7 +45,7 @@ public class PageFrameCursorTest extends AbstractCairoTest {
     public void testStringColumnWithColumnTop() throws Exception {
         assertMemoryLeak(
                 () -> {
-                    ddl("create table x as (select" +
+                    execute("create table x as (select" +
                             " rnd_int() a," +
                             " rnd_str() b," +
                             " timestamp_sequence(to_timestamp('2022-01-13T00:00:00', 'yyyy-MM-ddTHH:mm:ss'), 100000L) t" +
@@ -54,9 +53,9 @@ public class PageFrameCursorTest extends AbstractCairoTest {
                             ") timestamp (t) partition by DAY"
                     );
 
-                    ddl("alter table x add column c string");
+                    execute("alter table x add column c string");
 
-                    insert(
+                    execute(
                             "insert into x " +
                                     "select" +
                                     " rnd_int() a," +
@@ -84,7 +83,7 @@ public class PageFrameCursorTest extends AbstractCairoTest {
                             while ((frame = pageFrameCursor.next()) != null) {
                                 long size = frame.getPageSize(1);
                                 long topOfVarAddress = frame.getPageAddress(1);
-                                long fixAddress = frame.getIndexPageAddress(1);
+                                long fixAddress = frame.getAuxPageAddress(1);
                                 long count = frame.getPartitionHi() - frame.getPartitionLo();
                                 while (count > 0) {
                                     //validate that index column has correct offsets
@@ -114,7 +113,7 @@ public class PageFrameCursorTest extends AbstractCairoTest {
     public void testStringSimple() throws Exception {
         assertMemoryLeak(
                 () -> {
-                    ddl("create table x as (select" +
+                    execute("create table x as (select" +
                             " rnd_int() a," +
                             " rnd_str() b," +
                             " timestamp_sequence(0, 100000000) t" +
@@ -140,11 +139,10 @@ public class PageFrameCursorTest extends AbstractCairoTest {
                             PageFrame frame;
                             while ((frame = pageFrameCursor.next()) != null) {
                                 long varAddress = frame.getPageAddress(1);
-                                long fixAddress = frame.getIndexPageAddress(1);
+                                long fixAddress = frame.getAuxPageAddress(1);
                                 long topOfVarAddress = varAddress;
                                 long count = frame.getPartitionHi() - frame.getPartitionLo();
                                 while (count > 0) {
-
                                     // validate that index column has correct offsets
                                     Assert.assertEquals(varAddress - topOfVarAddress, Unsafe.getUnsafe().getLong(fixAddress));
                                     fixAddress += 8;
@@ -198,8 +196,6 @@ public class PageFrameCursorTest extends AbstractCairoTest {
         );
 
         final Utf8SplitString utf8SplitView = new Utf8SplitString();
-        final DirectUtf8String utf8view = new DirectUtf8String();
-
         final StringSink actualSink = new StringSink();
         // header
         actualSink.put("b\n");
@@ -209,10 +205,21 @@ public class PageFrameCursorTest extends AbstractCairoTest {
                 PageFrame frame;
                 while ((frame = pageFrameCursor.next()) != null) {
                     final long dataTopAddress = frame.getPageAddress(1);
-                    final long auxTopAddress = frame.getIndexPageAddress(1);
+                    final long dataTopLim = dataTopAddress + frame.getPageSize(1);
+                    final long auxTopAddress = frame.getAuxPageAddress(1);
                     final long count = frame.getPartitionHi() - frame.getPartitionLo();
+                    final long auxTopLim = auxTopAddress + count * VarcharTypeDriver.INSTANCE.getAuxVectorSize(count);
                     for (int row = 0; row < count; row++) {
-                        actualSink.put(VarcharTypeDriver.getValue(auxTopAddress, dataTopAddress, row, utf8view, utf8SplitView));
+                        actualSink.put(
+                                VarcharTypeDriver.getSplitValue(
+                                        auxTopAddress,
+                                        auxTopLim,
+                                        dataTopAddress,
+                                        dataTopLim,
+                                        row,
+                                        utf8SplitView
+                                )
+                        );
                         actualSink.put('\n');
                     }
                 }
@@ -222,7 +229,7 @@ public class PageFrameCursorTest extends AbstractCairoTest {
     }
 
     private void testColumnTop(int maxLength) throws SqlException {
-        ddl("create table x as (select" +
+        execute("create table x as (select" +
                 " rnd_int() a," +
                 " rnd_varchar(1, " + maxLength + ", 1) b," +
                 " timestamp_sequence(to_timestamp('2022-01-13T00:00:00', 'yyyy-MM-ddTHH:mm:ss'), 100000L) t" +
@@ -230,9 +237,9 @@ public class PageFrameCursorTest extends AbstractCairoTest {
                 ") timestamp (t) partition by DAY"
         );
 
-        ddl("alter table x add column c varchar");
+        execute("alter table x add column c varchar");
 
-        insert(
+        execute(
                 "insert into x " +
                         "select" +
                         " rnd_int() a," +
@@ -246,7 +253,7 @@ public class PageFrameCursorTest extends AbstractCairoTest {
     }
 
     private void testSimple(int maxLength) throws SqlException {
-        ddl("create table x as (select" +
+        execute("create table x as (select" +
                 " rnd_int() a," +
                 " rnd_varchar(1, " + maxLength + ", 1) b," +
                 " timestamp_sequence(0, 100000000) t" +

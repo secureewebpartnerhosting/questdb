@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,20 +24,23 @@
 
 package io.questdb.test.cutlass.http;
 
-import io.questdb.Metrics;
 import io.questdb.cairo.CairoConfiguration;
 import io.questdb.cairo.CairoEngine;
+import io.questdb.cairo.security.AllowAllSecurityContext;
 import io.questdb.cutlass.http.DefaultHttpServerConfiguration;
 import io.questdb.cutlass.http.HttpRequestProcessor;
 import io.questdb.cutlass.http.HttpRequestProcessorFactory;
 import io.questdb.cutlass.http.HttpServer;
 import io.questdb.cutlass.http.processors.HealthCheckProcessor;
 import io.questdb.cutlass.http.processors.PrometheusMetricsProcessor;
+import io.questdb.griffin.SqlExecutionContext;
+import io.questdb.griffin.SqlExecutionContextImpl;
 import io.questdb.log.Log;
 import io.questdb.log.LogFactory;
-import io.questdb.metrics.Scrapable;
+import io.questdb.metrics.Target;
 import io.questdb.mp.WorkerPool;
 import io.questdb.network.PlainSocketFactory;
+import io.questdb.std.ObjList;
 import io.questdb.test.cairo.DefaultTestCairoConfiguration;
 import io.questdb.test.mp.TestWorkerPool;
 import org.junit.rules.TemporaryFolder;
@@ -48,7 +51,7 @@ public class HttpMinTestBuilder {
 
     private static final Log LOG = LogFactory.getLog(HttpMinTestBuilder.class);
     private PrometheusMetricsProcessor.RequestStatePool prometheusRequestStatePool;
-    private Scrapable scrapable;
+    private Target target;
     private int sendBufferSize;
     private int tcpSndBufSize;
     private TemporaryFolder temp;
@@ -69,8 +72,9 @@ public class HttpMinTestBuilder {
             CairoConfiguration cairoConfiguration = new DefaultTestCairoConfiguration(baseDir);
 
             try (
-                    CairoEngine engine = new CairoEngine(cairoConfiguration, Metrics.disabled());
-                    HttpServer httpServer = new HttpServer(httpConfiguration, Metrics.disabled(), workerPool, PlainSocketFactory.INSTANCE)
+                    CairoEngine engine = new CairoEngine(cairoConfiguration);
+                    HttpServer httpServer = new HttpServer(httpConfiguration, workerPool, PlainSocketFactory.INSTANCE);
+                    SqlExecutionContext sqlExecutionContext = new SqlExecutionContextImpl(engine, 1).with(AllowAllSecurityContext.INSTANCE)
             ) {
                 final PrometheusMetricsProcessor.RequestStatePool requestStatePool = prometheusRequestStatePool != null
                         ? prometheusRequestStatePool
@@ -78,13 +82,13 @@ public class HttpMinTestBuilder {
                 httpServer.registerClosable(requestStatePool);
                 httpServer.bind(new HttpRequestProcessorFactory() {
                     @Override
-                    public String getUrl() {
-                        return "/metrics";
+                    public ObjList<String> getUrls() {
+                        return httpConfiguration.getContextPathMetrics();
                     }
 
                     @Override
                     public HttpRequestProcessor newInstance() {
-                        return new PrometheusMetricsProcessor(scrapable, httpConfiguration, requestStatePool);
+                        return new PrometheusMetricsProcessor(target, httpConfiguration, requestStatePool);
                     }
                 });
 
@@ -93,8 +97,8 @@ public class HttpMinTestBuilder {
                 // It mirrors the setup of the min http server.
                 httpServer.bind(new HttpRequestProcessorFactory() {
                     @Override
-                    public String getUrl() {
-                        return "/status";
+                    public ObjList<String> getUrls() {
+                        return httpConfiguration.getContextPathStatus();
                     }
 
                     @Override
@@ -106,7 +110,7 @@ public class HttpMinTestBuilder {
                 workerPool.start(LOG);
 
                 try {
-                    code.run(engine);
+                    code.run(engine, sqlExecutionContext);
                 } finally {
                     workerPool.halt();
                 }
@@ -119,8 +123,8 @@ public class HttpMinTestBuilder {
         return this;
     }
 
-    public HttpMinTestBuilder withScrapable(Scrapable scrapable) {
-        this.scrapable = scrapable;
+    public HttpMinTestBuilder withScrapable(Target target) {
+        this.target = target;
         return this;
     }
 

@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,15 +30,14 @@ import io.questdb.cairo.SecurityContext;
 import io.questdb.cutlass.http.HttpAuthenticator;
 import io.questdb.cutlass.http.HttpAuthenticatorFactory;
 import io.questdb.cutlass.http.HttpRequestHeader;
+import io.questdb.cutlass.http.StaticHttpAuthenticatorFactory;
 import io.questdb.network.NetworkFacadeImpl;
 import io.questdb.std.CharSequenceObjHashMap;
 import io.questdb.std.Misc;
-import io.questdb.std.ObjList;
 import io.questdb.std.str.Utf8String;
 import io.questdb.std.str.Utf8s;
 import io.questdb.test.AbstractTest;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -53,11 +52,6 @@ public class HttpSecurityTest extends AbstractTest {
         @Override
         public boolean authenticate(HttpRequestHeader headers) {
             return false;
-        }
-
-        @Override
-        public @Nullable ObjList<CharSequence> getGroups() {
-            return null;
         }
 
         @Override
@@ -85,11 +79,6 @@ public class HttpSecurityTest extends AbstractTest {
         }
 
         @Override
-        public @Nullable ObjList<CharSequence> getGroups() {
-            return null;
-        }
-
-        @Override
         public CharSequence getPrincipal() {
             return "foo";
         }
@@ -100,11 +89,6 @@ public class HttpSecurityTest extends AbstractTest {
         @Override
         public boolean authenticate(HttpRequestHeader headers) {
             return Utf8s.equalsNcAscii(VALID_REST_TOKEN_AUTH_CREDENTIALS, headers.getHeader(new Utf8String("Authorization")));
-        }
-
-        @Override
-        public @Nullable ObjList<CharSequence> getGroups() {
-            return null;
         }
 
         @Override
@@ -137,10 +121,10 @@ public class HttpSecurityTest extends AbstractTest {
     public void testChkAllowWithValidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/chk",
                         "{\"status\":\"Does not exist\"}",
-                        new CharSequenceObjHashMap<String>() {{
+                        new CharSequenceObjHashMap<>() {{
                             put("f", "json");
                             put("j", "x");
                         }},
@@ -154,11 +138,11 @@ public class HttpSecurityTest extends AbstractTest {
     public void testChkDisallow() throws Exception {
         testHttpEndpoint(
                 DENY_ALL_AUTH_FACTORY,
-                engine ->
+                (engine, sqlExecutionContext) ->
                         testHttpClient.assertGet(
                                 "/chk",
                                 "Unauthorized\r\n",
-                                new CharSequenceObjHashMap<String>() {{
+                                new CharSequenceObjHashMap<>() {{
                                     put("f", "json");
                                     put("j", "x");
                                 }},
@@ -172,10 +156,10 @@ public class HttpSecurityTest extends AbstractTest {
     public void testChkDisallowWithInvalidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/chk",
                         "Unauthorized\r\n",
-                        new CharSequenceObjHashMap<String>() {{
+                        new CharSequenceObjHashMap<>() {{
                             put("f", "json");
                             put("j", "x");
                         }},
@@ -189,7 +173,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testExecAllowWithValidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/exec",
                         "{\"query\":\"select 1\",\"columns\":[{\"name\":\"1\",\"type\":\"INT\"}],\"timestamp\":-1,\"dataset\":[[1]],\"count\":1}",
                         "select 1",
@@ -203,7 +187,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testExecDisallow() throws Exception {
         testHttpEndpoint(
                 DENY_ALL_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/exec",
                         "Unauthorized\r\n",
                         "select 1",
@@ -217,7 +201,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testExecDisallowInvalidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/exec",
                         "{\"query\":\"select 1\",\"columns\":[{\"name\":\"1\",\"type\":\"INT\"}],\"timestamp\":-1,\"dataset\":[[1]],\"count\":1}",
                         "select 1",
@@ -231,7 +215,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testExpAllowWithValidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/exp",
                         "\"1\"\r\n" +
                                 "1\r\n",
@@ -246,7 +230,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testExpDisallow() throws Exception {
         testHttpEndpoint(
                 DENY_ALL_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet("Unauthorized\r\n", "select 1")
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet("Unauthorized\r\n", "select 1")
         );
     }
 
@@ -254,7 +238,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testExpDisallowWithInvalidCredentials2() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/exp",
                         "Unauthorized\r\n",
                         "select 1",
@@ -267,7 +251,7 @@ public class HttpSecurityTest extends AbstractTest {
     @Test
     public void testHealthCheckAllowWithDisabledConfigProp() throws Exception {
         testAdditionalUnprotectedHttpEndpoint(
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/status",
                         "Status: Healthy",
                         (CharSequenceObjHashMap<String>) null,
@@ -281,7 +265,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testHealthCheckAllowWithValidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine ->
+                (engine, sqlExecutionContext) ->
                         testHttpClient.assertGet(
                                 "/status",
                                 "Status: Healthy",
@@ -296,7 +280,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testHealthCheckDisallow() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/status",
                         "Unauthorized\r\n",
                         (CharSequenceObjHashMap<String>) null,
@@ -308,7 +292,7 @@ public class HttpSecurityTest extends AbstractTest {
 
     @Test
     public void testImpAllowWithValidCredentials() throws Exception {
-        testHttpEndpoint(SINGLE_USER_BASIC_AUTH_FACTORY, engine -> sendAndReceive(
+        testHttpEndpoint(SINGLE_USER_BASIC_AUTH_FACTORY, (engine, sqlExecutionContext) -> sendAndReceive(
                 "POST /upload?name=test HTTP/1.1\r\n" +
                         "Host: localhost:9000\r\n" +
                         "User-Agent: curl/7.71.1\r\n" +
@@ -352,7 +336,7 @@ public class HttpSecurityTest extends AbstractTest {
 
     @Test
     public void testImpDisallow() throws Exception {
-        testHttpEndpoint(DENY_ALL_AUTH_FACTORY, engine -> sendAndReceive(
+        testHttpEndpoint(DENY_ALL_AUTH_FACTORY, (engine, sqlExecutionContext) -> sendAndReceive(
                 "POST /upload?name=test HTTP/1.1\r\n" +
                         "Host: localhost:9000\r\n" +
                         "User-Agent: curl/7.71.1\r\n" +
@@ -375,7 +359,7 @@ public class HttpSecurityTest extends AbstractTest {
 
     @Test
     public void testImpDisallowWithInvalidCredentials() throws Exception {
-        testHttpEndpoint(SINGLE_USER_BASIC_AUTH_FACTORY, engine -> sendAndReceive(
+        testHttpEndpoint(SINGLE_USER_BASIC_AUTH_FACTORY, (engine, sqlExecutionContext) -> sendAndReceive(
                 "POST /upload?name=test HTTP/1.1\r\n" +
                         "Host: localhost:9000\r\n" +
                         "User-Agent: curl/7.71.1\r\n" +
@@ -401,7 +385,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testJsonQueryAllowWithValidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/query",
                         "{\"query\":\"select 1\",\"columns\":[{\"name\":\"1\",\"type\":\"INT\"}],\"timestamp\":-1,\"dataset\":[[1]],\"count\":1}",
                         "select 1",
@@ -415,7 +399,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testJsonQueryAllowWithValidToken() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_REST_TOKEN_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/query",
                         "{\"query\":\"select 1\",\"columns\":[{\"name\":\"1\",\"type\":\"INT\"}],\"timestamp\":-1,\"dataset\":[[1]],\"count\":1}",
                         "select 1",
@@ -430,7 +414,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testJsonQueryDisallow() throws Exception {
         testHttpEndpoint(
                 DENY_ALL_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet("Unauthorized\r\n", "select 1")
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet("Unauthorized\r\n", "select 1")
         );
     }
 
@@ -438,7 +422,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testJsonQueryDisallowWithInvalidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/query",
                         "Unauthorized\r\n",
                         "select 1",
@@ -452,7 +436,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testJsonQueryDisallowWithInvalidToken() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/query",
                         "Unauthorized\r\n",
                         "select 1",
@@ -466,7 +450,7 @@ public class HttpSecurityTest extends AbstractTest {
     @Test
     public void testStaticContentAllowWithDisabledConfigProp() throws Exception {
         testAdditionalUnprotectedHttpEndpoint(
-                engine -> testHttpClient.assertGet(
+                (engine, sqlExecutionContext) -> testHttpClient.assertGet(
                         "/index.html",
                         "Not Found\r\n",
                         (CharSequenceObjHashMap<String>) null,
@@ -480,7 +464,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testStaticContentAllowWithValidCredentials() throws Exception {
         testHttpEndpoint(
                 SINGLE_USER_BASIC_AUTH_FACTORY,
-                engine ->
+                (engine, sqlExecutionContext) ->
                         testHttpClient.assertGet(
                                 "/index.html",
                                 "Not Found\r\n",
@@ -495,7 +479,7 @@ public class HttpSecurityTest extends AbstractTest {
     public void testStaticContentDisallow() throws Exception {
         testHttpEndpoint(
                 DENY_ALL_AUTH_FACTORY,
-                engine ->
+                (engine, sqlExecutionContext) ->
                         testHttpClient.assertGet(
                                 "/index.html",
                                 "Unauthorized\r\n",
@@ -503,6 +487,34 @@ public class HttpSecurityTest extends AbstractTest {
                                 null,
                                 null
                         )
+        );
+    }
+
+    @Test
+    public void testStaticHttpAuthenticatorFactory_badPassword() throws Exception {
+        StaticHttpAuthenticatorFactory factory = new StaticHttpAuthenticatorFactory("foo", "bar");
+        testHttpEndpoint(factory, SecurityContext.AUTH_TYPE_CREDENTIALS, SecurityContext.AUTH_TYPE_CREDENTIALS, (code, sqlExecutionContext) ->
+                testHttpClient.assertGet(
+                        "/query",
+                        "Unauthorized\r\n",
+                        "select 1",
+                        "foo",
+                        "notbar"
+                )
+        );
+    }
+
+    @Test
+    public void testStaticHttpAuthenticatorFactory_success() throws Exception {
+        StaticHttpAuthenticatorFactory factory = new StaticHttpAuthenticatorFactory("foo", "bar");
+        testHttpEndpoint(factory, SecurityContext.AUTH_TYPE_CREDENTIALS, SecurityContext.AUTH_TYPE_CREDENTIALS, (code, sqlExecutionContext) ->
+                testHttpClient.assertGet(
+                        "/query",
+                        "{\"query\":\"select 1\",\"columns\":[{\"name\":\"1\",\"type\":\"INT\"}],\"timestamp\":-1,\"dataset\":[[1]],\"count\":1}",
+                        "select 1",
+                        "foo",
+                        "bar"
+                )
         );
     }
 

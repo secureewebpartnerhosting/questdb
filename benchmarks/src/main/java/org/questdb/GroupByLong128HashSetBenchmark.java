@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ import io.questdb.cairo.ColumnType;
 import io.questdb.cairo.SingleColumnType;
 import io.questdb.cairo.map.MapKey;
 import io.questdb.cairo.map.OrderedMap;
+import io.questdb.griffin.engine.groupby.FastGroupByAllocator;
 import io.questdb.griffin.engine.groupby.GroupByAllocator;
-import io.questdb.griffin.engine.groupby.GroupByAllocatorArena;
 import io.questdb.griffin.engine.groupby.GroupByLong128HashSet;
 import io.questdb.std.Numbers;
 import io.questdb.std.Rnd;
@@ -45,7 +45,7 @@ import java.util.concurrent.TimeUnit;
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 public class GroupByLong128HashSetBenchmark {
-    private static final GroupByAllocator allocator = new GroupByAllocatorArena(128 * 1024, 4 * Numbers.SIZE_1GB);
+    private static final GroupByAllocator allocator = new FastGroupByAllocator(128 * 1024, 4 * Numbers.SIZE_1GB);
     private static final double loadFactor = 0.7;
     private static final GroupByLong128HashSet groupByLong128HashSet = new GroupByLong128HashSet(64, loadFactor, 0);
     private static final int orderedMapPageSize = 1024 * 1024;
@@ -79,7 +79,7 @@ public class GroupByLong128HashSetBenchmark {
     public void testGroupByLong128HashSet() {
         long lo = rnd.nextLong(size);
         long hi = rnd.nextLong(size);
-        int index = groupByLong128HashSet.of(ptr).keyIndex(lo, hi);
+        long index = groupByLong128HashSet.of(ptr).keyIndex(lo, hi);
         if (index >= 0) {
             groupByLong128HashSet.addAt(index, lo, hi);
             ptr = groupByLong128HashSet.ptr();

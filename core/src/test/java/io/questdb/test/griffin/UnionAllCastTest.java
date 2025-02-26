@@ -6,7 +6,7 @@
  *    \__\_\\__,_|\___||___/\__|____/|____/
  *
  *  Copyright (c) 2014-2019 Appsicle
- *  Copyright (c) 2019-2023 QuestDB
+ *  Copyright (c) 2019-2024 QuestDB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 
 package io.questdb.test.griffin;
 
+import io.questdb.std.datetime.microtime.Timestamps;
 import io.questdb.test.AbstractCairoTest;
 import org.junit.Test;
 
@@ -151,7 +152,8 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testBoolNull() throws Exception {
-        testUnionAll("a\tc\n" +
+        testUnionAllWithNull(
+                "a\tc\n" +
                         "false\tfalse\n" +
                         "true\tfalse\n" +
                         "true\tfalse\n" +
@@ -162,12 +164,11 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "false\tfalse\n" +
                         "false\ttrue\n" +
                         "false\tfalse\n",
-                "create table x as (select rnd_boolean() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_boolean() c from long_sequence(5))",
+                "rnd_boolean()",
                 false
         );
 
-        testUnion(
+        testUnionWithNull(
                 "a\tc\n" +
                         "false\tfalse\n" +
                         "true\tfalse\n" +
@@ -249,7 +250,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testByteNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "79\t0\n" +
                         "122\t0\n" +
@@ -261,8 +262,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "0\t27\n" +
                         "0\t87\n" +
                         "0\t79\n",
-                "create table x as (select rnd_byte() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_byte() c from long_sequence(5))"
+                "rnd_byte()"
         );
     }
 
@@ -318,7 +318,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testCharNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "P\t\n" +
                         "S\t\n" +
@@ -330,8 +330,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\tJ\n" +
                         "\tW\n" +
                         "\tC\n",
-                "create table x as (select rnd_char() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_char() c from long_sequence(5))"
+                "rnd_char()"
         );
     }
 
@@ -423,7 +422,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testDateNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "1970-01-01T02:07:40.373Z\t\n" +
                         "1970-01-01T00:18:02.998Z\t\n" +
@@ -435,8 +434,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\t1970-01-01T01:45:29.025Z\n" +
                         "\t1970-01-01T01:15:01.475Z\n" +
                         "\t1970-01-01T00:43:07.029Z\n",
-                "create table x as (select rnd_date() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_date() c from long_sequence(5))"
+                "rnd_date()"
         );
     }
 
@@ -578,20 +576,19 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testDoubleNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
-                        "0.6508594025855301\tNaN\n" +
-                        "0.8423410920883345\tNaN\n" +
-                        "0.9856290845874263\tNaN\n" +
-                        "0.22452340856088226\tNaN\n" +
-                        "0.5093827001617407\tNaN\n" +
-                        "NaN\t0.6607777894187332\n" +
-                        "NaN\t0.2246301342497259\n" +
-                        "NaN\t0.08486964232560668\n" +
-                        "NaN\t0.299199045961845\n" +
-                        "NaN\t0.20447441837877756\n",
-                "create table x as (select rnd_double() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_double() c from long_sequence(5))"
+                        "0.6508594025855301\tnull\n" +
+                        "0.8423410920883345\tnull\n" +
+                        "0.9856290845874263\tnull\n" +
+                        "0.22452340856088226\tnull\n" +
+                        "0.5093827001617407\tnull\n" +
+                        "null\t0.6607777894187332\n" +
+                        "null\t0.2246301342497259\n" +
+                        "null\t0.08486964232560668\n" +
+                        "null\t0.299199045961845\n" +
+                        "null\t0.20447441837877756\n",
+                "rnd_double()"
         );
     }
 
@@ -626,15 +623,15 @@ public class UnionAllCastTest extends AbstractCairoTest {
     @Test
     public void testExceptDoubleFloat() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table events1 (contact symbol, groupid float, eventid string)");
-            insert("insert into events1 values ('1', 1.5, 'flash')");
-            insert("insert into events1 values ('2', 1.5, 'stand')");
+            execute("create table events1 (contact symbol, groupid float, eventid string)");
+            execute("insert into events1 values ('1', 1.5, 'flash')");
+            execute("insert into events1 values ('2', 1.5, 'stand')");
 
-            ddl("create table events2 (contact symbol, groupid double, eventid string)");
-            insert("insert into events2 values ('1', 1.5, 'flash')");
-            insert("insert into events2 values ('2', 1.5, 'stand')");
+            execute("create table events2 (contact symbol, groupid double, eventid string)");
+            execute("insert into events2 values ('1', 1.5, 'flash')");
+            execute("insert into events2 values ('2', 1.5, 'stand')");
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     // Empty table expected
                     "contact\tgroupid\teventid\n",
                     "events1\n" +
@@ -649,17 +646,17 @@ public class UnionAllCastTest extends AbstractCairoTest {
     @Test
     public void testExceptDoubleFloatSort() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table events1 (contact symbol, groupid float, eventid string)");
-            insert("insert into events1 values ('1', 1.5, 'flash')");
-            insert("insert into events1 values ('2', 1.5, 'stand')");
-            insert("insert into events1 values ('1', 1.6, 'stand')");
-            insert("insert into events1 values ('2', 1.6, 'stand')");
+            execute("create table events1 (contact symbol, groupid float, eventid string)");
+            execute("insert into events1 values ('1', 1.5, 'flash')");
+            execute("insert into events1 values ('2', 1.5, 'stand')");
+            execute("insert into events1 values ('1', 1.6, 'stand')");
+            execute("insert into events1 values ('2', 1.6, 'stand')");
 
-            ddl("create table events2 (contact symbol, groupid double, eventid string)");
-            insert("insert into events2 values ('1', 1.5, 'flash')");
-            insert("insert into events2 values ('2', 1.5, 'stand')");
+            execute("create table events2 (contact symbol, groupid double, eventid string)");
+            execute("insert into events2 values ('1', 1.5, 'flash')");
+            execute("insert into events2 values ('2', 1.5, 'stand')");
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     // Empty table expected
                     "contact\tgroupid\teventid\n" +
                             "2\t1.600000023841858\tstand\n" +
@@ -676,15 +673,15 @@ public class UnionAllCastTest extends AbstractCairoTest {
     @Test
     public void testExceptFloatDouble() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table events1 (contact symbol, groupid double, eventid string)");
-            insert("insert into events1 values ('1', 1.5, 'flash')");
-            insert("insert into events1 values ('2', 1.5, 'stand')");
+            execute("create table events1 (contact symbol, groupid double, eventid string)");
+            execute("insert into events1 values ('1', 1.5, 'flash')");
+            execute("insert into events1 values ('2', 1.5, 'stand')");
 
-            ddl("create table events2 (contact symbol, groupid float, eventid string)");
-            insert("insert into events2 values ('1', 1.5, 'flash')");
-            insert("insert into events2 values ('2', 1.5, 'stand')");
+            execute("create table events2 (contact symbol, groupid float, eventid string)");
+            execute("insert into events2 values ('1', 1.5, 'flash')");
+            execute("insert into events2 values ('2', 1.5, 'stand')");
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     // Empty table expected
                     "contact\tgroupid\teventid\n",
                     "events1\n" +
@@ -699,17 +696,17 @@ public class UnionAllCastTest extends AbstractCairoTest {
     @Test
     public void testExceptSort() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table events1 (contact symbol, groupid double, eventid string)");
-            insert("insert into events1 values ('1', 1.5, 'flash')");
-            insert("insert into events1 values ('2', 1.5, 'stand')");
-            insert("insert into events1 values ('1', 1.6, 'stand')");
-            insert("insert into events1 values ('2', 1.6, 'stand')");
+            execute("create table events1 (contact symbol, groupid double, eventid string)");
+            execute("insert into events1 values ('1', 1.5, 'flash')");
+            execute("insert into events1 values ('2', 1.5, 'stand')");
+            execute("insert into events1 values ('1', 1.6, 'stand')");
+            execute("insert into events1 values ('2', 1.6, 'stand')");
 
-            ddl("create table events2 (contact symbol, groupid double, eventid string)");
-            insert("insert into events2 values ('1', 1.5, 'flash')");
-            insert("insert into events2 values ('2', 1.5, 'stand')");
+            execute("create table events2 (contact symbol, groupid double, eventid string)");
+            execute("insert into events2 values ('1', 1.5, 'flash')");
+            execute("insert into events2 values ('2', 1.5, 'stand')");
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     // Empty table expected
                     "contact\tgroupid\teventid\n" +
                             "2\t1.6\tstand\n" +
@@ -870,20 +867,19 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testFloatNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
-                        "0.2846\tNaN\n" +
-                        "0.2992\tNaN\n" +
-                        "0.0844\tNaN\n" +
-                        "0.2045\tNaN\n" +
-                        "0.9345\tNaN\n" +
-                        "NaN\t0.6608\n" +
-                        "NaN\t0.8043\n" +
-                        "NaN\t0.2246\n" +
-                        "NaN\t0.1297\n" +
-                        "NaN\t0.0849\n",
-                "create table x as (select rnd_float() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_float() c from long_sequence(5))"
+                        "0.2846\tnull\n" +
+                        "0.2992\tnull\n" +
+                        "0.0844\tnull\n" +
+                        "0.2045\tnull\n" +
+                        "0.9345\tnull\n" +
+                        "null\t0.6608\n" +
+                        "null\t0.8043\n" +
+                        "null\t0.2246\n" +
+                        "null\t0.1297\n" +
+                        "null\t0.0849\n",
+                "rnd_float()"
         );
     }
 
@@ -929,7 +925,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testGeoByteNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "1110010\t\n" +
                         "1100000\t\n" +
@@ -941,8 +937,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\t1000110\n" +
                         "\t1111101\n" +
                         "\t1000010\n",
-                "create table x as (select rnd_geohash(7) a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_geohash(7) c from long_sequence(5))"
+                "rnd_geohash(7)"
         );
     }
 
@@ -1021,7 +1016,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testGeoIntNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "wh4b6v\t\n" +
                         "s2z2fy\t\n" +
@@ -1033,8 +1028,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\tjnw97u\n" +
                         "\tzfuqd3\n" +
                         "\thp4muv\n",
-                "create table x as (select rnd_geohash(30) a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_geohash(30) c from long_sequence(5))"
+                "rnd_geohash(30)"
         );
     }
 
@@ -1158,7 +1152,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testGeoLongNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "wh4b6vnt\t\n" +
                         "s2z2fyds\t\n" +
@@ -1170,8 +1164,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\tjnw97u4y\n" +
                         "\tzfuqd3bf\n" +
                         "\thp4muv5t\n",
-                "create table x as (select rnd_geohash(40) a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_geohash(40) c from long_sequence(5))"
+                "rnd_geohash(40)"
         );
     }
 
@@ -1277,7 +1270,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testGeoShortNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "wh4\t\n" +
                         "s2z\t\n" +
@@ -1289,8 +1282,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\tjnw\n" +
                         "\tzfu\n" +
                         "\thp4\n",
-                "create table x as (select rnd_geohash(15) a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_geohash(15) c from long_sequence(5))"
+                "rnd_geohash(15)"
         );
     }
 
@@ -1331,6 +1323,77 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "8260188555232587029\n",
                 "create table x as (select rnd_geohash(12) a from long_sequence(5))",
                 "create table y as (select rnd_long() b from long_sequence(5))"
+        );
+    }
+
+    @Test
+    public void testIPv4String() throws Exception {
+        testUnionAll(
+                "a\n" +
+                        "101.77.34.89\n" +
+                        "66.56.51.126\n" +
+                        "74.188.217.59\n" +
+                        "249.60.8.8\n" +
+                        "230.202.108.161\n" +
+                        "JWCPSWHYR\n" +
+                        "EHNRX\n" +
+                        "SXUXI\n" +
+                        "TGPGW\n" +
+                        "YUDEYYQEHB\n",
+                "create table x as (select rnd_ipv4() a from long_sequence(5))",
+                "create table y as (select rnd_str() b from long_sequence(5))",
+                true
+        );
+    }
+
+    @Test
+    public void testIPv4Symbol() throws Exception {
+        testUnionAll(
+                "a\n" +
+                        "199.122.166.85\n" +
+                        "79.15.250.138\n" +
+                        "35.86.82.23\n" +
+                        "111.98.117.250\n" +
+                        "205.123.179.216\n" +
+                        "aaa\n" +
+                        "aaa\n" +
+                        "bbb\n" +
+                        "bbb\n" +
+                        "bbb\n",
+                "create table x as (select rnd_ipv4() a from long_sequence(5))",
+                "create table y as (select rnd_symbol('aaa', 'bbb') a from long_sequence(5))",
+                false
+        );
+
+        testUnion(
+                "a\n" +
+                        "199.122.166.85\n" +
+                        "79.15.250.138\n" +
+                        "35.86.82.23\n" +
+                        "111.98.117.250\n" +
+                        "205.123.179.216\n" +
+                        "aaa\n" +
+                        "bbb\n"
+        );
+    }
+
+    @Test
+    public void testIPv4Varchar() throws Exception {
+        testUnionAll(
+                "a\n" +
+                        "49.254.54.230\n" +
+                        "89.207.251.208\n" +
+                        "66.9.11.179\n" +
+                        "50.89.42.43\n" +
+                        "219.41.127.7\n" +
+                        "&\uDA1F\uDE98|\uD924\uDE04۲ӄǈ2L\n" +
+                        "8#3TsZ\n" +
+                        "zV衞͛Ԉ龘и\uDA89\uDFA4~\n" +
+                        "ṟ\u1AD3ڎBH뤻䰭\u008B}ѱ\n" +
+                        "\uDB8D\uDE4Eᯤ\\篸{\uD9D7\uDFE5\uDAE9\uDF46OF\n",
+                "create table x as (select rnd_ipv4() a from long_sequence(5))",
+                "create table y as (select rnd_varchar() b from long_sequence(5))",
+                true
         );
     }
 
@@ -1427,20 +1490,19 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testIntNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
-                        "-948263339\tNaN\n" +
-                        "1326447242\tNaN\n" +
-                        "592859671\tNaN\n" +
-                        "1868723706\tNaN\n" +
-                        "-847531048\tNaN\n" +
-                        "NaN\t-1148479920\n" +
-                        "NaN\t315515118\n" +
-                        "NaN\t1548800833\n" +
-                        "NaN\t-727724771\n" +
-                        "NaN\t73575701\n",
-                "create table x as (select rnd_int() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_int() c from long_sequence(5))"
+                        "-948263339\tnull\n" +
+                        "1326447242\tnull\n" +
+                        "592859671\tnull\n" +
+                        "1868723706\tnull\n" +
+                        "-847531048\tnull\n" +
+                        "null\t-1148479920\n" +
+                        "null\t315515118\n" +
+                        "null\t1548800833\n" +
+                        "null\t-727724771\n" +
+                        "null\t73575701\n",
+                "rnd_int()"
         );
     }
 
@@ -1466,17 +1528,17 @@ public class UnionAllCastTest extends AbstractCairoTest {
     @Test
     public void testIntersectDoubleFloatSort() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table events1 (contact symbol, groupid float, eventid string)");
-            insert("insert into events1 values ('1', 1.5, 'flash')");
-            insert("insert into events1 values ('2', 1.5, 'stand')");
-            insert("insert into events1 values ('1', 1.6, 'stand')");
-            insert("insert into events1 values ('2', 1.6, 'stand')");
+            execute("create table events1 (contact symbol, groupid float, eventid string)");
+            execute("insert into events1 values ('1', 1.5, 'flash')");
+            execute("insert into events1 values ('2', 1.5, 'stand')");
+            execute("insert into events1 values ('1', 1.6, 'stand')");
+            execute("insert into events1 values ('2', 1.6, 'stand')");
 
-            ddl("create table events2 (contact symbol, groupid double, eventid string)");
-            insert("insert into events2 values ('1', 1.5, 'flash')");
-            insert("insert into events2 values ('2', 1.5, 'stand')");
+            execute("create table events2 (contact symbol, groupid double, eventid string)");
+            execute("insert into events2 values ('1', 1.5, 'flash')");
+            execute("insert into events2 values ('2', 1.5, 'stand')");
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     // Empty table expected
                     "contact\tgroupid\teventid\n" +
                             "2\t1.5\tstand\n" +
@@ -1493,17 +1555,17 @@ public class UnionAllCastTest extends AbstractCairoTest {
     @Test
     public void testIntersectSort() throws Exception {
         assertMemoryLeak(() -> {
-            ddl("create table events1 (contact symbol, groupid double, eventid string)");
-            insert("insert into events1 values ('1', 1.5, 'flash')");
-            insert("insert into events1 values ('2', 1.5, 'stand')");
-            insert("insert into events1 values ('1', 1.6, 'stand')");
-            insert("insert into events1 values ('2', 1.6, 'stand')");
+            execute("create table events1 (contact symbol, groupid double, eventid string)");
+            execute("insert into events1 values ('1', 1.5, 'flash')");
+            execute("insert into events1 values ('2', 1.5, 'stand')");
+            execute("insert into events1 values ('1', 1.6, 'stand')");
+            execute("insert into events1 values ('2', 1.6, 'stand')");
 
-            ddl("create table events2 (contact symbol, groupid double, eventid string)");
-            insert("insert into events2 values ('1', 1.5, 'flash')");
-            insert("insert into events2 values ('2', 1.5, 'stand')");
+            execute("create table events2 (contact symbol, groupid double, eventid string)");
+            execute("insert into events2 values ('1', 1.5, 'flash')");
+            execute("insert into events2 values ('2', 1.5, 'stand')");
 
-            assertQuery(
+            assertQueryNoLeakCheck(
                     // Empty table expected
                     "contact\tgroupid\teventid\n" +
                             "2\t1.5\tstand\n" +
@@ -1515,6 +1577,78 @@ public class UnionAllCastTest extends AbstractCairoTest {
                     true
             );
         });
+    }
+
+    @Test
+    public void testInterval1() throws Exception {
+        assertMemoryLeak(() -> assertSql(
+                "i\ttypeOf\n" +
+                        "('1970-01-01T00:00:00.100Z', '1970-01-01T00:00:00.200Z')\tINTERVAL\n" +
+                        "('1970-01-01T00:00:00.300Z', '1970-01-01T00:00:00.400Z')\tINTERVAL\n" +
+                        "\tINTERVAL\n",
+                "select i, typeOf(i) from ((select interval(100000,200000) i) union all (select interval(300000,400000) i) union all (select null::interval i))"
+        ));
+    }
+
+    @Test
+    public void testInterval2() throws Exception {
+        setCurrentMicros(7 * Timestamps.DAY_MICROS + Timestamps.HOUR_MICROS); // 1970-01-07T01:00:00.000Z
+        assertMemoryLeak(() -> assertSql(
+                "a\tb\n" +
+                        "('1970-01-07T00:00:00.000Z', '1970-01-07T23:59:59.999Z')\t('1970-01-07T00:00:00.000Z', '1970-01-07T23:59:59.999Z')\n",
+                "select * from (\n" +
+                        "  select today() a, yesterday() b\n" +
+                        "  union all\n" +
+                        "  select yesterday(), yesterday()\n" +
+                        "  union all\n" +
+                        "  select today() a, null b\n" +
+                        ")\n" +
+                        "where b = a"
+        ));
+    }
+
+    @Test
+    public void testInterval3() throws Exception {
+        setCurrentMicros(7 * Timestamps.DAY_MICROS + Timestamps.HOUR_MICROS); // 1970-01-07T01:00:00.000Z
+        assertMemoryLeak(() -> assertSql(
+                "a\ta1\n" +
+                        "('1970-01-08T00:00:00.000Z', '1970-01-08T23:59:59.999Z')\t('1970-01-08T00:00:00.000Z', '1970-01-08T23:59:59.999Z')\n" +
+                        "('1970-01-07T00:00:00.000Z', '1970-01-07T23:59:59.999Z')\t('1970-01-07T00:00:00.000Z', '1970-01-07T23:59:59.999Z')\n" +
+                        "('1970-01-09T00:00:00.000Z', '1970-01-09T23:59:59.999Z')\t('1970-01-09T00:00:00.000Z', '1970-01-09T23:59:59.999Z')\n",
+                "select * from (\n" +
+                        "  select today() a\n" +
+                        "  union \n" +
+                        "  select yesterday()\n" +
+                        "  union \n" +
+                        "  select tomorrow()\n" +
+                        ") a\n" +
+                        "join (\n" +
+                        "  select today() a\n" +
+                        "  union \n" +
+                        "  select yesterday()\n" +
+                        "  union \n" +
+                        "  select tomorrow()\n" +
+                        ") b\n" +
+                        "on a.a = b.a"
+        ));
+    }
+
+    @Test
+    public void testInterval4() throws Exception {
+        setCurrentMicros(7 * Timestamps.DAY_MICROS + Timestamps.HOUR_MICROS); // 1970-01-07T01:00:00.000Z
+        assertMemoryLeak(() -> assertSql(
+                "a\tb\n" +
+                        "('1970-01-08T00:00:00.000Z', '1970-01-08T23:59:59.999Z')\t('1970-01-07T00:00:00.000Z', '1970-01-07T23:59:59.999Z')\n" +
+                        "foobar\t\n",
+                "select * from (\n" +
+                        "  select today() a, yesterday() b\n" +
+                        "  union all\n" +
+                        "  select yesterday(), yesterday()\n" +
+                        "  union all\n" +
+                        "  select 'foobar' a, null b\n" +
+                        ")\n" +
+                        "where b != a"
+        ));
     }
 
     @Test
@@ -1539,7 +1673,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testLong256Null() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "0x73b27651a916ab1b568bc2d7a4aa860483881d4171847cf36e60a01a5b3ea0db\t\n" +
                         "0xa0d8cea7196b33a07e828f56aaa12bde8d076bf991c0ee88c8b1863d4316f9c7\t\n" +
@@ -1551,8 +1685,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\t0x322a2198864beb14797fa69eb8fec6cce8beef38cd7bb3d8db2d34586f6275fa\n" +
                         "\t0xc1e631285c1ab288c72bfc5230158059980eca62a219a0f16846d7a3aa5aecce\n" +
                         "\t0x4b0f595f143e5d722f1a8266e7921e3b716de3d25dcc2d919fa2397a5d8c84c4\n",
-                "create table x as (select rnd_long256() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_long256() c from long_sequence(5))"
+                "rnd_long256()"
         );
     }
 
@@ -1671,20 +1804,19 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testLongNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
-                        "8920866532787660373\tNaN\n" +
-                        "-7611843578141082998\tNaN\n" +
-                        "-5354193255228091881\tNaN\n" +
-                        "-2653407051020864006\tNaN\n" +
-                        "-1675638984090602536\tNaN\n" +
-                        "NaN\t4689592037643856\n" +
-                        "NaN\t4729996258992366\n" +
-                        "NaN\t7746536061816329025\n" +
-                        "NaN\t-6945921502384501475\n" +
-                        "NaN\t8260188555232587029\n",
-                "create table x as (select rnd_long() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_long() c from long_sequence(5))"
+                        "8920866532787660373\tnull\n" +
+                        "-7611843578141082998\tnull\n" +
+                        "-5354193255228091881\tnull\n" +
+                        "-2653407051020864006\tnull\n" +
+                        "-1675638984090602536\tnull\n" +
+                        "null\t4689592037643856\n" +
+                        "null\t4729996258992366\n" +
+                        "null\t7746536061816329025\n" +
+                        "null\t-6945921502384501475\n" +
+                        "null\t8260188555232587029\n",
+                "rnd_long()"
         );
     }
 
@@ -1819,7 +1951,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testShortNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "-22955\t0\n" +
                         "-1398\t0\n" +
@@ -1831,8 +1963,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "0\t-11455\n" +
                         "0\t-13027\n" +
                         "0\t-21227\n",
-                "create table x as (select rnd_short() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_short() c from long_sequence(5))"
+                "rnd_short()"
         );
     }
 
@@ -1938,29 +2069,28 @@ public class UnionAllCastTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testVarcharVarchar() throws Exception {
-        // we include byte <-> bool cast to make sure
-        // bool <-> bool cast it not thrown away as redundant
+    public void testStringIPv4() throws Exception {
         testUnionAll(
-                "a\tc\n" +
-                        "false\tZ끫\uDB53\uDEDA\n" +
-                        "false\t\"\uDB87\uDFA35\n" +
-                        "false\t톬F\uD9E6\uDECD\n" +
-                        "false\tЃَᯤ\n" +
-                        "false\t篸{\uD9D7\uDFE5\n" +
-                        "76\t핕\u05FA씎鈄\n" +
-                        "21\t\uDB8C\uDD1BȞ鼷G\n" +
-                        "35\t\uD8D1\uDD54ZzV\n" +
-                        "117\tB͛Ԉ龘\n" +
-                        "103\tL➤~2\n",
-                "create table x as (select rnd_boolean() a, rnd_varchar(3,3,1) c from long_sequence(5))",
-                "create table y as (select rnd_byte() b, rnd_varchar(4,4,1) c from long_sequence(5))"
+                "b\n" +
+                        "JWCPSWHYR\n" +
+                        "EHNRX\n" +
+                        "SXUXI\n" +
+                        "TGPGW\n" +
+                        "YUDEYYQEHB\n" +
+                        "101.77.34.89\n" +
+                        "66.56.51.126\n" +
+                        "74.188.217.59\n" +
+                        "249.60.8.8\n" +
+                        "230.202.108.161\n",
+                "create table y as (select rnd_ipv4() a from long_sequence(5))",
+                "create table x as (select rnd_str() b from long_sequence(5))",
+                true
         );
     }
 
     @Test
     public void testStringNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "\t\n" +
                         "ZSX\t\n" +
@@ -1972,12 +2102,11 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\tSWH\n" +
                         "\tRXP\n" +
                         "\tHNR\n",
-                "create table x as (select rnd_str(3,3,1) a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_str(3,3,1) c from long_sequence(5))",
+                "rnd_str(3,3,1)",
                 false
         );
 
-        testUnion(
+        testUnionWithNull(
                 "a\tc\n" +
                         "\t\n" +
                         "ZSX\t\n" +
@@ -1992,33 +2121,13 @@ public class UnionAllCastTest extends AbstractCairoTest {
     }
 
     @Test
-    public void testVarcharNull() throws Exception {
-        testUnionAll(
-                "a\tc\n" +
-                        "衞͛Ԉ\t\n" +
-                        "\uD93C\uDEC1ӍK\t\n" +
-                        "\uD905\uDCD0\\ꔰ\t\n" +
-                        "\u008B}ѱ\t\n" +
-                        "\uD96C\uDF5FƐ㙎\t\n" +
-                        "\t\u1755\uDA1F\uDE98|\n" +
-                        "\t鈄۲ӄ\n" +
-                        "\tȞ鼷G\n" +
-                        "\t\uF644䶓z\n" +
-                        "\t\n",
-                "create table x as (select rnd_varchar(3,3,1) a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_varchar(3,3,1) c from long_sequence(5))",
-                true
-        );
-    }
-
-    @Test
     public void testSymBin() throws Exception {
         assertFailure("create table x as (select rnd_symbol('aa','bb') a from long_sequence(5))", "create table y as (select rnd_bin(10, 24, 1) b from long_sequence(5))", 12);
     }
 
     @Test
     public void testSymNull() throws Exception {
-        testUnionAll("a\tc\n" +
+        testUnionAllWithNull("a\tc\n" +
                         "bb\t\n" +
                         "aa\t\n" +
                         "bb\t\n" +
@@ -2029,12 +2138,11 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\tbb\n" +
                         "\tbb\n" +
                         "\tbb\n",
-                "create table x as (select rnd_symbol('aa','bb') a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_symbol('aa','bb') c from long_sequence(5))",
+                "rnd_symbol('aa','bb')",
                 false
         );
 
-        testUnion(
+        testUnionWithNull(
                 "a\tc\n" +
                         "bb\t\n" +
                         "aa\t\n" +
@@ -2099,7 +2207,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
         // we expect this column to be ignored by optimiser, and also
         // we expect optimiser to correctly select column "b" from Y as
         // a match against column "a" in the union
-        compile("create table y as (select rnd_double() u, rnd_byte() b, rnd_symbol('x','y') c from long_sequence(5))");
+        execute("create table y as (select rnd_double() u, rnd_byte() b, rnd_symbol('x','y') c from long_sequence(5))");
         engine.releaseAllWriters();
         assertQuery(
                 "u\ta\tc\n" +
@@ -2189,7 +2297,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testTimestampNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "1970-01-01T00:00:00.023853Z\t\n" +
                         "1970-01-01T00:00:00.083620Z\t\n" +
@@ -2201,12 +2309,11 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\t1970-01-01T00:00:00.045299Z\n" +
                         "\t1970-01-01T00:00:00.078334Z\n" +
                         "\t\n",
-                "create table x as (select rnd_timestamp(0, 100000, 2) a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_timestamp(0, 100000, 2) c from long_sequence(5))",
+                "rnd_timestamp(0, 100000, 2)",
                 false
         );
 
-        testUnion(
+        testUnionWithNull(
                 "a\tc\n" +
                         "1970-01-01T00:00:00.023853Z\t\n" +
                         "1970-01-01T00:00:00.083620Z\t\n" +
@@ -2230,7 +2337,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
 
     @Test
     public void testUuidNull() throws Exception {
-        testUnionAll(
+        testUnionAllWithNull(
                 "a\tc\n" +
                         "322a2198-864b-4b14-b97f-a69eb8fec6cc\t\n" +
                         "980eca62-a219-40f1-a846-d7a3aa5aecce\t\n" +
@@ -2242,8 +2349,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "\t7bcd48d8-c77a-4655-b2a2-15ba0462ad15\n" +
                         "\tb5b2159a-2356-4217-965d-4c984f0ffa8a\n" +
                         "\te8beef38-cd7b-43d8-9b2d-34586f6275fa\n",
-                "create table x as (select rnd_uuid4() a, null c from long_sequence(5))",
-                "create table y as (select null b, rnd_uuid4() c from long_sequence(5))"
+                "rnd_uuid4()"
         );
     }
 
@@ -2263,26 +2369,6 @@ public class UnionAllCastTest extends AbstractCairoTest {
                         "YUDEYYQEHB\n",
                 "create table x as (select rnd_uuid4() a from long_sequence(5))",
                 "create table y as (select rnd_str() b from long_sequence(5))",
-                true
-        );
-    }
-
-    @Test
-    public void testUuidVarchar() throws Exception {
-        testUnionAll(
-                "a\n" +
-                        "7eb6d806-49d1-4fe3-8e4a-7f661df6c32b\n" +
-                        "9502128c-da08-47fe-bcdb-8640c107a692\n" +
-                        "a90c0466-3c80-4638-a011-214bad888a69\n" +
-                        "aec65e34-419d-4077-9b21-7d41156b2ee1\n" +
-                        "7b5dd2b8-513b-41e7-b20e-1900caff819a\n" +
-                        "핕\u05FA씎鈄۲ӄǈ2L\n" +
-                        "\uD95A\uDFD9唶鴙\uDAE2\uDC5E͛Ԉ\n" +
-                        "蝰L➤~2\uDAC6\uDED3ڎBH뤻\n" +
-                        "\uDB8D\uDE4Eᯤ\\篸{\uD9D7\uDFE5\uDAE9\uDF46\n" +
-                        "Fг\uDBAE\uDD12ɜ|\\軦۽\n",
-                "create table x as (select rnd_uuid4() a from long_sequence(5))",
-                "create table y as (select rnd_varchar() b from long_sequence(5))",
                 true
         );
     }
@@ -2321,10 +2407,104 @@ public class UnionAllCastTest extends AbstractCairoTest {
         );
     }
 
-    private void assertFailure(String ddlX, String ddlY, int pos) throws Exception {
-        compile(ddlY);
+    @Test
+    public void testUuidVarchar() throws Exception {
+        testUnionAll(
+                "a\n" +
+                        "acb025f7-59cf-4bd0-9e9b-e4e331fe36e6\n" +
+                        "8fd449ba-3259-4a2b-9beb-329042090bb3\n" +
+                        "b482cff5-7e9c-4398-ac09-f1b4db297f07\n" +
+                        "dbd7587f-2077-4576-9b4b-ae41862e09cc\n" +
+                        "7ee6a03f-4f93-4fa3-9d6c-b7b4fbf1fa48\n" +
+                        "&\uDA1F\uDE98|\uD924\uDE04۲ӄǈ2L\n" +
+                        "8#3TsZ\n" +
+                        "zV衞͛Ԉ龘и\uDA89\uDFA4~\n" +
+                        "ṟ\u1AD3ڎBH뤻䰭\u008B}ѱ\n" +
+                        "\uDB8D\uDE4Eᯤ\\篸{\uD9D7\uDFE5\uDAE9\uDF46OF\n",
+                "create table x as (select rnd_uuid4() a from long_sequence(5))",
+                "create table y as (select rnd_varchar() b from long_sequence(5))",
+                true
+        );
+    }
+
+    @Test
+    public void testVarcharNull() throws Exception {
+        testUnionAllWithNull(
+                "a\tc\n" +
+                        "衞͛Ԉ\t\n" +
+                        "\uD93C\uDEC1ӍK\t\n" +
+                        "\uD905\uDCD0\\ꔰ\t\n" +
+                        "\u008B}ѱ\t\n" +
+                        "\uD96C\uDF5FƐ㙎\t\n" +
+                        "\t\u1755\uDA1F\uDE98|\n" +
+                        "\t鈄۲ӄ\n" +
+                        "\tȞ鼷G\n" +
+                        "\t\uF644䶓z\n" +
+                        "\t\n",
+                "rnd_varchar(3,3,1)"
+        );
+    }
+
+    @Test
+    public void testVarcharVarchar() throws Exception {
+        // we include byte <-> bool cast to make sure
+        // bool <-> bool cast it not thrown away as redundant
+        testUnionAll(
+                "a\tc\n" +
+                        "false\tZ끫\uDB53\uDEDA\n" +
+                        "false\t\"\uDB87\uDFA35\n" +
+                        "false\t톬F\uD9E6\uDECD\n" +
+                        "false\tЃَᯤ\n" +
+                        "false\t篸{\uD9D7\uDFE5\n" +
+                        "76\t핕\u05FA씎鈄\n" +
+                        "21\t\uDB8C\uDD1BȞ鼷G\n" +
+                        "35\t\uD8D1\uDD54ZzV\n" +
+                        "117\tB͛Ԉ龘\n" +
+                        "103\tL➤~2\n",
+                "create table x as (select rnd_boolean() a, rnd_varchar(3,3,1) c from long_sequence(5))",
+                "create table y as (select rnd_byte() b, rnd_varchar(4,4,1) c from long_sequence(5))"
+        );
+    }
+
+    private static void testUnionAllWithNull(String expected, String function) throws Exception {
+        testUnionAllWithNull(expected, function, true);
+    }
+
+    private static void testUnionAllWithNull(String expected, String function, boolean testUnion) throws Exception {
+        execute("create table y as (select " + function + " c from long_sequence(5))");
+        execute("create table x as (select " + function + " a from long_sequence(5))");
         engine.releaseAllWriters();
-        assertException("x union all y",
+
+        assertQuery(
+                expected,
+                "(select a, null c from x) union all (select null b, c from y)",
+                null,
+                null,
+                false,
+                true
+        );
+
+        if (testUnion) {
+            testUnionWithNull(expected);
+        }
+    }
+
+    private static void testUnionWithNull(String expected) throws Exception {
+        assertQuery(
+                expected,
+                "(select a, null c from x) union (select null b, c from y)",
+                null,
+                null,
+                false,
+                false
+        );
+    }
+
+    private void assertFailure(String ddlX, String ddlY, int pos) throws Exception {
+        execute(ddlY);
+        engine.releaseAllWriters();
+        assertException(
+                "x union all y",
                 ddlX,
                 pos,
                 "unsupported cast"
@@ -2353,7 +2533,7 @@ public class UnionAllCastTest extends AbstractCairoTest {
     }
 
     private void testUnionAll(String expected, String sql, String ddlX, String ddlY) throws Exception {
-        compile(ddlY);
+        execute(ddlY);
         engine.releaseAllWriters();
         assertQuery(expected, sql, ddlX, null, false, true);
     }
